@@ -1,0 +1,13 @@
+/**
+ * original_fonts.css
+ * Clean, externalized @font-face declarations referencing physical font files in /assets/fonts/
+ * Eliminates all inline Base64 Data URIs to optimize code analysis and runtime caching.
+ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('/assets/fonts/jetbrains-mono-400.woff2') format('woff2');
+}

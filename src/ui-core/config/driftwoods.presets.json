@@ -1,0 +1,406 @@
+[
+  {
+    "id": "cyberpunk-neon",
+    "name": "Cyberpunk Neon",
+    "description": "Dark asphalt pitch, high-energy cyan line markers, neon magenta ramps, and glowing shield hexes.",
+    "config": {
+      "fastDiffuse": true,
+      "ground": {
+        "groundColor": "#0e1118",
+        "lineColor": "#00ffcc",
+        "roughness": 0.9,
+        "metalness": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "offsetX": 0.0,
+        "offsetY": 0.0,
+        "linkScale": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "ramps": {
+        "color": "#ff007f",
+        "roughness": 0.4,
+        "metalness": 0.2,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsUpperOuter": {
+        "color": "#ff007f",
+        "roughness": 0.4,
+        "metalness": 0.2,
+        "useTeamColor": true,
+        "oneWaySeeThrough": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsTrim": {
+        "color": "#00e5ff",
+        "roughness": 0.2,
+        "metalness": 0.9,
+        "visible": true,
+        "wireframe": false
+      },
+      "wallPosts": {
+        "color": "#12131a",
+        "roughness": 0.3,
+        "metalness": 0.9,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalFrame": {
+        "color": "#ff0055",
+        "roughness": 0.4,
+        "metalness": 0.3,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPosts": {
+        "color": "#00f0ff",
+        "roughness": 0.2,
+        "metalness": 0.8,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPostsGlow": {
+        "color": "#00f0ff",
+        "roughness": 0.2,
+        "metalness": 0.0,
+        "emissive": "#00f0ff",
+        "emissiveIntensity": 0.8,
+        "useTeamColor": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "walls": {
+        "color": "#9900ff",
+        "opacity": 0.35,
+        "roughness": 0.3,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalNet": {
+        "color": "#00f0ff",
+        "opacity": 0.75,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "hexes": {
+        "color": "#00f0ff",
+        "opacity": 0.8,
+        "roughness": 0.4,
+        "metalness": 0.0,
+        "emissive": "#00f0ff",
+        "emissiveIntensity": 1.5,
+        "visible": true,
+        "wireframe": false
+      }
+    }
+  },
+  {
+    "id": "graphite-minimal",
+    "name": "Graphite Minimalist",
+    "description": "Matte charcoal field, crisp pure white lines, dark slate ramps, and polished chrome trim.",
+    "config": {
+      "fastDiffuse": true,
+      "ground": {
+        "groundColor": "#1a1c1e",
+        "lineColor": "#ffffff",
+        "roughness": 0.85,
+        "metalness": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "offsetX": 0.0,
+        "offsetY": 0.0,
+        "linkScale": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "ramps": {
+        "color": "#2d3139",
+        "roughness": 0.7,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsUpperOuter": {
+        "color": "#2d3139",
+        "roughness": 0.7,
+        "metalness": 0.0,
+        "useTeamColor": true,
+        "oneWaySeeThrough": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsTrim": {
+        "color": "#8e95a5",
+        "roughness": 0.2,
+        "metalness": 0.8,
+        "visible": true,
+        "wireframe": false
+      },
+      "wallPosts": {
+        "color": "#181a1f",
+        "roughness": 0.4,
+        "metalness": 0.6,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalFrame": {
+        "color": "#2b2f38",
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPosts": {
+        "color": "#f0f2f5",
+        "roughness": 0.15,
+        "metalness": 0.9,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPostsGlow": {
+        "color": "#ffffff",
+        "roughness": 0.2,
+        "metalness": 0.0,
+        "emissive": "#ffffff",
+        "emissiveIntensity": 0.35,
+        "useTeamColor": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "walls": {
+        "color": "#e0e8f0",
+        "opacity": 0.2,
+        "roughness": 0.2,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalNet": {
+        "color": "#ffffff",
+        "opacity": 0.5,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "hexes": {
+        "color": "#ffffff",
+        "opacity": 0.5,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "emissive": "#ffffff",
+        "emissiveIntensity": 0.0,
+        "visible": false,
+        "wireframe": false
+      }
+    }
+  },
+  {
+    "id": "team-blue-arena",
+    "name": "Team Blue Arena",
+    "description": "Deep navy turf, ice blue markings, electric cobalt ramps, and vivid cyan accents.",
+    "config": {
+      "fastDiffuse": true,
+      "ground": {
+        "groundColor": "#0f2b46",
+        "lineColor": "#70c5ff",
+        "roughness": 0.8,
+        "metalness": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "offsetX": 0.0,
+        "offsetY": 0.0,
+        "linkScale": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "ramps": {
+        "color": "#1d5b91",
+        "roughness": 0.5,
+        "metalness": 0.1,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsUpperOuter": {
+        "color": "#1d5b91",
+        "roughness": 0.5,
+        "metalness": 0.1,
+        "useTeamColor": true,
+        "oneWaySeeThrough": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsTrim": {
+        "color": "#4fc3f7",
+        "roughness": 0.3,
+        "metalness": 0.6,
+        "visible": true,
+        "wireframe": false
+      },
+      "wallPosts": {
+        "color": "#102030",
+        "roughness": 0.4,
+        "metalness": 0.7,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalFrame": {
+        "color": "#0b3c66",
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPosts": {
+        "color": "#ffffff",
+        "roughness": 0.2,
+        "metalness": 0.85,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPostsGlow": {
+        "color": "#70c5ff",
+        "roughness": 0.2,
+        "metalness": 0.0,
+        "emissive": "#70c5ff",
+        "emissiveIntensity": 0.45,
+        "useTeamColor": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "walls": {
+        "color": "#03a9f4",
+        "opacity": 0.3,
+        "roughness": 0.3,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalNet": {
+        "color": "#81d4fa",
+        "opacity": 0.7,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "hexes": {
+        "color": "#29b6f6",
+        "opacity": 0.75,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "emissive": "#0288d1",
+        "emissiveIntensity": 0.9,
+        "visible": true,
+        "wireframe": false
+      }
+    }
+  },
+  {
+    "id": "team-orange-arena",
+    "name": "Team Orange Arena",
+    "description": "Burnt sunset turf, warm amber lines, fiery orange ramps, and gold trim.",
+    "config": {
+      "fastDiffuse": true,
+      "ground": {
+        "groundColor": "#421d0a",
+        "lineColor": "#ffb74d",
+        "roughness": 0.8,
+        "metalness": 0.0,
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "offsetX": 0.0,
+        "offsetY": 0.0,
+        "linkScale": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "ramps": {
+        "color": "#b25010",
+        "roughness": 0.5,
+        "metalness": 0.1,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsUpperOuter": {
+        "color": "#b25010",
+        "roughness": 0.5,
+        "metalness": 0.1,
+        "useTeamColor": true,
+        "oneWaySeeThrough": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "rampsTrim": {
+        "color": "#ff9800",
+        "roughness": 0.3,
+        "metalness": 0.6,
+        "visible": true,
+        "wireframe": false
+      },
+      "wallPosts": {
+        "color": "#26140d",
+        "roughness": 0.4,
+        "metalness": 0.7,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalFrame": {
+        "color": "#7a2b06",
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPosts": {
+        "color": "#ffffff",
+        "roughness": 0.2,
+        "metalness": 0.85,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalPostsGlow": {
+        "color": "#ffb74d",
+        "roughness": 0.2,
+        "metalness": 0.0,
+        "emissive": "#ffb74d",
+        "emissiveIntensity": 0.45,
+        "useTeamColor": true,
+        "visible": true,
+        "wireframe": false
+      },
+      "walls": {
+        "color": "#ff5722",
+        "opacity": 0.3,
+        "roughness": 0.3,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "goalNet": {
+        "color": "#ffcc80",
+        "opacity": 0.7,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "visible": true,
+        "wireframe": false
+      },
+      "hexes": {
+        "color": "#ff7043",
+        "opacity": 0.75,
+        "roughness": 0.5,
+        "metalness": 0.0,
+        "emissive": "#f4511e",
+        "emissiveIntensity": 0.9,
+        "visible": true,
+        "wireframe": false
+      }
+    }
+  }
+]

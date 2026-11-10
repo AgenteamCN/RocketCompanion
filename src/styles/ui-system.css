@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+:root {
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --ease-apple: cubic-bezier(0.2, 0.8, 0.25, 1);
+  --ui-scale: 1;
+  --ui-render-width: 1920px;
+  --ui-render-height: 1080px;
+  --ui-pillarbox-width: 0px;
+  --ui-safe-margin: 0%;
+
+  /* SimpleUI Spacing Tokens */
+  --ui-space-0: 0px;
+  --ui-space-1: 0.25rem;
+  --ui-space-1-5: 0.375rem;
+  --ui-space-2: 0.5rem;
+  --ui-space-2-5: 0.625rem;
+  --ui-space-3: 0.75rem;
+  --ui-space-3-5: 0.875rem;
+  --ui-space-4: 1rem;
+  --ui-space-5: 1.25rem;
+  --ui-space-6: 1.5rem;
+  --ui-space-8: 2rem;
+
+  /* SimpleUI Radius Tokens */
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 8px;
+  --ui-radius-lg: 12px;
+  --ui-radius-xl: 16px;
+}
+
+#game-ui-viewport-host {
+  font-family: var(--font-apple);
+}
+
+#game-ui-viewport-host * {
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+/* Floating Window monospace standard: SF Mono -> JetBrains Mono */
+[data-ui-element="floating-window"],
+[data-ui-element="floating-window"] *,
+.font-mono {
+  font-family: var(--font-mono) !important;
+}
+
+/* Hide scrollbar completely while preserving scroll functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+
+/* Base resets & fallbacks for SimpleUI standard primitives */
+[data-ui-element="menu-shell"],
+[data-morph-container="true"] {
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-header"],
+[data-panel-section="header"] {
+  padding: 1.25rem 1.5rem 1rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-content"],
+[data-panel-section="content"] {
+  padding: 1.25rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-footer"],
+[data-panel-section="footer"] {
+  padding: 1rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="menu-container"],
+[data-menu-container="true"] {
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="menu-item"],
+[data-menu-item="true"] {
+  padding: 0.75rem 1rem;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+#game-ui-viewport-host input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+#game-ui-viewport-host input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-ui-element="tabs-wrapper"] {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  padding-top: 0.5rem;
+  box-sizing: border-box;
+}
+
+[role="tablist"] {
+  box-sizing: border-box;
+}
+
+[role="tablist"] > [role="tab"] {
+  padding: 0.625rem 1rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="car-card"],
+button[data-ui-element="car-card"] {
+  padding: 0.875rem;
+  min-height: 76px;
+  box-sizing: border-box;
+}

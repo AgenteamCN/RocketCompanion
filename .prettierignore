@@ -1,0 +1,7 @@
+node_modules/
+dist/
+public/
+src/ui-core/
+src/physics/core.js
+src/physics/core.wasm
+pnpm-lock.yaml

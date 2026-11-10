@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+package-lock.json
+.pnpm-store/
+.vite/
+**/deps_temp_*
+
+# Production / Build outputs
+dist/
+build/
+
+# Agent Key
+AntigravityWebManager.ipynb
+OLDSTUFFS/
+
+# Big Assets
+/myaudio
+public/assets/audio/**/*.wav
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment & Local Configuration
+.env
+.env.local
+.env.*.local
+.cache/
+*.pem
+*.key
+*.rctbnspib
+
+# OS & Editor generated files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+__pycache__/

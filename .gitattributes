@@ -1,0 +1,9 @@
+# Audio binary files (prevent text diffs)
+*.m4a binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.wasm binary
+*.cmf binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,105 @@
+{
+  "texture": "ground_q1_7gray_2048x3000.webp",
+  "url": "/assets/arena/ground_q1_7gray_2048x3000.webp",
+  "resolution": {
+    "width": 2048,
+    "height": 3000
+  },
+  "spatialMapping": {
+    "quadrant": "Q1",
+    "uvOriginTopLeft": {
+      "u": 0.0,
+      "v": 0.0,
+      "worldX": 0.0,
+      "worldY": 0.0
+    },
+    "uvExtentBottomRight": {
+      "u": 1.0,
+      "v": 1.0,
+      "worldX": 4096.0,
+      "worldY": 6000.0
+    },
+    "worldBoundsUu": {
+      "x": [-4096.0, 4096.0],
+      "y": [-6000.0, 6000.0],
+      "goalDepthRangeY": [5120.0, 6000.0]
+    },
+    "wrapMode": "MirroredRepeat",
+    "uvFormula": {
+      "u": "worldX / 4096.0",
+      "v": "worldY / 6000.0"
+    }
+  },
+  "layers": [
+    {
+      "id": "L0",
+      "name": "Ground Base",
+      "centerGray": 0,
+      "normalizedValue": 0.0,
+      "grayRange": [0, 17],
+      "normalizedRange": [0.0, 0.0706],
+      "defaultColor": "#1b4a00",
+      "defaultOpacity": 1.0
+    },
+    {
+      "id": "L1",
+      "name": "Perimeter Border",
+      "centerGray": 36,
+      "normalizedValue": 0.1412,
+      "grayRange": [18, 54],
+      "normalizedRange": [0.0706, 0.2157],
+      "defaultColor": "#ffffff",
+      "defaultOpacity": 0.85
+    },
+    {
+      "id": "L2",
+      "name": "Boost Pad Inner Ring",
+      "centerGray": 73,
+      "normalizedValue": 0.2863,
+      "grayRange": [55, 90],
+      "normalizedRange": [0.2157, 0.3569],
+      "defaultColor": "#ffffff",
+      "defaultOpacity": 0.85
+    },
+    {
+      "id": "L3",
+      "name": "Core Solid Lines, Main Arcs & Diagonal Guides",
+      "centerGray": 109,
+      "normalizedValue": 0.4275,
+      "grayRange": [91, 127],
+      "normalizedRange": [0.3569, 0.502],
+      "defaultColor": "#ffffff",
+      "defaultOpacity": 0.85
+    },
+    {
+      "id": "L4",
+      "name": "Vehicle Spawn Hitbox Corner Brackets",
+      "centerGray": 146,
+      "normalizedValue": 0.5725,
+      "grayRange": [128, 163],
+      "normalizedRange": [0.502, 0.6431],
+      "defaultColor": "#454545",
+      "defaultOpacity": 0.72
+    },
+    {
+      "id": "L5",
+      "name": "Infield Connecting Dashed Arcs",
+      "centerGray": 182,
+      "normalizedValue": 0.7137,
+      "grayRange": [164, 200],
+      "normalizedRange": [0.6431, 0.7882],
+      "defaultColor": "#ffffff",
+      "defaultOpacity": 0.82
+    },
+    {
+      "id": "L6",
+      "name": "Outer Long-Range Three-Point Arcs & Backfield Dashed Lines",
+      "centerGray": 219,
+      "normalizedValue": 0.8588,
+      "grayRange": [201, 255],
+      "normalizedRange": [0.7882, 1.0],
+      "defaultColor": "#f87171",
+      "defaultOpacity": 0.85
+    }
+  ]
+}

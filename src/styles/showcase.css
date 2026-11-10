@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *, [data-theme=dark], [data-theme=dark] *));
+
+:root {
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-jetbrains: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ease-apple: cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+body {
+  font-family: var(--font-apple);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.45);
+}
+
+/* Hide scrollbar completely while preserving scroll functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+
+/* Base resets & fallbacks for SimpleUI standard primitives */
+[data-ui-element="menu-shell"],
+[data-morph-container="true"] {
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-header"],
+[data-panel-section="header"] {
+  padding: 1.25rem 1.5rem 1rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-content"],
+[data-panel-section="content"] {
+  padding: 1.25rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="panel-footer"],
+[data-panel-section="footer"] {
+  padding: 1rem 1.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="menu-container"],
+[data-menu-container="true"] {
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+[data-ui-element="menu-item"],
+[data-menu-item="true"] {
+  padding: 0.75rem 1rem;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+/* Isolate layout & style invalidation across showcase sections during vertical scrolling */
+main section {
+  contain: layout style;
+}
+
+[data-ui-element="arena-backdrop"] {
+  contain: strict;
+}
+
+/*
+ * Game HUD Low-Overhead Visual System:
+ * 1. Never use backdrop-filter / frosted glass (0 GPU framebuffer readback blur over 120Hz 3D scene).
+ * 2. Replace top-down blurred shadows with zero-blur, 360° uniform perimeter outline rings.
+ */
+.backdrop-blur-xs,
+.backdrop-blur-sm,
+.backdrop-blur,
+.backdrop-blur-md,
+.backdrop-blur-lg,
+.backdrop-blur-xl,
+.backdrop-blur-2xl,
+.backdrop-blur-3xl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+:root,
+.light,
+[data-theme="light"] {
+  --hud-perimeter-ring-xs: 0 0 0 1px rgba(115, 115, 115, 0.16);
+  --hud-perimeter-ring-md: 0 0 0 2px rgba(115, 115, 115, 0.18);
+  --hud-perimeter-ring-lg: 0 0 0 3px rgba(115, 115, 115, 0.20);
+}
+
+.dark,
+[data-theme="dark"] {
+  --hud-perimeter-ring-xs: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --hud-perimeter-ring-md: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 0 2px rgba(0, 0, 0, 0.55);
+  --hud-perimeter-ring-lg: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 0 3px rgba(0, 0, 0, 0.65);
+}
+
+.shadow-2xs,
+.shadow-xs,
+.shadow-sm {
+  --tw-shadow: var(--hud-perimeter-ring-xs) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-xs) !important;
+}
+
+.shadow,
+.shadow-md {
+  --tw-shadow: var(--hud-perimeter-ring-md) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-md) !important;
+}
+
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  --tw-shadow: var(--hud-perimeter-ring-lg) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-lg) !important;
+}
+
+@keyframes rcui-flow-backdrop {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.rcui-flow-backdrop {
+  background: linear-gradient(45deg, #ff7b00, #ffae19, #00d2ff, #7928ca);
+  background-size: 300% 300%;
+  animation: rcui-flow-backdrop 4s ease infinite;
+}
+
+
+
