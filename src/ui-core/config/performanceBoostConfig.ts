@@ -10,6 +10,27 @@ import { setMaterialsConfig, getMaterialsConfig } from './materialsConfig';
 export type PerformanceBoostMode = 'attach' | 'trail';
 export type PerformanceBoostColorMode = 'solid' | 'gradient';
 export type PerformanceBoostBlendingMode = 'additive' | 'normal';
+export type BoostTrailVisualId =
+  | 'cartoon'
+  | 'gold-rush'
+  | 'light-beam'
+  | 'light-wave'
+  | 'custom';
+
+/**
+ * Implicit color variation parameter payload for Light Beam / Light Wave.
+ * Supports future custom user/bot color variations while allowing bots to
+ * automatically bind nozzle head (#ffffff) + mid/tail car body color.
+ */
+export interface PerformanceBoostColorParams {
+  colorMode?: PerformanceBoostColorMode;
+  solidColor?: string;
+  headColor?: string;
+  midColor?: string;
+  tailColor?: string;
+  midColorPosPct?: number;
+  headGlowStrength?: number;
+}
 
 export interface PerformanceBoostConfig {
   mode: PerformanceBoostMode;
@@ -59,9 +80,11 @@ export interface PerformanceBoostConfig {
 
 export type PerformanceBoostConfigPatch = Partial<PerformanceBoostConfig>;
 
+const PERFORMANCE_BOOST_SCHEMA_VERSION = 2;
+
 export const DEFAULT_PERFORMANCE_BOOST_CONFIG: Readonly<PerformanceBoostConfig> = Object.freeze({
-  mode: 'attach',
-  mergeCenterNozzle: true,
+  mode: 'trail',
+  mergeCenterNozzle: false,
 
   colorMode: 'gradient',
   solidColor: '#ff9914',
@@ -99,7 +122,76 @@ export const DEFAULT_PERFORMANCE_BOOST_CONFIG: Readonly<PerformanceBoostConfig> 
   blendingMode: 'additive',
 });
 
-function sanitizeLoadedConfig(raw: unknown): PerformanceBoostConfig {
+export interface ResolvePerformanceBoostEffectiveOptions {
+  modeOverride?: PerformanceBoostMode | null;
+  isBot?: boolean;
+  carColorHex?: string | null;
+  colorParams?: PerformanceBoostColorParams | null;
+}
+
+export function normalizeHexColorString(
+  colorInput: string | number | null | undefined,
+  fallback = '#ff8811'
+): string {
+  if (typeof colorInput === 'number' && Number.isFinite(colorInput)) {
+    return `#${(colorInput & 0xffffff).toString(16).padStart(6, '0')}`;
+  }
+  if (typeof colorInput === 'string') {
+    const trimmed = colorInput.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(trimmed) || /^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+  }
+  return fallback;
+}
+
+export function resolvePerformanceBoostEffectiveConfig(
+  baseCfg: PerformanceBoostConfig,
+  options: ResolvePerformanceBoostEffectiveOptions = {}
+): PerformanceBoostConfig {
+  const effectiveMode: PerformanceBoostMode =
+    options.modeOverride === 'attach' || options.modeOverride === 'trail'
+      ? options.modeOverride
+      : baseCfg.mode;
+
+  const customParams = options.colorParams;
+  if (customParams && typeof customParams === 'object') {
+    return {
+      ...baseCfg,
+      mode: effectiveMode,
+      colorMode: customParams.colorMode ?? baseCfg.colorMode,
+      solidColor: customParams.solidColor ?? baseCfg.solidColor,
+      headColor: customParams.headColor ?? baseCfg.headColor,
+      midColor: customParams.midColor ?? baseCfg.midColor,
+      tailColor: customParams.tailColor ?? baseCfg.tailColor,
+      midColorPosPct: customParams.midColorPosPct ?? baseCfg.midColorPosPct,
+      headGlowStrength: customParams.headGlowStrength ?? baseCfg.headGlowStrength,
+    };
+  }
+
+  if (options.isBot) {
+    const bodyHex = normalizeHexColorString(options.carColorHex, baseCfg.midColor);
+    return {
+      ...baseCfg,
+      mode: effectiveMode,
+      colorMode: 'gradient',
+      headColor: '#ffffff',
+      midColor: bodyHex,
+      tailColor: bodyHex,
+    };
+  }
+
+  if (effectiveMode === baseCfg.mode) {
+    return baseCfg;
+  }
+
+  return {
+    ...baseCfg,
+    mode: effectiveMode,
+  };
+}
+
+function sanitizeLoadedConfig(raw: unknown, checkSchemaMigration = false): PerformanceBoostConfig {
   const base: PerformanceBoostConfig = { ...DEFAULT_PERFORMANCE_BOOST_CONFIG };
   if (!raw || typeof raw !== 'object') return base;
   const src = raw as Record<string, unknown>;
@@ -107,6 +199,10 @@ function sanitizeLoadedConfig(raw: unknown): PerformanceBoostConfig {
     if (src[key] !== undefined) {
       (base as unknown as Record<string, unknown>)[key] = src[key];
     }
+  }
+  if (checkSchemaMigration && src._schemaVersion !== PERFORMANCE_BOOST_SCHEMA_VERSION) {
+    base.mergeCenterNozzle = false;
+    base.mode = 'trail';
   }
   base.mode = base.mode === 'trail' ? 'trail' : 'attach';
   base.colorMode = base.colorMode === 'solid' ? 'solid' : 'gradient';
@@ -130,7 +226,7 @@ export const performanceBoostRuntimeConfig: PerformanceBoostConfig = (() => {
   const raw = safeStorage.get(STORAGE_KEYS.PERFORMANCE_BOOST);
   if (raw) {
     try {
-      return sanitizeLoadedConfig(JSON.parse(raw));
+      return sanitizeLoadedConfig(JSON.parse(raw), true);
     } catch {
       // ignore corrupted storage
     }
@@ -189,13 +285,33 @@ export function updatePerformanceBoostConfig(
   Object.assign(performanceBoostRuntimeConfig, merged);
 
   if (options.persist !== false) {
-    safeStorage.set(STORAGE_KEYS.PERFORMANCE_BOOST, JSON.stringify(performanceBoostRuntimeConfig));
+    safeStorage.set(
+      STORAGE_KEYS.PERFORMANCE_BOOST,
+      JSON.stringify({
+        ...performanceBoostRuntimeConfig,
+        _schemaVersion: PERFORMANCE_BOOST_SCHEMA_VERSION,
+      })
+    );
   }
 
   if (options.autoSwitchToCustom !== false) {
     const curMats = getMaterialsConfig();
-    if (curMats.boostVisual !== 'custom') {
-      setMaterialsConfig({ boostVisual: 'custom' });
+    if (patch.mode === 'attach') {
+      if (curMats.boostVisual !== 'light-beam') {
+        setMaterialsConfig({ boostVisual: 'light-beam' });
+      }
+    } else if (patch.mode === 'trail') {
+      if (curMats.boostVisual !== 'light-wave') {
+        setMaterialsConfig({ boostVisual: 'light-wave' });
+      }
+    } else if (
+      curMats.boostVisual !== 'light-beam' &&
+      curMats.boostVisual !== 'light-wave' &&
+      curMats.boostVisual !== 'custom'
+    ) {
+      setMaterialsConfig({
+        boostVisual: performanceBoostRuntimeConfig.mode === 'attach' ? 'light-beam' : 'light-wave',
+      });
     }
   }
 
@@ -207,12 +323,18 @@ export function resetPerformanceBoostConfig(
 ): PerformanceBoostConfig {
   Object.assign(performanceBoostRuntimeConfig, DEFAULT_PERFORMANCE_BOOST_CONFIG);
   if (options.persist !== false) {
-    safeStorage.set(STORAGE_KEYS.PERFORMANCE_BOOST, JSON.stringify(performanceBoostRuntimeConfig));
+    safeStorage.set(
+      STORAGE_KEYS.PERFORMANCE_BOOST,
+      JSON.stringify({
+        ...performanceBoostRuntimeConfig,
+        _schemaVersion: PERFORMANCE_BOOST_SCHEMA_VERSION,
+      })
+    );
   }
   if (options.autoSwitchToCustom !== false) {
     const curMats = getMaterialsConfig();
-    if (curMats.boostVisual !== 'custom') {
-      setMaterialsConfig({ boostVisual: 'custom' });
+    if (curMats.boostVisual !== 'light-wave') {
+      setMaterialsConfig({ boostVisual: 'light-wave' });
     }
   }
   return notifyPerformanceBoostListeners();

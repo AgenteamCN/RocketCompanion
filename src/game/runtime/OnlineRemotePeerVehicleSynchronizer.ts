@@ -222,8 +222,9 @@ export class OnlineRemotePeerVehicleSynchronizer {
     world.arena?.vehicleRegistry.setCarLoadout(cIdx, {
       colorHex: colorHex || undefined,
       paintFinish: p.paintFinish || 'metallic',
-      boostVisual: p.boostVisual || 'gold-rush',
+      boostVisual: p.boostVisual || 'light-wave',
       boostAudio: p.boostAudio || 'rush',
+      isBot: Boolean(p.isBot),
     });
     gameAudio?.setCarBoostAudioVariation?.(cIdx, p.boostAudio || 'rush');
   }
@@ -264,7 +265,7 @@ export class OnlineRemotePeerVehicleSynchronizer {
     const peerHitboxId = channel.hitboxId || null;
     const peerColorSlot = channel.colorSlot ?? 0;
     const peerPaintFinish = channel.paintFinish || 'metallic';
-    const peerBoostVisual = channel.boostVisual || 'gold-rush';
+    const peerBoostVisual = channel.boostVisual || 'light-wave';
     const peerBoostAudio = channel.boostAudio || 'rush';
     const isLobby = Boolean(
       session.isLobbyDualWorldActive() ||

@@ -373,7 +373,7 @@ export function resolveInPlacePlayerTeamSwitchPatch(params: {
       p.hitboxIndex ?? resolveHitboxIndex(p.hitboxId || p.visualId || 'octane'),
       {
         paintFinish: p.paintFinish || 'metallic',
-        boostVisual: p.boostVisual || 'cartoon',
+        boostVisual: p.boostVisual || 'light-wave',
         boostAudio: p.boostAudio || 'rush',
       }
     )

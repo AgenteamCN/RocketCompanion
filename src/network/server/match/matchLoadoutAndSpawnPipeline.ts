@@ -295,7 +295,7 @@ export function resolveNormalizedSlotLoadout(
     requestedHitboxId: decodeHitboxIndex(requestedHitboxIndex),
     requestedHitboxIndex,
     requestedPaintFinish: decodePaintFinishIndex(nl.paintFinish ?? 'metallic'),
-    requestedBoostVisual: decodeBoostVisualIndex(nl.boostVisual ?? 'cartoon'),
+    requestedBoostVisual: decodeBoostVisualIndex(nl.boostVisual ?? 'light-wave'),
     requestedBoostAudio: decodeBoostAudioIndex(nl.boostAudio ?? 'standard'),
     requestedAnthemId: nl.anthemId || (isBotSession ? 'TrainStation' : 'random'),
   };
@@ -360,7 +360,7 @@ export function resolveUpdatedPlayerLoadout(
     blueColorSlot = player.blueColorSlot,
     orangeColorSlot = player.orangeColorSlot;
   let paintFinish = player.paintFinish || 'metallic',
-    boostVisual = player.boostVisual || 'cartoon',
+    boostVisual = player.boostVisual || 'light-wave',
     boostAudio = player.boostAudio || 'rush';
 
   if (typeof colorSlotOrPackedParam2 === 'number') {

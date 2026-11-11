@@ -151,6 +151,18 @@ export function resolveRealisticBoostLuminance(coneOpacity: number): {
   return { flameMode, plumeScale };
 }
 
+export function isPerformanceBoostTheme(theme: string | null | undefined): boolean {
+  return theme === 'light-beam' || theme === 'light-wave' || theme === 'custom';
+}
+
+export function resolvePerformanceBoostModeForTheme(
+  theme: string | null | undefined
+): 'attach' | 'trail' | null {
+  if (theme === 'light-beam') return 'attach';
+  if (theme === 'light-wave') return 'trail';
+  return null;
+}
+
 export function resolveActiveBoostTheme(boostVisualOverride: string | null): string {
   if (boostVisualOverride) return boostVisualOverride;
   try {
@@ -164,7 +176,7 @@ export function resolveActiveBoostTheme(boostVisualOverride: string | null): str
       err
     );
   }
-  return 'gold-rush';
+  return 'light-wave';
 }
 
 export function canSpawnBoostTrail(): boolean {

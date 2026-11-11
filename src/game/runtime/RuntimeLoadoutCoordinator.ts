@@ -124,9 +124,14 @@ export class RuntimeLoadoutCoordinator {
     const colorSlotId = h.selectedColorSlot ?? 0;
     const matCfg = getMaterialsConfig();
     const paintFinish = matCfg?.paintFinish || 'metallic';
-    const boostVisual = matCfg?.boostVisual || 'cartoon';
+    const boostVisual = matCfg?.boostVisual || 'light-wave';
     const boostAudio = matCfg?.boostAudio || 'standard';
-    h.arena?.vehicleRegistry.setCarLoadout(targetCarIdx, { paintFinish, boostVisual, boostAudio });
+    h.arena?.vehicleRegistry.setCarLoadout(targetCarIdx, {
+      paintFinish,
+      boostVisual,
+      boostAudio,
+      isBot: false,
+    });
     gameAudio?.setCarBoostAudioVariation?.(targetCarIdx, boostAudio);
 
     if (expMode) {
@@ -191,7 +196,7 @@ export class RuntimeLoadoutCoordinator {
     const activeHitbox = h.selectedHitbox || resolveVehicleHitboxId(activeVisual);
     const matCfg = getMaterialsConfig();
     const paintFinish = matCfg?.paintFinish || 'metallic';
-    const boostVisual = matCfg?.boostVisual || 'cartoon';
+    const boostVisual = matCfg?.boostVisual || 'light-wave';
     const boostAudio = matCfg?.boostAudio || 'standard';
 
     h.networkManager?.syncLocalPlayerLoadout({
@@ -210,7 +215,7 @@ export class RuntimeLoadoutCoordinator {
     const h = this.host;
     const matCfg = materialsConfig || getMaterialsConfig();
     const paintFinish = matCfg?.paintFinish || 'metallic';
-    const boostVisual = matCfg?.boostVisual || 'cartoon';
+    const boostVisual = matCfg?.boostVisual || 'light-wave';
     const boostAudio = matCfg?.boostAudio || 'standard';
 
     const activeMode = h.modeManager?.activeMode ?? null;
@@ -227,6 +232,7 @@ export class RuntimeLoadoutCoordinator {
       paintFinish,
       boostVisual,
       boostAudio,
+      isBot: false,
     });
     gameAudio?.setCarBoostAudioVariation?.(targetCarIdx, boostAudio);
 
@@ -287,7 +293,7 @@ export class RuntimeLoadoutCoordinator {
 
     const matCfg = getMaterialsConfig();
     const paintFinish = matCfg?.paintFinish || 'metallic';
-    const boostVisual = matCfg?.boostVisual || 'cartoon';
+    const boostVisual = matCfg?.boostVisual || 'light-wave';
     const boostAudio = matCfg?.boostAudio || 'standard';
 
     h.physics?.setCarTeam?.(carIndex, freeplayTeam);
@@ -313,6 +319,7 @@ export class RuntimeLoadoutCoordinator {
         paintFinish,
         boostVisual,
         boostAudio,
+        isBot: false,
       });
       if (h.arena.cars?.[carIndex]) {
         h.arena.cars[carIndex].visible = true;

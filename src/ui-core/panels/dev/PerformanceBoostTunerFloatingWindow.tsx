@@ -199,23 +199,36 @@ export const PerformanceBoostTunerFloatingWindow: React.FC<
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-[11px] font-bold text-amber-400">
-              Active Boost Trail Effect (Auto-Jumps to Custom on Edit)
+              Active Boost Trail Effect (Light Beam / Light Wave)
             </span>
             <span className={`text-[9px] ${mutedText}`}>
-              Modifying any tuner parameter below automatically switches Boost Visual to Custom
+              Modifying tuner parameters below updates Light Beam (Attach) & Light Wave (Trail)
             </span>
           </div>
         </div>
 
         <SegmentedSwitch
-          value={materials?.boostVisual ?? 'gold-rush'}
-          onValueChange={(val) =>
-            updateMaterials({ boostVisual: val as 'cartoon' | 'gold-rush' | 'custom' })
+          value={
+            materials?.boostVisual === 'custom'
+              ? cfg.mode === 'attach'
+                ? 'light-beam'
+                : 'light-wave'
+              : (materials?.boostVisual ?? 'light-wave')
           }
+          onValueChange={(val) => {
+            const nextVisual = val as 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave';
+            updateMaterials({ boostVisual: nextVisual });
+            if (nextVisual === 'light-beam') {
+              updatePerformanceBoostConfig({ mode: 'attach' }, { autoSwitchToCustom: false });
+            } else if (nextVisual === 'light-wave') {
+              updatePerformanceBoostConfig({ mode: 'trail' }, { autoSwitchToCustom: false });
+            }
+          }}
           options={[
             { value: 'cartoon', label: 'Cartoon' },
             { value: 'gold-rush', label: 'Gold Rush' },
-            { value: 'custom', label: 'Custom (Perf)' },
+            { value: 'light-beam', label: 'Light Beam' },
+            { value: 'light-wave', label: 'Light Wave' },
           ]}
           size="sm"
           fullWidth
@@ -236,7 +249,14 @@ export const PerformanceBoostTunerFloatingWindow: React.FC<
             onCheckedChange={(forceBoostPreview) => {
               const next = setVehicleTunerRuntimeFlags({ forceBoostPreview });
               setRuntimeFlagsState(next);
-              updateMaterials({ boostVisual: 'custom' });
+              if (
+                materials?.boostVisual !== 'light-beam' &&
+                materials?.boostVisual !== 'light-wave'
+              ) {
+                updateMaterials({
+                  boostVisual: cfg.mode === 'attach' ? 'light-beam' : 'light-wave',
+                });
+              }
             }}
             isLight={isLight}
           />

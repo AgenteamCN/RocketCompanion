@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { boostParticleRuntimeConfig } from '../../../ui-core/config/vehicleTunerConfig.ts';
 import {
+  normalizeHexColorString,
   performanceBoostRuntimeConfig,
+  resolvePerformanceBoostEffectiveConfig,
   subscribePerformanceBoostConfig,
+  type PerformanceBoostColorParams,
   type PerformanceBoostConfig,
 } from '../../../ui-core/config/performanceBoostConfig.ts';
 import { ARCADE_DRIVE_COUNT, ARCADE_TRAIL_COUNT, ARCADE_BOOST_COLOR_HEX } from './boostCurves.ts';
@@ -20,7 +23,9 @@ import {
   applyNozzleOffsetToVector,
   cloneOrCreateNozzleVector,
   disposeBoostSceneObject,
+  isPerformanceBoostTheme,
   resolveActiveBoostTheme,
+  resolvePerformanceBoostModeForTheme,
   stepEmitterParticlePhysics,
   syncBoostNozzleAttachments,
   updateBoostConeMaterials,
@@ -30,14 +35,17 @@ import {
 
 export class VehicleBoostEmitter {
   public _scratchWorldNozzle: THREE.Vector3;
+  public boostColorParams: PerformanceBoostColorParams | null;
   public boostVisualOverride: string | null;
   public car: THREE.Object3D;
+  public carColorHex: string | null;
   public cone: THREE.Group;
   public coneMaterials: THREE.ShaderMaterial[];
   public coneOpacity: number;
   public drive: ArcadeBoostParticleMesh;
   public elapsed: number;
   public goldRush: RealisticBoostEmitter;
+  public isBot: boolean;
   public isPrimary: boolean;
   public light: THREE.PointLight | null;
   public nozzleFlash:
@@ -53,6 +61,7 @@ export class VehicleBoostEmitter {
 
   public customAttach: PerformanceBoostAttachVisual | null = null;
   public customTrail: PerformanceBoostTrailVisual | null = null;
+  private _perfMaterialDirty = true;
   private _unsubPerfConfig: (() => void) | null = null;
 
   setSpatial(_isSpatial: boolean): void {}
@@ -67,6 +76,9 @@ export class VehicleBoostEmitter {
     this.scene = scene;
     this.car = carRoot;
     this.isPrimary = Boolean(isPrimary);
+    this.isBot = Boolean(isBot);
+    this.carColorHex = null;
+    this.boostColorParams = null;
     this.nozzleLocal = cloneOrCreateNozzleVector(nozzleLocal);
     this.offset = this.nozzleLocal;
     this.cone = new THREE.Group();
@@ -74,7 +86,7 @@ export class VehicleBoostEmitter {
     this.nozzleFlash = null;
     this.light = null;
 
-    this.theme = 'gold-rush';
+    this.theme = 'light-wave';
     this.boostVisualOverride = null;
     this.elapsed = 0;
     this.coneOpacity = 0;
@@ -126,22 +138,41 @@ export class VehicleBoostEmitter {
     this.goldRush = new RealisticBoostEmitter(scene, carRoot, this.nozzleLocal, this.light);
     this._scratchWorldNozzle = new THREE.Vector3();
 
-    this._unsubPerfConfig = subscribePerformanceBoostConfig((cfg: PerformanceBoostConfig) => {
-      this.customAttach?.syncConfig(cfg);
-      this.customTrail?.syncConfig(cfg);
+    this._unsubPerfConfig = subscribePerformanceBoostConfig(() => {
+      this._perfMaterialDirty = true;
+      this._syncPerformanceVisualMaterials(this.theme);
     });
   }
 
-  private _ensureCustomAttach(): PerformanceBoostAttachVisual {
+  private _resolveEffectivePerfConfig(theme: string): PerformanceBoostConfig {
+    return resolvePerformanceBoostEffectiveConfig(performanceBoostRuntimeConfig, {
+      modeOverride: resolvePerformanceBoostModeForTheme(theme),
+      isBot: this.isBot,
+      carColorHex: this.carColorHex,
+      colorParams: this.boostColorParams,
+    });
+  }
+
+  private _syncPerformanceVisualMaterials(theme: string): void {
+    if (!this.customAttach && !this.customTrail) return;
+    const effectiveCfg = this._resolveEffectivePerfConfig(theme);
+    this.customAttach?.syncConfig(effectiveCfg);
+    this.customTrail?.syncConfig(effectiveCfg);
+    this._perfMaterialDirty = false;
+  }
+
+  private _ensureCustomAttach(effectiveCfg: PerformanceBoostConfig): PerformanceBoostAttachVisual {
     if (!this.customAttach) {
       this.customAttach = new PerformanceBoostAttachVisual(this.car);
+      this.customAttach.syncConfig(effectiveCfg);
     }
     return this.customAttach;
   }
 
-  private _ensureCustomTrail(): PerformanceBoostTrailVisual {
+  private _ensureCustomTrail(effectiveCfg: PerformanceBoostConfig): PerformanceBoostTrailVisual {
     if (!this.customTrail) {
       this.customTrail = new PerformanceBoostTrailVisual(this.scene as THREE.Scene);
+      this.customTrail.syncConfig(effectiveCfg);
     }
     return this.customTrail;
   }
@@ -166,12 +197,46 @@ export class VehicleBoostEmitter {
   }
 
   setBoostVisual(theme: string | null | undefined): void {
-    this.boostVisualOverride =
-      theme === 'cartoon' || theme === 'gold-rush' || theme === 'custom' ? theme : null;
+    const nextOverride =
+      theme === 'cartoon' ||
+      theme === 'gold-rush' ||
+      theme === 'light-beam' ||
+      theme === 'light-wave' ||
+      theme === 'custom'
+        ? theme
+        : null;
+    if (this.boostVisualOverride !== nextOverride) {
+      this.boostVisualOverride = nextOverride;
+      this._perfMaterialDirty = true;
+    }
+  }
+
+  setIsBot(isBot: boolean): void {
+    const next = Boolean(isBot);
+    if (this.isBot !== next) {
+      this.isBot = next;
+      this._perfMaterialDirty = true;
+    }
+  }
+
+  setCarColor(colorInput: string | number | null | undefined): void {
+    const nextHex =
+      colorInput !== null && colorInput !== undefined
+        ? normalizeHexColorString(colorInput, '#ff8811')
+        : null;
+    if (this.carColorHex !== nextHex) {
+      this.carColorHex = nextHex;
+      this._perfMaterialDirty = true;
+    }
+  }
+
+  setBoostColorParams(params: PerformanceBoostColorParams | null | undefined): void {
+    this.boostColorParams = params ?? null;
+    this._perfMaterialDirty = true;
   }
 
   get bloomActive(): boolean {
-    if (this.theme === 'custom') return false;
+    if (isPerformanceBoostTheme(this.theme)) return false;
     if (!boostParticleRuntimeConfig.bloomEnabled) return false;
     if (this.theme === 'gold-rush') {
       return this.goldRush.bloomActive;
@@ -206,11 +271,12 @@ export class VehicleBoostEmitter {
     if (this.theme !== currentTheme) {
       this.resetVisual();
       this.theme = currentTheme;
+      this._perfMaterialDirty = true;
     }
 
-    if (currentTheme === 'custom') {
+    if (isPerformanceBoostTheme(currentTheme)) {
       if (this.light) this.light.intensity = 0;
-      const cfg = performanceBoostRuntimeConfig;
+      const cfg = this._resolveEffectivePerfConfig(currentTheme);
 
       if (cfg.mergeCenterNozzle && !this.isPrimary) {
         this.customAttach?.reset();
@@ -218,13 +284,17 @@ export class VehicleBoostEmitter {
         return;
       }
 
+      if (this._perfMaterialDirty) {
+        this._syncPerformanceVisualMaterials(currentTheme);
+      }
+
       if (cfg.mode === 'attach') {
         this.customTrail?.reset();
-        const attach = this._ensureCustomAttach();
+        const attach = this._ensureCustomAttach(cfg);
         attach.step(dt, isBoosting, this.nozzleLocal, cfg);
       } else {
         this.customAttach?.reset();
-        const trail = this._ensureCustomTrail();
+        const trail = this._ensureCustomTrail(cfg);
         if (typeof this.car.updateMatrixWorld === 'function') {
           this.car.updateMatrixWorld();
         }

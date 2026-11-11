@@ -44,8 +44,8 @@ export const PerformanceBoostModeAndTimingSection: React.FC<
             updatePerformanceBoostConfig({ mode: val as PerformanceBoostMode })
           }
           options={[
-            { value: 'attach', label: '1. Pose-Attached Beam (Lightsaber)' },
-            { value: 'trail', label: '2. Trajectory Ribbon (History Trail)' },
+            { value: 'attach', label: '1. Light Beam (Pose-Attached)' },
+            { value: 'trail', label: '2. Light Wave (Trajectory Ribbon)' },
           ]}
           size="sm"
           fullWidth
