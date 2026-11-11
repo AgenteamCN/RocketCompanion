@@ -6,9 +6,8 @@ import {
   isBallFlipResetEvent,
 } from '../physics/RocketSimConstants.ts';
 import { type SpatialPositionInput } from './SpatialAudioSource.ts';
-import { type PhysicsImpactAudioEvent } from './WorldImpactAudioHandler.ts';
-import { INCIDENT_COOLDOWN_MS } from './IncidentSpatialModulator.ts';
 import {
+  INCIDENT_COOLDOWN_MS,
   computeVehicleBaseVolumeMultiplier,
   createInitialVehicleAudioBuffers,
   evaluateBoostStartPlayback,
@@ -22,12 +21,18 @@ import {
   resolveJumpFamilyActionSpec,
   resolveVehicleEventSpatialPosition,
   stepVehicleLandingTracking,
+  type PhysicsImpactAudioEvent,
   type VehicleAudioBuffers,
   type VehicleCarStateSnapshot,
   type VehicleLandingTrackingState,
 } from './vehicleAudioAcousticPipeline.ts';
 
-export type { VehicleAudioBuffers, VehicleCarStateSnapshot, VehicleLandingTrackingState };
+export type {
+  PhysicsImpactAudioEvent,
+  VehicleAudioBuffers,
+  VehicleCarStateSnapshot,
+  VehicleLandingTrackingState,
+};
 
 export interface VehicleAudioUpdateContext {
   activeCarIndex?: number;

@@ -1,32 +1,109 @@
 import { audioConfig, registerAudioDiagnosticsProvider } from '../ui-core/config/audioConfig.ts';
 import { getAudioSlotPool, registerAudioEngine } from './audioContext.ts';
-import { VehicleAudioManager, type VehicleAudioUpdateContext } from './VehicleAudioManager.ts';
-import { IncidentAudioEngine } from './IncidentAudioEngine.ts';
+import {
+  VehicleAudioManager,
+  type PhysicsImpactAudioEvent,
+  type VehicleAudioUpdateContext,
+} from './VehicleAudioManager.ts';
 import { SignalAudioEngine } from './SignalAudioEngine.ts';
-import { loadAudioAssets, applyBoostVariationBuffers } from './audioAssetLoader.ts';
+import {
+  loadAudioAssets,
+  applyBoostVariationBuffers,
+  type BallAudioBuffers,
+} from './audioAssetLoader.ts';
 import {
   stadiumSpatialAudioEngine,
   type StadiumSpatialAudioEngine,
 } from './StadiumSpatialAudioEngine.ts';
 import {
-  BallAudioEmitter,
-  type BallMeshOrViewLike,
-  type BallPhysicsStateLike,
-} from './BallAudioEmitter.ts';
-import {
   AudioMenuPreviewPlayer,
+  type IncidentAudioBuffers,
   type PreviewAudioBufferOptions,
 } from './AudioMenuPreviewPlayer.ts';
 import type { CameraTransformLike } from './SpatialAudioSource.ts';
-import type { PhysicsImpactAudioEvent } from './WorldImpactAudioHandler.ts';
+import { INCIDENT_EVENT_TYPES, PHYSICS_EVENT_TYPES } from '../physics/RocketSimConstants.ts';
 import './audioDebug.ts';
 
-export type { PreviewAudioBufferOptions };
+export type { PhysicsImpactAudioEvent, PreviewAudioBufferOptions };
+
+export interface BallMeshOrViewLike {
+  position?: { x: number; y: number; z: number } | null;
+  posX?: number;
+  posY?: number;
+  posZ?: number;
+  velX?: number;
+  velY?: number;
+  velZ?: number;
+  velocity?: { x?: number; y?: number; z?: number } | null;
+}
+
+export interface BallPhysicsStateLike {
+  ballState?: {
+    posX?: number;
+    posY?: number;
+    posZ?: number;
+    velX?: number;
+    velY?: number;
+    velZ?: number;
+  } | null;
+  ballOnGround?: boolean;
+  getBallOnGround?: () => boolean;
+}
+
+function createEmptyIncidentBuffers(): IncidentAudioBuffers {
+  return {
+    ballHit: [],
+    vehicleAccent: null,
+    vehicleDetail: [],
+    sidewallHit: [],
+    carDemo: [],
+    carCollision: null,
+    goalpost: null,
+    boostCollect: null,
+    goalScored: null,
+    supersonic: null,
+    jump: [],
+    doubleJump: [],
+    dodge: [],
+    reset: null,
+    wheelImpact: [],
+    groundHit: [],
+    crossbarPing: [],
+    crossbarPingSmall: [],
+    boostStart: null,
+    boostRelease: null,
+    supersonicEnter: [],
+  };
+}
 
 export class GameAudioEngineFacade {
   _lastBoostVariationKey: string;
-  ballEngine: BallAudioEmitter;
-  incidentEngine: IncidentAudioEngine;
+  ballEngine: {
+    initialized: boolean;
+    ballRollingBuffer: AudioBuffer | null;
+    ballFlyingBuffer: AudioBuffer | null;
+    rollingSource: AudioBufferSourceNode | null;
+    flyingSource: AudioBufferSourceNode | null;
+    rollingGain: GainNode | null;
+    flyingGain: GainNode | null;
+    init: (buffers?: BallAudioBuffers) => void;
+    _startLoops: () => void;
+    silenceAll: () => void;
+    updatePanningModel: (model: PanningModelType | null | undefined) => void;
+    update: (
+      ballViewOrMesh: BallMeshOrViewLike | null | undefined,
+      camera?: CameraTransformLike | null,
+      physics?: BallPhysicsStateLike | null
+    ) => void;
+  };
+  incidentEngine: {
+    buffers: IncidentAudioBuffers;
+    setBuffers: (bufs: Partial<IncidentAudioBuffers>) => void;
+    handleEvent: (
+      event: PhysicsImpactAudioEvent | null | undefined,
+      camera?: unknown
+    ) => void;
+  };
   loaded: boolean;
   loading: boolean;
   readonly previewPlayer: AudioMenuPreviewPlayer;
@@ -35,15 +112,90 @@ export class GameAudioEngineFacade {
   vehicleManager: VehicleAudioManager;
 
   constructor() {
-    const ballEngine = new BallAudioEmitter();
     const vehicleManager = new VehicleAudioManager();
-    const incidentEngine = new IncidentAudioEngine(vehicleManager);
     const signalEngine = new SignalAudioEngine();
     const stadiumSpatialEngine = stadiumSpatialAudioEngine;
 
-    this.ballEngine = ballEngine;
+    this.ballEngine = {
+      initialized: true,
+      ballRollingBuffer: null,
+      ballFlyingBuffer: null,
+      rollingSource: null,
+      flyingSource: null,
+      rollingGain: null,
+      flyingGain: null,
+      init: (buffers: BallAudioBuffers = {}) => {
+        if (buffers.ballRolling) this.ballEngine.ballRollingBuffer = buffers.ballRolling;
+        if (buffers.ballFlying) this.ballEngine.ballFlyingBuffer = buffers.ballFlying;
+      },
+      _startLoops: () => {},
+      silenceAll: () => {},
+      updatePanningModel: () => {},
+      update: () => {},
+    };
+
+    const incidentBuffers = createEmptyIncidentBuffers();
+    this.incidentEngine = {
+      buffers: incidentBuffers,
+      setBuffers: (bufs: Partial<IncidentAudioBuffers>) => {
+        this.incidentEngine.buffers = { ...this.incidentEngine.buffers, ...bufs };
+      },
+      handleEvent: (event: PhysicsImpactAudioEvent | null | undefined) => {
+        if (!event) return;
+        const t = event.type;
+        if (
+          t === INCIDENT_EVENT_TYPES.CAR_JUMP ||
+          t === INCIDENT_EVENT_TYPES.CAR_DOUBLE_JUMP ||
+          t === INCIDENT_EVENT_TYPES.CAR_DODGE ||
+          t === PHYSICS_EVENT_TYPES.CAR_ACTION ||
+          t === INCIDENT_EVENT_TYPES.CAR_SUPERSONIC_ENTER ||
+          t === INCIDENT_EVENT_TYPES.CAR_BOOST_START ||
+          t === INCIDENT_EVENT_TYPES.CAR_BOOST_STOP ||
+          t === INCIDENT_EVENT_TYPES.FLIP_RESET_GAINED ||
+          t === 'wheel_impact' ||
+          t === 0x12
+        ) {
+          this.vehicleManager.handleCarEvent(event);
+          return;
+        }
+        const pool = getAudioSlotPool();
+        if (!pool) return;
+        const bufs = this.incidentEngine.buffers;
+        if (t === INCIDENT_EVENT_TYPES.CAR_BALL_HIT && bufs.ballHit[0]) {
+          pool.playBuffer(bufs.ballHit[0], { position: event, category: 'car_ball_hit' });
+        } else if (
+          (t === INCIDENT_EVENT_TYPES.CAR_CAR_BUMP ||
+            t === INCIDENT_EVENT_TYPES.CAR_CAR_COLLISION) &&
+          (bufs.vehicleDetail[0] || bufs.carCollision)
+        ) {
+          pool.playBuffer(bufs.vehicleDetail[0] || bufs.carCollision, {
+            position: event,
+            category: 'car_bump',
+          });
+        } else if (
+          t === INCIDENT_EVENT_TYPES.CAR_CAR_DEMO &&
+          (bufs.carDemo[0] || bufs.carCollision)
+        ) {
+          pool.playBuffer(bufs.carDemo[0] || bufs.carCollision, {
+            position: event,
+            category: 'demolish',
+          });
+        } else if (t === INCIDENT_EVENT_TYPES.BALL_GOALPOST_HIT && bufs.crossbarPing[0]) {
+          pool.playBuffer(bufs.crossbarPing[0], {
+            position: event,
+            category: 'goalpost_ping_large',
+          });
+        } else if (t === INCIDENT_EVENT_TYPES.BALL_WORLD_HIT && bufs.groundHit[0]) {
+          pool.playBuffer(bufs.groundHit[0], { position: event, category: 'world_surface' });
+        } else if (t === INCIDENT_EVENT_TYPES.BOOST_PICKUP && bufs.boostCollect) {
+          pool.playBuffer(bufs.boostCollect, { position: event, category: 'boost_pickup' });
+        } else if (t === INCIDENT_EVENT_TYPES.GOAL_SCORED && bufs.goalScored) {
+          pool.playBuffer(bufs.goalScored, { position: event, category: 'goal_explosion' });
+        }
+      },
+    };
+
     this.vehicleManager = vehicleManager;
-    this.incidentEngine = incidentEngine;
     this.signalEngine = signalEngine;
     this.stadiumSpatialEngine = stadiumSpatialEngine;
     this.stadiumSpatialEngine.init();
@@ -159,14 +311,6 @@ export class GameAudioEngineFacade {
   }
 
   resetIncidentDebounceState() {
-    this.incidentEngine.lastCarBallHitTimestamp = 0;
-    this.incidentEngine.lastCarCollisionTimestamp = 0;
-    this.incidentEngine.lastGoalScoredTimestamp = 0;
-    this.incidentEngine.lastBoostPickupByPad.clear();
-    this.incidentEngine.lastCarCollisionByPair.clear();
-    this.incidentEngine.lastCarDemoByVictim.clear();
-    this.incidentEngine.worldImpactHandler.lastGoalpostHitTimestamp = 0;
-    this.incidentEngine.worldImpactHandler.lastBallWorldHitTimestamp = 0;
     if (this.vehicleManager._lastFlipResetMsByCar) {
       this.vehicleManager._lastFlipResetMsByCar.clear();
     }
@@ -179,3 +323,4 @@ export class GameAudioEngineFacade {
 }
 
 export const gameAudio = new GameAudioEngineFacade();
+

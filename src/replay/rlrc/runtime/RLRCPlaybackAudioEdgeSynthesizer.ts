@@ -3,9 +3,11 @@
  * Stateful 120Hz audio edge synthesizer and dispatcher for RLRC Replay playback.
  */
 
-import { gameAudio } from '../../../audio/GameAudioEngineFacade.ts';
+import {
+  gameAudio,
+  type PhysicsImpactAudioEvent,
+} from '../../../audio/GameAudioEngineFacade.ts';
 import type { CameraTransformLike } from '../../../audio/SpatialAudioSource.ts';
-import type { PhysicsImpactAudioEvent } from '../../../audio/WorldImpactAudioHandler.ts';
 import { INCIDENT_EVENT_TYPES as EV } from '../../../physics/RocketSimConstants.ts';
 import type { RLRCConvertedReplaySession } from '../RLReplayToRLRCConverter.ts';
 import type {

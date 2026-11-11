@@ -5,9 +5,11 @@ import {
 } from '../ui-core/config/anthemCatalogConfig.ts';
 import { useSpatialAudioStore } from '../game/runtimeUiPort.ts';
 import { subsystemState } from './audioContext.ts';
-import { fetchAudioBuffer } from './audioAssetLoader.ts';
+import { fetchAudioBuffer, type IncidentAudioBuffers } from './audioAssetLoader.ts';
 import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
-import type { IncidentAudioBuffers } from './IncidentAudioEngine.ts';
+
+export type { IncidentAudioBuffers };
+
 
 export interface PreviewAudioBufferOptions {
   playbackRate?: number;

@@ -8,21 +8,48 @@ import {
   DEFAULT_BOOST_VARIATION,
 } from '../ui-core/config/audioConfig.ts';
 import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
-import type { IncidentAudioBuffers } from './IncidentAudioEngine.ts';
-import type { BallAudioBuffers } from './BallAudioEmitter.ts';
+
+export interface IncidentAudioBuffers {
+  ballHit: Array<AudioBuffer | null>;
+  vehicleAccent: AudioBuffer | null;
+  vehicleDetail: Array<AudioBuffer | null>;
+  sidewallHit: Array<AudioBuffer | null>;
+  carDemo: Array<AudioBuffer | null>;
+  carCollision: AudioBuffer | null;
+  goalpost: AudioBuffer | null;
+  boostCollect: AudioBuffer | null;
+  goalScored: AudioBuffer | null;
+  supersonic: AudioBuffer | null;
+  jump: Array<AudioBuffer | null>;
+  doubleJump: Array<AudioBuffer | null>;
+  dodge: Array<AudioBuffer | null>;
+  reset: AudioBuffer | null;
+  wheelImpact: Array<AudioBuffer | null>;
+  groundHit: Array<AudioBuffer | null>;
+  crossbarPing: Array<AudioBuffer | null>;
+  crossbarPingSmall: Array<AudioBuffer | null>;
+  boostStart: AudioBuffer | null;
+  boostRelease: AudioBuffer | null;
+  supersonicEnter: Array<AudioBuffer | null>;
+}
+
+export interface BallAudioBuffers {
+  ballRolling?: AudioBuffer | null;
+  ballFlying?: AudioBuffer | null;
+}
 
 export interface AudioAssetTargetFacade {
-  vehicleManager: {
-    setBuffers: (buffers: Partial<VehicleAudioBuffers>) => void;
+  vehicleManager?: {
+    setBuffers?: (buffers: Partial<VehicleAudioBuffers>) => void;
   };
-  incidentEngine: {
-    setBuffers: (buffers: Partial<IncidentAudioBuffers>) => void;
+  incidentEngine?: {
+    setBuffers?: (buffers: Partial<IncidentAudioBuffers>) => void;
   };
-  ballEngine: {
-    init: (buffers: BallAudioBuffers) => void;
+  ballEngine?: {
+    init?: (buffers: BallAudioBuffers) => void;
   };
-  signalEngine: {
-    setBuffer: (key: string, buffer: AudioBuffer | null) => void;
+  signalEngine?: {
+    setBuffer?: (key: string, buffer: AudioBuffer | null) => void;
   };
 }
 
@@ -259,7 +286,7 @@ export async function loadAudioAssets(
   supersonicEnterBuffers.forEach((b, i) => subsystemState.buffers.set(`supersonic_enter_${i}`, b));
 
   // Distribute to Vehicle Manager (Multi-Car Dynamic Emitters)
-  facade.vehicleManager.setBuffers({
+  facade.vehicleManager?.setBuffers?.({
     jump: jumpBuffers,
     doubleJump: doubleJumpBuffers,
     dodge: dodgeBuffers,
@@ -275,7 +302,7 @@ export async function loadAudioAssets(
   });
 
   // Distribute to Incident Engine (World Incidents)
-  facade.incidentEngine.setBuffers({
+  facade.incidentEngine?.setBuffers?.({
     ballHit: ballHitBuffers,
     vehicleAccent,
     vehicleDetail: vehicleDetailBuffers,
@@ -300,22 +327,23 @@ export async function loadAudioAssets(
   });
 
   // Distribute to Ball Audio Emitter
-  facade.ballEngine.init({
+  facade.ballEngine?.init?.({
     ballRolling,
     ballFlying,
   });
 
   // Distribute to Signal Engine
-  facade.signalEngine.setBuffer('match_countdown_321', matchCountdown);
-  facade.signalEngine.setBuffer('training_countdown', trainingCountdown);
-  if (trainingBallExpire) facade.signalEngine.setBuffer('training_ball_expire', trainingBallExpire);
-  facade.signalEngine.setBuffer('match_countdown_10s', matchCountdown10s);
-  facade.signalEngine.setBuffer('match_start_go', matchStartGo);
-  facade.signalEngine.setBuffer('match_60_seconds_left', match60s);
-  facade.signalEngine.setBuffer('match_30_seconds_left', match30s);
-  facade.signalEngine.setBuffer('match_entering_overtime', matchOvertime);
-  if (endgameBuf) facade.signalEngine.setBuffer('endgame', endgameBuf);
-  facade.signalEngine.setBuffer('sfx_goal_poof', goalPoof);
-  facade.signalEngine.setBuffer('sfx_error_no_boost', errorNoBoost);
-  facade.signalEngine.setBuffer('boost_collect', boostCollect);
+  facade.signalEngine?.setBuffer?.('match_countdown_321', matchCountdown);
+  facade.signalEngine?.setBuffer?.('training_countdown', trainingCountdown);
+  if (trainingBallExpire)
+    facade.signalEngine?.setBuffer?.('training_ball_expire', trainingBallExpire);
+  facade.signalEngine?.setBuffer?.('match_countdown_10s', matchCountdown10s);
+  facade.signalEngine?.setBuffer?.('match_start_go', matchStartGo);
+  facade.signalEngine?.setBuffer?.('match_60_seconds_left', match60s);
+  facade.signalEngine?.setBuffer?.('match_30_seconds_left', match30s);
+  facade.signalEngine?.setBuffer?.('match_entering_overtime', matchOvertime);
+  if (endgameBuf) facade.signalEngine?.setBuffer?.('endgame', endgameBuf);
+  facade.signalEngine?.setBuffer?.('sfx_goal_poof', goalPoof);
+  facade.signalEngine?.setBuffer?.('sfx_error_no_boost', errorNoBoost);
+  facade.signalEngine?.setBuffer?.('boost_collect', boostCollect);
 }

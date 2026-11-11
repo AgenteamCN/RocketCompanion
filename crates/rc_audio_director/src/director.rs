@@ -7,8 +7,10 @@ use rc_physics_sim::{
 };
 
 use crate::{
+    ball_loops::step_ball_acoustic_loops,
     config_pod::AudioDirectorConfigPod,
     drivetrain_state::{step_all_vehicles_baseline, VehicleDrivetrainState},
+    incident_classifier::{process_physics_incidents, step_vehicle_landing_impacts},
     pod_types::{edge_mask_bits, AudioFrameCuePod, AudioListenerStatePod},
 };
 
@@ -171,6 +173,8 @@ impl AudioDirectorInstance {
             self.cue_pod.ball_roll_gain = 0.0;
             self.cue_pod.ball.rolling_gain = 0.0;
             self.cue_pod.ball.flying_gain = 0.0;
+            self.smoothed_ball_rolling_gain = 0.0;
+            self.smoothed_ball_flying_gain = 0.0;
             for c in &mut self.cue_pod.cars {
                 c.engine_gain = 0.0;
                 c.boost_gain = 0.0;
@@ -190,38 +194,49 @@ impl AudioDirectorInstance {
             &mut self.cue_pod.cars,
         );
 
-        // 2. Step continuous ball rolling & downward flying loops
-        let ball = &sim.state_buffer.ball;
-        let bx = ball.pos[0];
-        let by = ball.pos[1];
-        let bz = ball.pos[2];
-        self.cue_pod.ball.audio_pos_meters = [bx * 0.01, bz * 0.01, by * 0.01];
-        let dx = bx - self.listener_pod.pos_uu[0];
-        let dy = by - self.listener_pod.pos_uu[1];
-        let dz = bz - self.listener_pod.pos_uu[2];
-        let ball_dist = (dx * dx + dy * dy + dz * dz).sqrt();
-        self.cue_pod.ball.distance_uu = ball_dist;
+        // 2. Step continuous ball rolling & downward flying loops (`ball_loops.rs`)
+        self.cue_pod.ball_roll_gain = step_ball_acoustic_loops(
+            &sim.state_buffer.ball,
+            sim.ball_motion_state,
+            &self.listener_pod,
+            &self.config_pod,
+            &mut self.smoothed_ball_rolling_gain,
+            &mut self.smoothed_ball_flying_gain,
+            &mut self.smoothed_ball_rolling_rate,
+            &mut self.smoothed_ball_flying_rate,
+            &mut self.cue_pod.ball,
+        );
 
-        let b_speed =
-            (ball.vel[0] * ball.vel[0] + ball.vel[1] * ball.vel[1] + ball.vel[2] * ball.vel[2])
-                .sqrt();
-        let is_contacting = (bz - 93.15) <= 15.0
-            || bz >= (2048.0 - 113.15)
-            || bx.abs() >= (4096.0 - 113.15)
-            || by.abs() >= (5120.0 - 113.15);
-        let roll_gain = if is_contacting && b_speed > 25.0 && ball_dist < 2800.0 {
-            let atten = (1.0 - ((ball_dist - 200.0) / 2600.0).clamp(0.0, 1.0)).powi(2);
-            let spd_factor = (b_speed / 1800.0).clamp(0.1, 1.0);
-            self.config_pod.ball_rolling_volume * self.config_pod.master_volume * atten * spd_factor
-        } else {
-            0.0
-        };
-        self.smoothed_ball_rolling_gain = roll_gain;
-        self.cue_pod.ball.rolling_gain = roll_gain;
-        self.cue_pod.ball.rolling_rate = 0.85 + 0.35 * (b_speed / 2000.0).clamp(0.0, 1.0);
-        self.cue_pod.ball_roll_gain = roll_gain;
+        // 3. Step vehicle wheel landing impact detection & discrete physics incidents (`incident_classifier.rs`)
+        let current_tick = (sim.state_buffer.header.tick_count as u32).max(1);
+        step_vehicle_landing_impacts(
+            &mut self.drivetrains,
+            &sim.state_buffer.cars,
+            current_tick,
+            &self.listener_pod,
+            &self.config_pod,
+            &mut self.rng_state,
+            &mut self.cue_pod,
+        );
 
-        self.last_event_read_seq = sim.event_buffer.write_seq;
+        process_physics_incidents(
+            &sim.event_buffer,
+            &mut self.last_event_read_seq,
+            &mut self.last_ball_world_hit_tick,
+            &mut self.last_goalpost_hit_tick,
+            &mut self.last_car_ball_hit_tick,
+            &mut self.last_car_bump_global_tick,
+            &mut self.last_goal_scored_tick,
+            &mut self.last_pad_pickup_tick,
+            &mut self.last_car_demo_tick,
+            &mut self.drivetrains,
+            &self.listener_pod,
+            &self.config_pod,
+            &mut self.rng_state,
+            &mut self.cue_pod,
+        );
+
         &self.cue_pod as *const AudioFrameCuePod
     }
 }
+
