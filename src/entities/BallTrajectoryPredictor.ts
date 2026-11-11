@@ -257,6 +257,7 @@ export class BallTrajectoryPredictor {
       const tGeom0 = nowMs();
       const prims = renderTrajectoryTubeFrame(
         this.tubeRenderer,
+        phys?.module,
         this.sampler,
         this.ballRadius,
         this.settings,
@@ -315,6 +316,7 @@ export class BallTrajectoryPredictor {
     const tGeom0 = nowMs();
     const prims = renderTrajectoryTubeFrame(
       this.tubeRenderer,
+      phys.module,
       this.sampler,
       this.ballRadius,
       this.settings,

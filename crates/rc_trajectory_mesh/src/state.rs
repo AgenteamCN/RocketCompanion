@@ -1,6 +1,6 @@
 //! Static linear memory pool and state container for `rc_trajectory_mesh`.
 
-use rc_physics_sim::layout::{BallPredSlicePod, GameStateBufferPod};
+use rc_physics_sim::layout::GameStateBufferPod;
 
 use crate::layout::{
     BounceMarkerPod, InterceptSolutionPod, ReachabilityOutputHeaderPod, TrajectoryMeshConfigPod,
@@ -122,45 +122,6 @@ impl TrajectoryMeshInstance {
         1
     }
 
-    /// Foundation stub for building 3D trajectory tube geometry, bounce contact rings, and ground drop lines.
-    /// Tier 2 branches will fill in full parallel-transport extrusion and bounce impulse detection.
-    pub fn build_trajectory_mesh(
-        &mut self,
-        pred_slices: &[BallPredSlicePod],
-        pred_count: usize,
-    ) -> u32 {
-        let count = pred_count.min(MAX_PREDICTION_SLICES).min(pred_slices.len());
-        let start_idx = (self.mesh_config.start_index as usize).min(count);
-        let mut max_height = 0.0f32;
-
-        for (i, slice) in pred_slices.iter().take(count).enumerate() {
-            let [x, y, z] = slice.pos;
-            let dst = i * 3;
-            self.predicted_three_points[dst] = x;
-            self.predicted_three_points[dst + 1] = z;
-            self.predicted_three_points[dst + 2] = y;
-
-            self.raw_predicted_points[dst] = x;
-            self.raw_predicted_points[dst + 1] = y;
-            self.raw_predicted_points[dst + 2] = z;
-
-            if i >= start_idx && z > max_height {
-                max_height = z;
-            }
-        }
-
-        self.mesh_header = TrajectoryMeshHeaderPod {
-            vertex_count: 0,
-            index_count: 0,
-            bounce_count: 0,
-            ground_drop_float_count: 0,
-            max_height_uu: max_height,
-            prediction_count: count as u32,
-            start_index: start_idx as u32,
-            active_triangle_count: 0,
-        };
-        self.mesh_header.index_count
-    }
 
     /// Foundation stub for computing Ground/Aerial Reachability & Spacetime Intercept in WASM.
     /// Tier 2 branches will fill in LUT trilinear interpolation, funnel/bubble generation, and intercept solver.

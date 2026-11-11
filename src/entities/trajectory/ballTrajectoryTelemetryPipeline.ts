@@ -11,7 +11,9 @@ import type {
   TrajectoryRenderStyle,
   TrajectoryUpdateMode,
 } from '../../ui-core/config/trainingDefaults.ts';
-import type { TubeRenderParams } from './ballTrajectoryTubeMeshPipeline.ts';
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
+import type { LiveBallPositionLike } from './ballTrajectoryGeometryPipeline.ts';
+import type { TubeRenderParams } from './BallTrajectoryTubeRenderer.ts';
 import type { BallTrajectoryAnomalySummary } from './ballTrajectoryAnomalyPipeline.ts';
 
 export type { BallTrajectoryAnomalySummary };
@@ -265,32 +267,24 @@ export function resolvePatternElapsedTicks(
 export interface TrajectoryTubeRenderTarget {
   readonly preOcclusionMesh: { visible: boolean };
   readonly foregroundMesh: { visible: boolean };
+  readonly lastBounceCount: number;
+  readonly lastMaxHeightUu: number;
   hideAll(): void;
-  updateBounceAndGroundAnchors(
-    predictedPoints: Float32Array,
-    predictionCount: number,
-    startIndex: number,
-    bounceMarkersBuffer: Float32Array,
-    bounceCount: number,
-    params: TubeRenderParams
-  ): void;
-  updateTubeGeometry(
-    predictedPoints: Float32Array,
-    predictionCount: number,
+  buildAndBindFromWasm(
+    wasmModule: RocketSimWasmModule | null | undefined,
     startIndex: number,
     solidTicks: number,
     transparentTicks: number,
-    phaseOffset: number,
-    liveBallPosition: { x: number; y: number; z: number } | Float32Array | null | undefined,
+    phaseOffsetTicks: number,
+    liveBallPosition: LiveBallPositionLike | null | undefined,
     params: TubeRenderParams
   ): number;
 }
 
 export interface TrajectorySamplerPointsView {
-  readonly predictedPoints: Float32Array;
   readonly predictionCount: number;
-  readonly bounceMarkersBuffer: Float32Array;
-  readonly bounceCount: number;
+  bounceCount: number;
+  maxHeightUu: number;
 }
 
 export function isTubeRendererVisible(tubeRenderer: TrajectoryTubeRenderTarget | null): boolean {
@@ -306,32 +300,23 @@ export function hideTubeRenderer(tubeRenderer: TrajectoryTubeRenderTarget | null
 
 export function renderTrajectoryTubeFrame(
   tubeRenderer: TrajectoryTubeRenderTarget | null,
+  wasmModule: RocketSimWasmModule | null | undefined,
   sampler: TrajectorySamplerPointsView,
   ballRadius: number,
   settings: TrajectorySettingsConfig,
   elapsedTicks: number,
   patternElapsedTicks: number,
   dynamicMode: boolean,
-  liveBallPosition: { x: number; y: number; z: number } | Float32Array | null | undefined
+  liveBallPosition: LiveBallPositionLike | null | undefined
 ): number {
   if (!tubeRenderer) return 0;
 
   const tubeParams = buildTubeRenderParams(ballRadius, settings);
   const startIndex = Math.max(0, elapsedTicks);
-
-  tubeRenderer.updateBounceAndGroundAnchors(
-    sampler.predictedPoints,
-    sampler.predictionCount,
-    startIndex,
-    sampler.bounceMarkersBuffer,
-    sampler.bounceCount,
-    tubeParams
-  );
-
   const phaseOffset = dynamicMode ? 0 : patternElapsedTicks;
-  return tubeRenderer.updateTubeGeometry(
-    sampler.predictedPoints,
-    sampler.predictionCount,
+
+  const activeTris = tubeRenderer.buildAndBindFromWasm(
+    wasmModule,
     startIndex,
     settings.solidTicks,
     settings.transparentTicks,
@@ -339,4 +324,7 @@ export function renderTrajectoryTubeFrame(
     liveBallPosition,
     tubeParams
   );
+  sampler.bounceCount = tubeRenderer.lastBounceCount;
+  sampler.maxHeightUu = tubeRenderer.lastMaxHeightUu;
+  return activeTris;
 }

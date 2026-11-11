@@ -5,11 +5,9 @@
  * or coordinate deviations.
  */
 
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
 import {
-  BOUNCE_MARKER_STRIDE,
-  MAX_BOUNCE_MARKERS,
   copyWasmPredictionToTrajectoryBuffers,
-  detectTrajectoryBounces,
   shouldRefreshTailSeamContact,
   tryIncrementalShiftTrajectoryBuffers,
 } from './ballTrajectoryGeometryPipeline.ts';
@@ -30,6 +28,7 @@ export interface TrajectoryBallLaunchState extends BallStateObjectInput {
 }
 
 export interface TrajectoryPhysicsPort {
+  readonly module?: RocketSimWasmModule | null;
   readonly ballRadius?: number;
   readonly state?: Float32Array | null;
   ballStateWriteRevision?: number;
@@ -52,7 +51,6 @@ export class BallTrajectorySamplingController {
   public readonly predictedPoints: Float32Array;
   public readonly rawPredictedPoints: Float32Array;
   public readonly rawSlicesBuffer: Float32Array;
-  public readonly bounceMarkersBuffer: Float32Array;
   public readonly anomalyRecorder = new BallTrajectoryAnomalyDetector();
 
   public predictionCount = 0;
@@ -88,7 +86,6 @@ export class BallTrajectorySamplingController {
     this.predictedPoints = new Float32Array(maxTicks * 3);
     this.rawPredictedPoints = new Float32Array(maxTicks * 3);
     this.rawSlicesBuffer = new Float32Array(maxTicks * 9);
-    this.bounceMarkersBuffer = new Float32Array(MAX_BOUNCE_MARKERS * BOUNCE_MARKER_STRIDE);
   }
 
   public clear(): void {
@@ -99,6 +96,7 @@ export class BallTrajectorySamplingController {
     this.wasmWindowTicks = 0;
     this.wasmFullHorizonActive = false;
     this.bounceCount = 0;
+    this.maxHeightUu = 0;
     this.impactTick = -1;
     this.patternAnchorTick = -1;
     this.lastUpdatedTick = -1;
@@ -124,18 +122,6 @@ export class BallTrajectorySamplingController {
     this.pendingCarBallHit = false;
     this.lastUpdateKind = 'sleeping';
     this.lastWasmUpdateUs = 0;
-  }
-
-  private _updateBounceMetrics(rawSource: Float32Array | null, visibleSlices: number): void {
-    const bounceRes = detectTrajectoryBounces(
-      rawSource,
-      this.predictedPoints,
-      visibleSlices,
-      0,
-      this.bounceMarkersBuffer
-    );
-    this.bounceCount = bounceRes.bounceCount;
-    this.maxHeightUu = bounceRes.maxHeightUu;
   }
 
   public setStaticPreviewTrajectory(
@@ -197,7 +183,6 @@ export class BallTrajectorySamplingController {
         this.rawPredictedPoints,
         this.rawSlicesBuffer
       );
-      this._updateBounceMetrics(this.rawSlicesBuffer, actualCount);
 
       this.isActive = true;
       this.staticPreviewActive = true;
@@ -383,7 +368,6 @@ export class BallTrajectorySamplingController {
       });
     }
 
-    this._updateBounceMetrics(this.rawSlicesBuffer, this.predictionCount);
     this.isActive = true;
     return this.predictionCount;
   }
