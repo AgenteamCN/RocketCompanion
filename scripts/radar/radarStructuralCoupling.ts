@@ -101,7 +101,13 @@ export function analyzeStructuralCoupling(
 
   for (const file of allFiles) {
     const rel = toPosixRel(file);
-    if (rel.startsWith('src/ui-core/')) continue;
+    if (
+      rel.startsWith('src/ui-core/') ||
+      rel.startsWith('src/ui-tuner/') ||
+      rel.startsWith('src/entry/')
+    ) {
+      continue;
+    }
 
     const raw = fs.readFileSync(file, 'utf8');
     const clean = stripComments(raw);

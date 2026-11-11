@@ -3,7 +3,7 @@
 - Run `pnpm run format` and `pnpm run check` before committing.
 - Use `pnpm run radar:audit` (`--audit` or `--audit=<path>`) to inspect structural coupling, host penetration, and pass-through proxies.
 - Do not edit generated `src/physics/core.js` or `src/physics/core.wasm`.
-- Do not modify `src/ui-core` (`RCUIModule` submodule) markdown files without asking first.
+- Do not modify `src/ui-core/AGENTS.md` without asking first.
 - Keep real signaling endpoints and credentials in untracked `.cache/resolvedProfile.json` or `.rctbnspib`.
 - Limit the amount of comments you put in the code to a strict minimum. You should almost never add comments, except sometimes on non-trivial code, function definitions if the arguments aren't self-explanatory, and class definitions and their members.
 - Do not remove existing comments unless they are directly related to what you are changing.

@@ -50,7 +50,8 @@ export const EntryHubApp: React.FC = () => {
     3003: { online: true, checking: false },
   });
 
-  const hostname = typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost';
+  const hostname =
+    typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost';
 
   const probePorts = async () => {
     setStatuses((prev) => ({
@@ -105,7 +106,8 @@ export const EntryHubApp: React.FC = () => {
               Rocket Companion — Global Entry Hub
             </h1>
             <p className="text-sm text-zinc-400">
-              Unified 4-port workspace orchestrating Engine HTTPS (3001), UI Tuner HTTP (3002), and Tauri HTTP Mirror (3003).
+              Unified 4-port workspace orchestrating Engine HTTPS (3001), UI Tuner HTTP (3002), and
+              Tauri HTTP Mirror (3003).
             </p>
           </div>
 
@@ -137,7 +139,8 @@ export const EntryHubApp: React.FC = () => {
                   <span>Rocket Companion</span>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Primary 3D simulation &amp; gameplay host with self-signed TLS, HTTP/2 high-concurrency streams, and dev profile injection.
+                  Primary 3D simulation &amp; gameplay host with self-signed TLS, HTTP/2
+                  high-concurrency streams, and dev profile injection.
                 </p>
               </div>
             </div>
@@ -209,7 +212,8 @@ export const EntryHubApp: React.FC = () => {
                   <span>RC UI Tuner</span>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Component &amp; state audit workbench (L1–L8) with real-time WebSocket multi-tab synchronization and zero SSL prompts.
+                  Component &amp; state audit workbench (L1–L8) with real-time WebSocket multi-tab
+                  synchronization and zero SSL prompts.
                 </p>
               </div>
             </div>
@@ -278,7 +282,8 @@ export const EntryHubApp: React.FC = () => {
                   <span>Tauri / HTTP Host</span>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Pure HTTP mirror of Rocket Companion for Tauri WebView (`devUrl: http://localhost:3003`) and certificate-free local testing.
+                  Pure HTTP mirror of Rocket Companion for Tauri WebView (`devUrl:
+                  http://localhost:3003`) and certificate-free local testing.
                 </p>
               </div>
             </div>
@@ -323,7 +328,10 @@ export const EntryHubApp: React.FC = () => {
           </div>
           <div className="divide-y divide-zinc-800/60 text-xs font-mono">
             {ENDPOINTS.map((ep) => (
-              <div key={ep.port} className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div
+                key={ep.port}
+                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              >
                 <div className="flex items-center gap-3">
                   <span className="text-zinc-300 font-bold">:{ep.port}</span>
                   <span className="uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">
@@ -340,7 +348,7 @@ export const EntryHubApp: React.FC = () => {
 
       <footer className="max-w-5xl w-full mx-auto pt-8 text-xs font-mono text-zinc-500 flex items-center justify-between">
         <span>RocketCompanion Monorepo · Branch: alpha</span>
-        <span>src/ui-core internalized · src/showcase integrated</span>
+        <span>src/ui-core internalized · src/ui-tuner integrated</span>
       </footer>
     </div>
   );

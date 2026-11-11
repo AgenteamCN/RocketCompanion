@@ -19,8 +19,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     name: 'Foundations (foundation and variables)',
     rule: 'Pure Static Constants, Type contract and theme Store, No Business Logic JSX, No Upper-level Dependencies (L1~L7) Dependency.',
     importPath: 'src/ui-core/tokens/* | src/ui-core/stores/*',
-    badgeColor:
-      'bg-neutral-500/15 text-neutral-700 dark:text-neutral-300 border-neutral-400/40',
+    badgeColor: 'bg-neutral-500/15 text-neutral-700 dark:text-neutral-300 border-neutral-400/40',
     modules: [
       {
         label: 'Tokens & Theme Store',
@@ -34,8 +33,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     name: 'Primitives (Atomic base primitives)',
     rule: 'Minimalist presentation component. No business context, pure Props driver, Zero horizontal coupling, dependency only L0.',
     importPath: 'src/ui-core/primitives/*',
-    badgeColor:
-      'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40',
+    badgeColor: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40',
     modules: [
       {
         label: 'Badge / Keycap / Button',
@@ -55,8 +53,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     name: 'Layout & Shells (Layout and Skeleton)',
     rule: 'Pure structural space container, Grid Layout Management, Card Encapsulation And 3-Stage Optical padding (px-6 pt-5 pb-4), Contains no complex business state, dependency only L0~L1.',
     importPath: 'src/ui-core/layout/*',
-    badgeColor:
-      'bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-500/40',
+    badgeColor: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-500/40',
     modules: [
       {
         label: 'Stacks Grid Flow',
@@ -87,8 +84,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     name: 'Compound Controls (Composite interaction control)',
     rule: 'Self-contained universal interactive control assembled from primitives and layouts. With internal micro-states, No specific game business logic locked, dependency only L0~L2.',
     importPath: 'src/ui-core/compounds/*',
-    badgeColor:
-      'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/40',
+    badgeColor: 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/40',
     modules: [
       {
         label: 'Dropdown & Tuner Composite Control',
@@ -104,8 +100,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
       {
         label: 'Quick Notification Drawer Notification',
         tab: 'quick-notification',
-        items:
-          'QuickNotificationDrawer (Temporary / Persistent / Ongoing Tri-state Rendering)',
+        items: 'QuickNotificationDrawer (Temporary / Persistent / Ongoing Tri-state Rendering)',
       },
     ],
   },
@@ -114,8 +109,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     name: 'Navigation & Transitions (Navigation and motion engine)',
     rule: 'Focus on container geometry deformation, Three-stage state machine and modal focus shell. Any panel can be delegated for deformation, dependency only L0~L3.',
     importPath: 'src/ui-core/navigation/*',
-    badgeColor:
-      'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/40',
+    badgeColor: 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/40',
     modules: [
       {
         label: 'MorphContainer & HIG animation',
@@ -137,8 +131,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     rule: 'Professional visualization with strong domain semantics/Telemetry Unit. 5A/5B/5C/5D/5E/5F Six sub-domains are fully orthogonal, Independent, Keep Pure Props driver.',
     importPath:
       'src/ui-core/hud/* | src/ui-core/charts/* | src/ui-core/viewport/* | src/ui-core/loading/*',
-    badgeColor:
-      'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40',
+    badgeColor: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40',
     modules: [
       {
         label: '5A · Match HUD Independent Gauge',
@@ -200,14 +193,12 @@ export const PYRAMID_SPEC: PyramidRow[] = [
       {
         label: '6C · Live Preview Sidebar Storage',
         tab: 'live-preview',
-        items:
-          'LivePreviewDock, MorphingStageShell, Layer3BallTrajectoryRecipe, livePreviewStore',
+        items: 'LivePreviewDock, MorphingStageShell, Layer3BallTrajectoryRecipe, livePreviewStore',
       },
       {
         label: '6D · Floating Window Multi-window layout',
         tab: 'floating-windows',
-        items:
-          'FloatingWindowManager, FloatingStackIcon, floatingStore, QuickNotificationSystem',
+        items: 'FloatingWindowManager, FloatingStackIcon, floatingStore, QuickNotificationSystem',
       },
       {
         label: '6E · Edge Inspector Side hover inspection',
@@ -221,7 +212,7 @@ export const PYRAMID_SPEC: PyramidRow[] = [
     code: 'L7. Sandboxes',
     name: 'Sandboxes & Demos (Integrated drill and sandbox)',
     rule: 'Top-level host simulation and stress testing field. Move L0~L6 Perform high-level permutations for panoramic preview and automated regression testing, Strictly prohibit reverse referencing of lower-level components L7.',
-    importPath: 'src/showcase/pages/*',
+    importPath: 'src/ui-tuner/pages/*',
     badgeColor: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/40',
     modules: [
       {
