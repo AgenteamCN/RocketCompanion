@@ -23,7 +23,8 @@
     "check": "pnpm run radar && pnpm run typecheck",
     "extract:golden": "node scripts/extractGoldenBaseline65f1538d.mjs",
     "test:baseline": "node scripts/runScenarioBaseline.mjs",
-    "test:soak": "node scripts/runSoakWatchdog.mjs"
+    "test:soak": "node scripts/runSoakWatchdog.mjs",
+    "repro:multiplayer-room": "node scripts/runMultiplayerRoomRepro.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

@@ -15,6 +15,7 @@ import {
 } from '../loader/engineLoadingPipeline.ts';
 import { GameRuntime, type GameRuntimeOptions } from './GameRuntime.ts';
 import { useQuickNotificationStore } from './runtimeUiPort.ts';
+import { startMultiplayerRoomReproIfRequested } from './scenario/MultiplayerRoomReproAgent.ts';
 import {
   attachScenarioAutorunController,
   ScenarioBootstrapTelemetryObserver,
@@ -154,6 +155,7 @@ export class GameBootstrap {
       }
 
       const runtimeInstance = this.runtime;
+      startMultiplayerRoomReproIfRequested(runtimeInstance);
       const bgAssetsPromise = startBackgroundAssetPipeline(runtimeInstance, null, {
         notifyStore: useQuickNotificationStore.getState(),
       }).catch((err) => {
