@@ -13,16 +13,24 @@ impl SimInstance {
             return;
         };
         let steps = ((max_seconds * 120.0).round() as usize).clamp(1, MAX_PREDICTION_STEPS);
-        let mut pred_arena = arena.clone();
-        pred_arena.remove_cars();
-        for i in 0..steps {
-            let _ = pred_arena.step_tick();
-            let b = pred_arena.get_ball_state();
-            self.pred_buffer[i] = BallPredSlicePod {
-                pos: b.pos.to_array(),
-                vel: b.vel.to_array(),
-                ang_vel: b.ang_vel.to_array(),
-            };
+        let b0 = arena.get_ball_state();
+        self.pred_buffer[0] = BallPredSlicePod {
+            pos: b0.pos.to_array(),
+            vel: b0.vel.to_array(),
+            ang_vel: b0.ang_vel.to_array(),
+        };
+        if steps > 1 {
+            let mut pred_arena = arena.clone();
+            pred_arena.remove_cars();
+            for i in 1..steps {
+                let _ = pred_arena.step_tick();
+                let b = pred_arena.get_ball_state();
+                self.pred_buffer[i] = BallPredSlicePod {
+                    pos: b.pos.to_array(),
+                    vel: b.vel.to_array(),
+                    ang_vel: b.ang_vel.to_array(),
+                };
+            }
         }
         self.pred_count = steps;
     }

@@ -111,7 +111,7 @@ let anomalyHandlers: BallTrajectoryAnomalyActionHandlers | null = null;
 
 const core = createExternalStore<BallTrajectoryTunerStoreState>({
   telemetry: { ...INITIAL_BALL_TRAJECTORY_TELEMETRY },
-  notifyAnomalyAlerts: true,
+  notifyAnomalyAlerts: false,
 });
 
 export const ballTrajectoryTunerStore = {

@@ -363,7 +363,7 @@ export function createRuntimeUiStoreProxies() {
     {
       publishTelemetry: () => {},
       resetTelemetryCounters: () => {},
-      getNotifyAnomalyAlerts: () => true,
+      getNotifyAnomalyAlerts: () => false,
       registerAnomalyHandlers: () => {},
     }
   );

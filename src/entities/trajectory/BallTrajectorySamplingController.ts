@@ -342,7 +342,10 @@ export class BallTrajectorySamplingController {
     this.impactTick = resolvedTick;
     this.lastUpdatedTick = resolvedTick;
 
-    const isIncWindow = updateMode === 'continuous-incremental' && catchupBudget < actualCount;
+    const isIncWindow =
+      updateMode === 'continuous-incremental' &&
+      catchupBudget < actualCount &&
+      this.wasmWindowTicks < actualCount;
     const stepVisible = isIncWindow
       ? Math.min(actualCount, Math.max(2, prevVisible - deltaTicks + catchupBudget))
       : actualCount;
@@ -355,9 +358,7 @@ export class BallTrajectorySamplingController {
       this.fullRecomputeCount++;
       this.lastUpdateKind = 'wasm-seam-resync';
     } else {
-      this.predictionCount = isIncWindow
-        ? Math.min(actualCount, Math.max(2, catchupBudget))
-        : actualCount;
+      this.predictionCount = actualCount;
       this.fullRecomputeCount++;
       this.patternAnchorTick = resolvedTick;
       this.lastUpdateKind = options.reason || 'full-initial';

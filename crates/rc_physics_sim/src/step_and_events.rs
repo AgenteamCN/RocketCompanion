@@ -46,6 +46,8 @@ impl SimInstance {
                 }
             }
 
+            let pre_snap = self.capture_pre_step_snapshot();
+
             if let Some(arena) = self.arena.as_mut() {
                 for slot in 0..MAX_CARS {
                     let Some(car_id) = self.car_slots[slot] else {
@@ -66,31 +68,10 @@ impl SimInstance {
                 }
 
                 let _ = arena.step_tick();
-
-                for slot in 0..MAX_CARS {
-                    let Some(car_id) = self.car_slots[slot] else {
-                        continue;
-                    };
-                    let custom = &self.car_custom[slot];
-                    if self.unlimited_boost_global || custom.unlimited_boost {
-                        let st = *arena.get_car_state(car_id);
-                        if st.boost < 100.0 {
-                            arena.set_car_boost(car_id, 100.0);
-                        }
-                    } else if custom.recharge_enabled {
-                        let st = *arena.get_car_state(car_id);
-                        if st.boosting_time <= 0.0 && st.boost < 100.0 {
-                            let new_boost = (st.boost + custom.recharge_per_second / 120.0).min(100.0);
-                            arena.set_car_boost(car_id, new_boost);
-                        }
-                    }
-                }
             }
 
-            if !silent {
-                self.drain_arena_events();
-            }
-
+            self.drain_arena_events(&pre_snap, silent);
+            self.apply_post_step_modifiers_and_incidents(&pre_snap, silent);
             self.sync_state_to_buffer();
 
             if !silent && self.replay.header.recording_active != 0 {
@@ -101,7 +82,11 @@ impl SimInstance {
         }
     }
 
-    pub(crate) fn drain_arena_events(&mut self) {
+    pub(crate) fn drain_arena_events(
+        &mut self,
+        pre_snap: &crate::car_modifiers::PreStepSnapshot,
+        silent: bool,
+    ) {
         let Some(arena) = self.arena.as_ref() else {
             return;
         };
@@ -139,8 +124,10 @@ impl SimInstance {
                         custom_float: dir_dot,
                         custom_int: 0,
                     };
-                    self.push_event(pev);
-                    self.replay.push_incident(&pev);
+                    if !silent {
+                        self.push_event(pev);
+                        self.replay.push_incident(&pev);
+                    }
                 }
                 ArenaEvent::CarHitBall(e) => {
                     let slot = self
@@ -196,11 +183,16 @@ impl SimInstance {
                         self.possession_car_index = slot;
                         self.state_buffer.possession_team = team_id as f32;
                     }
-                    self.push_event(pev);
-                    self.replay.push_incident(&pev);
+                    if !silent {
+                        self.push_event(pev);
+                        self.replay.push_incident(&pev);
+                    }
                 }
                 ArenaEvent::CarHitWorld(_) => {}
                 ArenaEvent::CarHitCar(e) => {
+                    if silent {
+                        continue;
+                    }
                     let s1 = self
                         .car_slots
                         .iter()
@@ -246,6 +238,21 @@ impl SimInstance {
                         .position(|&id| id == Some(e.car_idx))
                         .map(|s| s as i32)
                         .unwrap_or(e.car_idx as i32);
+                    if slot >= 0
+                        && (slot as usize) < MAX_CARS
+                        && !self.car_custom[slot as usize].boost_collectable
+                    {
+                        if let Some(arena) = self.arena.as_mut() {
+                            arena.set_car_boost(e.car_idx, pre_snap.cars[slot as usize].boost);
+                            arena.edit_boost_pad_state(e.boost_pad_idx, |ps| {
+                                ps.cooldown = 0.0;
+                            });
+                        }
+                        continue;
+                    }
+                    if silent {
+                        continue;
+                    }
                     let (pad_pos, is_big) = self
                         .arena
                         .as_ref()

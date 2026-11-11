@@ -118,7 +118,13 @@ export function checkRustWorkspaceAndWasmGuards(
 
   let rustFileCount = 0;
   let rustLargeFileCount = 0;
-  const customCrates = ['rc_physics_sim', 'rocketsim_wasm'];
+  const customCrates = fs.existsSync(cratesDir)
+    ? fs
+        .readdirSync(cratesDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && d.name !== 'rocketsim' && d.name !== 'target')
+        .map((d) => d.name)
+        .sort()
+    : [];
   const rustExportSet = new Set<string>();
 
   for (const crateName of customCrates) {

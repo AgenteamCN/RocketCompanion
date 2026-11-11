@@ -235,13 +235,25 @@ pub extern "C" fn _physics_getCarFlipsRemaining(car_index: i32) -> i32 {
         return 0;
     }
     with_sim(|sim| {
-        let Some(car_id) = sim.car_slots[car_index as usize] else {
+        let slot = car_index as usize;
+        let Some(car_id) = sim.car_slots[slot] else {
             return 0;
         };
         let Some(arena) = sim.arena.as_ref() else {
             return 0;
         };
-        i32::from(arena.get_car_state(car_id).has_flip_or_jump())
+        let st = arena.get_car_state(car_id);
+        let max_flips = sim.car_custom[slot].max_flip_count;
+        if st.is_on_ground() {
+            return max_flips.max(1);
+        }
+        if !st.has_flip_or_jump() {
+            return 0;
+        }
+        if max_flips <= 0 || max_flips >= 99 {
+            return 99;
+        }
+        (max_flips - sim.car_custom[slot].air_flips_used).max(1)
     })
 }
 

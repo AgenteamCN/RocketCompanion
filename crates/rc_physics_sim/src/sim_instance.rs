@@ -26,6 +26,8 @@ pub struct CarCustomSettings {
     pub demo_spawn_selection: i32,
     pub three_wheels: bool,
     pub hitbox_index: i32,
+    pub air_flips_used: i32,
+    pub last_flip_reset_tick: u32,
 }
 
 impl Default for CarCustomSettings {
@@ -41,6 +43,8 @@ impl Default for CarCustomSettings {
             demo_spawn_selection: -1,
             three_wheels: false,
             hitbox_index: 0,
+            air_flips_used: 0,
+            last_flip_reset_tick: 0,
         }
     }
 }

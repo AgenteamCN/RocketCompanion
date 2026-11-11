@@ -149,7 +149,20 @@ impl SimInstance {
             cs.is_demoed = false;
             cs.demo_respawn_timer = 0.0;
         }
+        if f[22] >= 0.5 {
+            if !cs.is_on_ground() {
+                cs.has_jumped = false;
+                cs.has_double_jumped = false;
+                cs.has_flipped = false;
+                cs.air_time_since_jump = 0.0;
+            }
+            self.car_custom[slot].air_flips_used = 0;
+        } else if !cs.is_on_ground() {
+            cs.has_jumped = true;
+            cs.has_double_jumped = true;
+        }
         cs.is_boosting = f[23] >= 0.5;
+        cs.is_flipping = f[24] >= 0.5;
         arena.set_car_state_full(car_id, cs);
         self.sync_state_to_buffer();
     }
