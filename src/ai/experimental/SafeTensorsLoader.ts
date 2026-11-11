@@ -76,6 +76,7 @@ export interface SafeTensorEntry {
 export interface ParsedSafeTensorsModel {
   metadata: Record<string, unknown>;
   tensors: Record<string, SafeTensorEntry>;
+  rawBuffer?: ArrayBuffer;
 }
 
 /**
@@ -144,7 +145,7 @@ export function parseSafeTensorsBuffer(buffer: ArrayBuffer): ParsedSafeTensorsMo
   }
 
   preuploadSimdTensors(tensors);
-  return { metadata, tensors };
+  return { metadata, tensors, rawBuffer: buffer };
 }
 
 /**
@@ -226,7 +227,7 @@ export async function parseSafeTensorsBufferAsync(
   }
 
   await preuploadSimdTensorsAsync(tensors);
-  return { metadata, tensors };
+  return { metadata, tensors, rawBuffer: buffer };
 }
 
 /**

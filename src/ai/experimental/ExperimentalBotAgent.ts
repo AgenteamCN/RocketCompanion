@@ -15,7 +15,7 @@ import {
   getCachedSafeTensors,
   registerCachedSafeTensors,
 } from './SafeTensorsLoader.ts';
-import { EarlPerceiverEngine } from './EarlPerceiverEngine.ts';
+import { loadRocketSimWasmModule, type RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
 import { SequentialMlpEngine, selectMaskedArgmax } from './SequentialMlpEngine.ts';
 import { RipplePerceiverEngine } from './RipplePerceiverEngine.ts';
 import {
@@ -24,8 +24,6 @@ import {
   computeDefaultAction90Mask,
   computeFuryAction380Mask,
   mirrorActionControlsX,
-  decodeNextoLogits,
-  decodeNectoLogits,
   writeControlsToFloat8,
 } from './botpack9700488Actions.ts';
 import {
@@ -50,9 +48,9 @@ import { RippleAgentState } from './RippleObsBuilder.ts';
 import { multiCarHeuristicDecide } from './multiCarHeuristicPolicy.ts';
 import {
   DEFAULT_CAR_CONTROLS,
+  decodeCarControls,
   getNextoKickoffControls,
-  buildDynamicNextoObs,
-  buildDynamicNectoObs,
+  resolveActiveCars,
   type CarControls,
   type BoostPadDescriptor,
 } from './experimentalMultiCarObsPipeline.ts';
@@ -61,9 +59,48 @@ import type { ParsedSafeTensorsModel, SafeTensorEntry } from './SafeTensorsLoade
 export type { ExperimentalBotPolicyMeta };
 
 // Shared zero-GC forward engines (stateless across calls; per-agent state stays on ExperimentalBotAgent)
-const sPerceiverEngine = new EarlPerceiverEngine();
 const sSequentialMlpEngine = new SequentialMlpEngine();
 const sRippleEngine = new RipplePerceiverEngine();
+
+const WASM_POLICY_IDS: Readonly<Record<string, number>> = Object.freeze({
+  heuristic: 0,
+  nexto: 1,
+  necto: 2,
+});
+
+let sWasmBotModule: RocketSimWasmModule | null = null;
+let sWasmBotModulePromise: Promise<RocketSimWasmModule | null> | null = null;
+const sPendingWasmWeightBuffers = new Map<number, ArrayBuffer>();
+
+function uploadWeightsToWasmBotDirector(
+  mod: RocketSimWasmModule,
+  policyId: number,
+  rawBuffer: ArrayBuffer
+): void {
+  if (rawBuffer.byteLength < 16) return;
+  const ptr = mod._malloc(rawBuffer.byteLength);
+  mod.HEAPU8.set(new Uint8Array(rawBuffer), ptr);
+  mod._physics_loadBotWeights(policyId, ptr, rawBuffer.byteLength);
+  mod._free(ptr);
+}
+
+function ensureWasmBotDirectorModule(): Promise<RocketSimWasmModule | null> {
+  if (sWasmBotModule) return Promise.resolve(sWasmBotModule);
+  if (sWasmBotModulePromise) return sWasmBotModulePromise;
+  sWasmBotModulePromise = loadRocketSimWasmModule()
+    .then((mod) => {
+      sWasmBotModule = mod;
+      for (const [policyId, buf] of sPendingWasmWeightBuffers.entries()) {
+        uploadWeightsToWasmBotDirector(mod, policyId, buf);
+      }
+      sPendingWasmWeightBuffers.clear();
+      return mod;
+    })
+    .catch(() => null);
+  return sWasmBotModulePromise;
+}
+
+void ensureWasmBotDirectorModule();
 
 /**
  * Preloads or retrieves a cached SafeTensors model for any neural policy.
@@ -74,10 +111,29 @@ export async function ensureExperimentalEngine(
   if (!botType || botType === 'heuristic' || !EXPERIMENTAL_MODEL_URLS[botType]) {
     return null;
   }
+  const wasmPolicyId = WASM_POLICY_IDS[botType];
+  if (wasmPolicyId !== undefined) {
+    await ensureWasmBotDirectorModule();
+  }
   const cached = getCachedSafeTensors(botType);
-  if (cached) return cached;
+  if (cached) {
+    if (wasmPolicyId !== undefined && sWasmBotModule && cached.rawBuffer instanceof ArrayBuffer) {
+      if (sWasmBotModule._physics_isBotPolicyLoaded(wasmPolicyId) === 0) {
+        uploadWeightsToWasmBotDirector(sWasmBotModule, wasmPolicyId, cached.rawBuffer);
+      }
+    }
+    return cached;
+  }
   try {
-    return await loadExperimentalPolicySafeTensors(botType);
+    const loaded = await loadExperimentalPolicySafeTensors(botType);
+    if (wasmPolicyId !== undefined && loaded?.rawBuffer instanceof ArrayBuffer) {
+      if (sWasmBotModule) {
+        uploadWeightsToWasmBotDirector(sWasmBotModule, wasmPolicyId, loaded.rawBuffer);
+      } else {
+        sPendingWasmWeightBuffers.set(wasmPolicyId, loaded.rawBuffer);
+      }
+    }
+    return loaded;
   } catch (err) {
     console.warn(`[ExperimentalBotAgent] Failed to load SafeTensors for ${botType}:`, err);
     return null;
@@ -92,6 +148,14 @@ export function registerExperimentalEngineTensors(
   parsedSafeTensors: ParsedSafeTensorsModel
 ): ParsedSafeTensorsModel {
   registerCachedSafeTensors(botType, parsedSafeTensors);
+  const wasmPolicyId = WASM_POLICY_IDS[botType];
+  if (wasmPolicyId !== undefined && parsedSafeTensors?.rawBuffer instanceof ArrayBuffer) {
+    if (sWasmBotModule) {
+      uploadWeightsToWasmBotDirector(sWasmBotModule, wasmPolicyId, parsedSafeTensors.rawBuffer);
+    } else {
+      sPendingWasmWeightBuffers.set(wasmPolicyId, parsedSafeTensors.rawBuffer);
+    }
+  }
   return parsedSafeTensors;
 }
 
@@ -100,6 +164,12 @@ export function registerExperimentalEngineTensors(
  */
 export function isExperimentalEngineReady(botType: string): boolean {
   if (botType === 'heuristic') return true;
+  const wasmPolicyId = WASM_POLICY_IDS[botType];
+  if (wasmPolicyId !== undefined && sWasmBotModule) {
+    if (sWasmBotModule._physics_isBotPolicyLoaded(wasmPolicyId) === 1) {
+      return true;
+    }
+  }
   return Boolean(getCachedSafeTensors(botType));
 }
 
@@ -162,6 +232,9 @@ export class ExperimentalBotAgent {
     this.rippleState.reset();
     this.tickSkipCounter = 0;
     this._staggered = false;
+    if (sWasmBotModule && this.carIndex >= 0 && this.carIndex < 8) {
+      sWasmBotModule._physics_resetBotDirector(1 << this.carIndex);
+    }
   }
 
   async preload(): Promise<void> {
@@ -216,6 +289,75 @@ export class ExperimentalBotAgent {
     return getNextoKickoffControls(simState, kickoffTick, this.carIndex, normTeam);
   }
 
+  private _decideWasmEarlPerceiver(
+    policyId: number,
+    simState: Float32Array,
+    boostPads: ReadonlyArray<BoostPadDescriptor>,
+    activeCars: Array<{ carIndex: number; team: number }>,
+    parsedModel: ParsedSafeTensorsModel
+  ): boolean {
+    const mod = sWasmBotModule;
+    if (!mod) {
+      void ensureWasmBotDirectorModule();
+      return false;
+    }
+    if (mod._physics_isBotPolicyLoaded(policyId) === 0) {
+      if (parsedModel.rawBuffer instanceof ArrayBuffer) {
+        uploadWeightsToWasmBotDirector(mod, policyId, parsedModel.rawBuffer);
+      }
+      if (mod._physics_isBotPolicyLoaded(policyId) === 0) {
+        return false;
+      }
+    }
+
+    const statePtr = mod._physics_getStatePtr();
+    const stateLen = mod._physics_getStateSize();
+    const wasmState = new Float32Array(mod.HEAPF32.buffer, statePtr, stateLen);
+    if (simState.buffer !== wasmState.buffer || simState.byteOffset !== wasmState.byteOffset) {
+      wasmState.set(simState.subarray(0, Math.min(simState.length, stateLen)));
+    }
+
+    if (Array.isArray(boostPads) && boostPads.length > 0) {
+      const padPtr = mod._physics_getPadInfoPtr();
+      const numPads = Math.min(34, boostPads.length);
+      const padView = new Float32Array(mod.HEAPF32.buffer, padPtr, numPads * 4);
+      if (padView[3] === 0 && padView[0] === 0 && padView[1] === 0) {
+        for (let p = 0; p < numPads; p++) {
+          const pad = boostPads[p];
+          padView[p * 4] = pad.pos[0];
+          padView[p * 4 + 1] = pad.pos[1];
+          padView[p * 4 + 2] = pad.pos[2];
+          padView[p * 4 + 3] = pad.isBig ? 1 : 0;
+        }
+      }
+      if (wasmState[3] === 0) {
+        wasmState[3] = numPads;
+      }
+    }
+
+    const roster = resolveActiveCars(simState, activeCars);
+    for (let i = 0; i < roster.length; i++) {
+      const entry = roster[i];
+      if (entry.carIndex === this.carIndex) continue;
+      mod._physics_configureBotSlot(entry.carIndex, 0, entry.team, 8);
+    }
+
+    const normTeam = this.team === 1 ? 1 : this.team === 0 ? 0 : this.carIndex % 2;
+    mod._physics_configureBotSlot(this.carIndex, policyId, normTeam, 1);
+
+    const outPtr = mod._physics_getBotBatchOutputPtr();
+    const prevActionsBase = (outPtr >>> 2) + 4 + 64 + 64 + this.carIndex * 8;
+    mod.HEAPF32.set(this.prevAction8, prevActionsBase);
+
+    mod._physics_stepBotInferenceMask(1 << this.carIndex, 0);
+
+    const ctrlBase = (outPtr >>> 2) + 4 + this.carIndex * 8;
+    const f32 = mod.HEAPF32;
+    this.action = decodeCarControls(f32.subarray(ctrlBase, ctrlBase + 8));
+    writeControlsToFloat8(this.action, this.prevAction8);
+    return true;
+  }
+
   /**
    * Executes synchronous native Float32 inference (or heuristic fallback) for this car.
    */
@@ -265,42 +407,20 @@ export class ExperimentalBotAgent {
     this._warnedUnloadedFallback = false;
 
     try {
-      if (this.botType === 'nexto') {
-        const obs = buildDynamicNextoObs(
-          simState,
-          boostPads,
-          this.action,
-          this.carIndex,
-          this.team,
-          activeCars
-        );
-        const logits = sPerceiverEngine.forwardNexto(
-          obs.query,
-          obs.entities,
-          obs.numEntities,
-          parsedModel.tensors
-        );
-        this.action = decodeNextoLogits(logits);
-        writeControlsToFloat8(this.action, this.prevAction8);
-      } else if (this.botType === 'necto') {
-        const obs = buildDynamicNectoObs(
-          simState,
-          boostPads,
-          this.action,
-          this.carIndex,
-          this.team,
-          activeCars,
-          this.demoTimers,
-          this.boostTimers
-        );
-        const logits12 = sPerceiverEngine.forwardNecto(
-          obs.query,
-          obs.entities,
-          obs.numEntities,
-          parsedModel.tensors
-        );
-        this.action = decodeNectoLogits(logits12);
-        writeControlsToFloat8(this.action, this.prevAction8);
+      if (this.botType === 'nexto' || this.botType === 'necto') {
+        const policyId = this.botType === 'nexto' ? 1 : 2;
+        if (
+          !this._decideWasmEarlPerceiver(policyId, simState, boostPads, activeCars, parsedModel)
+        ) {
+          this.action = multiCarHeuristicDecide(
+            simState,
+            boostPads,
+            this.carIndex,
+            this.team,
+            activeCars
+          );
+          writeControlsToFloat8(this.action, this.prevAction8);
+        }
       } else if (this.botType === 'ripple_v1_1') {
         const enginePort = typeof physicsEngine === 'object' ? physicsEngine : null;
         const rObs = this.rippleState.buildObs(

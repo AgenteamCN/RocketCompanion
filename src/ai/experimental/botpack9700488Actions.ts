@@ -21,23 +21,6 @@ export interface CarControls {
 }
 
 /**
- * Decodes Nexto 90-action logits into CarControls.
- */
-export function decodeNextoLogits(logits: ArrayLike<number>): CarControls {
-  let bestIdx = 0;
-  let bestVal = logits[0];
-  for (let i = 1; i < logits.length; i++) {
-    const v = logits[i];
-    if (!Number.isFinite(v)) continue;
-    if (v > bestVal) {
-      bestVal = v;
-      bestIdx = i;
-    }
-  }
-  return { ...NEXTO_ACTION_TABLE[bestIdx] };
-}
-
-/**
  * Writes a CarControls object into an 8-float array [throttle, steer, pitch, yaw, roll, jump, boost, handbrake].
  */
 export function writeControlsToFloat8(ctrl: Partial<CarControls>, out8: Float32Array): void {
@@ -49,35 +32,6 @@ export function writeControlsToFloat8(ctrl: Partial<CarControls>, out8: Float32A
   out8[5] = ctrl.jump ? 1 : 0;
   out8[6] = ctrl.boost ? 1 : 0;
   out8[7] = ctrl.handbrake ? 1 : 0;
-}
-
-/**
- * Decodes Necto 12-dim logits ([3 throttle, 3 steer, 2 jump, 2 boost, 2 handbrake]) into CarControls.
- */
-export function decodeNectoLogits(logits12: ArrayLike<number>): CarControls {
-  const argmaxRange = (start: number, len: number): number => {
-    let best = 0;
-    for (let i = 1; i < len; i++) {
-      if (logits12[start + i] > logits12[start + best]) best = i;
-    }
-    return best;
-  };
-  const throttle = argmaxRange(0, 3);
-  const steer = argmaxRange(3, 3);
-  const jump = argmaxRange(6, 2);
-  const boost = argmaxRange(8, 2);
-  const handbrake = argmaxRange(10, 2);
-
-  return decodeCarControls([
-    throttle - 1,
-    steer - 1,
-    throttle - 1,
-    (steer - 1) * (1 - handbrake) || 0,
-    (steer - 1) * handbrake || 0,
-    jump,
-    boost,
-    handbrake,
-  ]);
 }
 
 export interface AttachedCarMaskView {

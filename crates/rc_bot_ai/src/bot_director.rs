@@ -2,11 +2,13 @@
 //! scripted kickoff handoff, and direct writeback into `SimInstance.controls_buffer`.
 
 use rc_physics_sim::{
-    layout::{CarControlsPod, MAX_CARS},
+    layout::{CarControlsPod, MAX_CARS, MAX_PADS},
     sim_instance::SimInstance,
 };
 
 use crate::{
+    action_tables::{decode_necto_logits, decode_nexto_logits},
+    earl_perceiver::{build_earl_entities, EarlPerceiverScratch},
     heuristic_and_kickoff::{multi_car_heuristic_decide, nexto_scripted_kickoff_controls},
     layout_and_specs::{
         BotBatchInferenceOutputPod, BotCarSlotDiagnosticsPod, BotPolicyId,
@@ -21,7 +23,9 @@ pub struct BotDirector {
     pub output: BotBatchInferenceOutputPod,
     pub kickoff_timeline: KickoffTimelineBufferPod,
     pub slot_teams: [u32; MAX_CARS],
-    pub demo_timers: [f32; MAX_CARS],
+    pub demo_timers: [f64; MAX_CARS],
+    pub boost_timers: [[f64; MAX_PADS]; MAX_CARS],
+    pub earl_scratch: EarlPerceiverScratch,
 }
 
 impl Default for BotDirector {
@@ -54,6 +58,8 @@ impl BotDirector {
             kickoff_timeline: KickoffTimelineBufferPod::default(),
             slot_teams,
             demo_timers: [0.0; MAX_CARS],
+            boost_timers: [[0.0; MAX_PADS]; MAX_CARS],
+            earl_scratch: EarlPerceiverScratch::new(),
         }
     }
 
@@ -130,6 +136,7 @@ impl BotDirector {
             self.output.controls[idx] = CarControlsPod::default();
             self.output.prev_actions_flat[idx] = [0.0; 8];
             self.demo_timers[idx] = 0.0;
+            self.boost_timers[idx] = [0.0; MAX_PADS];
             let diag = &mut self.output.slot_diagnostics[idx];
             diag.tick_skip_remaining = 0;
             diag.kickoff_step = 0;
@@ -182,7 +189,7 @@ impl BotDirector {
         self.output.loaded_policy_mask = self.weights.loaded_mask;
         self.output.last_step_tick = current_tick;
 
-
+        let active_car_mask = sim.active_car_mask() as u32;
         let kickoff_active = is_kickoff != 0;
 
         for car_idx in 0..MAX_CARS {
@@ -190,7 +197,7 @@ impl BotDirector {
             if (mask & bit) == 0 {
                 continue;
             }
-            if sim.car_slots[car_idx].is_none() {
+            if active_car_mask != 0 && sim.car_slots[car_idx].is_none() {
                 continue;
             }
 
@@ -202,34 +209,94 @@ impl BotDirector {
                 continue;
             }
 
-            let diag = &mut self.output.slot_diagnostics[car_idx];
-            let pid = BotPolicyId::from_i32(diag.policy_id as i32);
+            let pid = BotPolicyId::from_i32(self.output.slot_diagnostics[car_idx].policy_id as i32);
             let team = self.slot_teams[car_idx];
 
             if !kickoff_active {
-                diag.kickoff_step = 0;
-                diag.used_scripted_kickoff = 0;
+                self.output.slot_diagnostics[car_idx].kickoff_step = 0;
+                self.output.slot_diagnostics[car_idx].used_scripted_kickoff = 0;
             }
 
-            if diag.tick_skip_remaining > 0 {
-                diag.tick_skip_remaining -= 1;
+            if self.output.slot_diagnostics[car_idx].tick_skip_remaining > 0 {
+                self.output.slot_diagnostics[car_idx].tick_skip_remaining -= 1;
                 sim.controls_buffer[car_idx] = self.output.controls[car_idx];
                 continue;
             }
 
             let mut chosen_ctrl = None;
+            let mut chosen_act_idx: i32 = -1;
             if kickoff_active && pid.supports_scripted_kickoff() {
+                let k_step = self.output.slot_diagnostics[car_idx].kickoff_step;
                 if let Some(scripted) = nexto_scripted_kickoff_controls(
                     &sim.state_buffer,
                     car_idx,
                     team,
-                    diag.kickoff_step,
+                    k_step,
                 ) {
-                    diag.kickoff_step += 1;
-                    diag.used_scripted_kickoff = 1;
+                    self.output.slot_diagnostics[car_idx].kickoff_step = k_step + 1;
+                    self.output.slot_diagnostics[car_idx].used_scripted_kickoff = 1;
                     chosen_ctrl = Some(scripted);
                 } else {
-                    diag.used_scripted_kickoff = 0;
+                    self.output.slot_diagnostics[car_idx].used_scripted_kickoff = 0;
+                }
+            }
+
+            if chosen_ctrl.is_none() {
+                let prev_act = self.output.prev_actions_flat[car_idx];
+                let num_cars_in_state =
+                    (sim.state_buffer.header.num_cars.round().max(0.0) as usize).min(MAX_CARS);
+                let state_car_mask = if num_cars_in_state > 0 {
+                    ((1u32 << num_cars_in_state) - 1) | mask
+                } else {
+                    mask
+                };
+                let roster_mask = if active_car_mask != 0 {
+                    active_car_mask
+                } else {
+                    state_car_mask
+                };
+                match pid {
+                    BotPolicyId::Nexto => {
+                        if let Some(weights) = self.weights.get(BotPolicyId::Nexto) {
+                            build_earl_entities(
+                                &sim.state_buffer,
+                                &sim.pad_info_buffer,
+                                &prev_act,
+                                car_idx,
+                                team,
+                                roster_mask,
+                                &self.slot_teams,
+                                None,
+                                &mut self.earl_scratch,
+                            );
+                            if let Some(logits) = self.earl_scratch.forward_nexto(weights, None) {
+                                let (act_idx, ctrl) = decode_nexto_logits(logits);
+                                chosen_act_idx = act_idx as i32;
+                                chosen_ctrl = Some(ctrl);
+                            }
+                        }
+                    }
+                    BotPolicyId::Necto => {
+                        if let Some(weights) = self.weights.get(BotPolicyId::Necto) {
+                            build_earl_entities(
+                                &sim.state_buffer,
+                                &sim.pad_info_buffer,
+                                &prev_act,
+                                car_idx,
+                                team,
+                                roster_mask,
+                                &self.slot_teams,
+                                Some((&mut self.demo_timers, &mut self.boost_timers[car_idx])),
+                                &mut self.earl_scratch,
+                            );
+                            if let Some(logits12) = self.earl_scratch.forward_necto(weights, None) {
+                                let (act_idx, ctrl) = decode_necto_logits(logits12);
+                                chosen_act_idx = act_idx as i32;
+                                chosen_ctrl = Some(ctrl);
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
 
@@ -245,8 +312,10 @@ impl BotDirector {
                 )
             });
 
+            let diag = &mut self.output.slot_diagnostics[car_idx];
             let skip = diag.tick_skip.max(1);
             diag.tick_skip_remaining = skip - 1;
+            diag.last_action_index = chosen_act_idx;
             self.output.controls[car_idx] = ctrl;
             self.output.prev_actions_flat[car_idx] = [
                 ctrl.throttle,
