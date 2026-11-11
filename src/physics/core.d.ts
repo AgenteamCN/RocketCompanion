@@ -178,6 +178,22 @@ export interface RocketSimWasmModule {
   _physics_getReplaySignalCount(): number;
   _physics_setReplayRecordingActive(active: number): void;
   _physics_getReplayRecordingActive(): number;
+  _physics_getReplayCodecHeaderPtr(): number;
+  _physics_allocReplayImportBuffer(byteLen: number): number;
+  _physics_decodeImportedReplayStream(
+    byteLen: number,
+    interpolationMode: number,
+    synthesizeControls: number
+  ): number;
+  _physics_encodeReplayExportStream(useDeltaTranspose: number): number;
+  _physics_getReplayExportBufferPtr(): number;
+  _physics_getReplayExportBufferSize(): number;
+  _physics_getReplayRosterPtr(): number;
+  _physics_getReplayBookmarkTrackPtr(): number;
+  _physics_getReplayBookmarkCount(): number;
+  _physics_seekReplayTime(timeSec: number, interpolateMode: number): number;
+  _physics_diffReplayFrameAnomaly(frameIndex: number, posThresholdUu: number): number;
+  _physics_getReplayAnomalyDiffPtr(): number;
   _physics_setCarThreeWheels(carIndex: number, enabled: number): number;
   _physics_getCarThreeWheels(carIndex: number): number;
   _physics_setArenaPreset(presetIndex: number): void;
@@ -247,6 +263,98 @@ export interface RocketSimWasmModule {
     elapsedTicks: number,
     flags: number,
     crossArmLength: number
+  ): number;
+  _physics_stepAudioDirector(dtSec: number): number;
+  _physics_getAudioCuePtr(): number;
+  _physics_getAudioCueSize(): number;
+  _physics_getAudioConfigPtr(): number;
+  _physics_getAudioConfigSize(): number;
+  _physics_getAudioListenerPtr(): number;
+  _physics_setAudioListenerState(
+    posX: number,
+    posY: number,
+    posZ: number,
+    fwdX: number,
+    fwdY: number,
+    fwdZ: number,
+    upX: number,
+    upY: number,
+    upZ: number,
+    activeCarIndex: number,
+    effectiveNumCars: number,
+    flags: number
+  ): void;
+  _physics_resetAudioDirector(activeCarIndex: number): void;
+  _physics_triggerAudioCarAction(carIndex: number, actionCode: number): void;
+  _physics_loadBotWeights(policyId: number, dataPtr: number, byteLen: number): number;
+  _physics_isBotPolicyLoaded(policyId: number): number;
+  _physics_configureBotSlot(
+    carIndex: number,
+    policyId: number,
+    team: number,
+    tickSkip: number
+  ): number;
+  _physics_resetBotDirector(carMask: number): void;
+  _physics_overrideBotControls(carIndex: number, controlsPtr: number): number;
+  _physics_stepBotInferenceMask(activeBotMask: number, isKickoff: number): number;
+  _physics_getBotBatchOutputPtr(): number;
+  _physics_getBotBatchOutputSize(): number;
+  _physics_precomputeBotKickoffTimeline(
+    policyId: number,
+    spawnIndex: number,
+    maxSteps: number
+  ): number;
+  _physics_getBotKickoffTimelinePtr(): number;
+  _physics_botSimdMatVecBias(
+    wPtr: number,
+    xPtr: number,
+    bPtr: number,
+    outPtr: number,
+    inDim: number,
+    outDim: number
+  ): void;
+  _physics_clearReconcilerHistory(): void;
+  _physics_getReconcilerControlsRingPtr(): number;
+  _physics_getReconcilerControlsRingCapacity(): number;
+  _physics_getReconcilerControlsEntryStride(): number;
+  _physics_getReconcilerOutcomePtr(): number;
+  _physics_setReconcilerTickControls(
+    tick: number,
+    carIndex: number,
+    throttle: number,
+    steer: number,
+    pitch: number,
+    yaw: number,
+    roll: number,
+    jump: number,
+    boost: number,
+    handbrake: number
+  ): void;
+  _physics_setReconcilerRemoteControls(
+    carIndex: number,
+    throttle: number,
+    steer: number,
+    pitch: number,
+    yaw: number,
+    roll: number,
+    jump: number,
+    boost: number,
+    handbrake: number
+  ): void;
+  _physics_reconcileRollbackToTick(
+    serverTick: number,
+    targetClientTick: number,
+    localCarIndex: number,
+    kickoffMaskUntilTick: number,
+    authoritativeStatePtr: number,
+    floatCount: number
+  ): number;
+  _physics_stepReconcilerRange(
+    fromTick: number,
+    toTick: number,
+    localCarIndex: number,
+    kickoffMaskUntilTick: number,
+    silent: number
   ): number;
 
   // Semantic unprefixed aliases bound by RocketSimWasm.ts
@@ -349,6 +457,18 @@ export interface RocketSimWasmModule {
   physics_getReplaySignalCount: RocketSimWasmModule['_physics_getReplaySignalCount'];
   physics_setReplayRecordingActive: RocketSimWasmModule['_physics_setReplayRecordingActive'];
   physics_getReplayRecordingActive: RocketSimWasmModule['_physics_getReplayRecordingActive'];
+  physics_getReplayCodecHeaderPtr: RocketSimWasmModule['_physics_getReplayCodecHeaderPtr'];
+  physics_allocReplayImportBuffer: RocketSimWasmModule['_physics_allocReplayImportBuffer'];
+  physics_decodeImportedReplayStream: RocketSimWasmModule['_physics_decodeImportedReplayStream'];
+  physics_encodeReplayExportStream: RocketSimWasmModule['_physics_encodeReplayExportStream'];
+  physics_getReplayExportBufferPtr: RocketSimWasmModule['_physics_getReplayExportBufferPtr'];
+  physics_getReplayExportBufferSize: RocketSimWasmModule['_physics_getReplayExportBufferSize'];
+  physics_getReplayRosterPtr: RocketSimWasmModule['_physics_getReplayRosterPtr'];
+  physics_getReplayBookmarkTrackPtr: RocketSimWasmModule['_physics_getReplayBookmarkTrackPtr'];
+  physics_getReplayBookmarkCount: RocketSimWasmModule['_physics_getReplayBookmarkCount'];
+  physics_seekReplayTime: RocketSimWasmModule['_physics_seekReplayTime'];
+  physics_diffReplayFrameAnomaly: RocketSimWasmModule['_physics_diffReplayFrameAnomaly'];
+  physics_getReplayAnomalyDiffPtr: RocketSimWasmModule['_physics_getReplayAnomalyDiffPtr'];
   physics_setCarThreeWheels: RocketSimWasmModule['_physics_setCarThreeWheels'];
   physics_getCarThreeWheels: RocketSimWasmModule['_physics_getCarThreeWheels'];
   physics_setArenaPreset: RocketSimWasmModule['_physics_setArenaPreset'];
@@ -388,6 +508,36 @@ export interface RocketSimWasmModule {
   physics_getAerialBubbleRibsPtr: RocketSimWasmModule['_physics_getAerialBubbleRibsPtr'];
   physics_getInterceptCrossSegmentsPtr: RocketSimWasmModule['_physics_getInterceptCrossSegmentsPtr'];
   physics_updateReachabilityAndIntercept: RocketSimWasmModule['_physics_updateReachabilityAndIntercept'];
+  physics_stepAudioDirector: RocketSimWasmModule['_physics_stepAudioDirector'];
+  physics_getAudioCuePtr: RocketSimWasmModule['_physics_getAudioCuePtr'];
+  physics_getAudioCueSize: RocketSimWasmModule['_physics_getAudioCueSize'];
+  physics_getAudioConfigPtr: RocketSimWasmModule['_physics_getAudioConfigPtr'];
+  physics_getAudioConfigSize: RocketSimWasmModule['_physics_getAudioConfigSize'];
+  physics_getAudioListenerPtr: RocketSimWasmModule['_physics_getAudioListenerPtr'];
+  physics_setAudioListenerState: RocketSimWasmModule['_physics_setAudioListenerState'];
+  physics_resetAudioDirector: RocketSimWasmModule['_physics_resetAudioDirector'];
+  physics_triggerAudioCarAction: RocketSimWasmModule['_physics_triggerAudioCarAction'];
+  physics_loadBotWeights: RocketSimWasmModule['_physics_loadBotWeights'];
+  physics_isBotPolicyLoaded: RocketSimWasmModule['_physics_isBotPolicyLoaded'];
+  physics_configureBotSlot: RocketSimWasmModule['_physics_configureBotSlot'];
+  physics_resetBotDirector: RocketSimWasmModule['_physics_resetBotDirector'];
+  physics_overrideBotControls: RocketSimWasmModule['_physics_overrideBotControls'];
+  physics_stepBotInferenceMask: RocketSimWasmModule['_physics_stepBotInferenceMask'];
+  physics_getBotBatchOutputPtr: RocketSimWasmModule['_physics_getBotBatchOutputPtr'];
+  physics_getBotBatchOutputSize: RocketSimWasmModule['_physics_getBotBatchOutputSize'];
+  physics_precomputeBotKickoffTimeline: RocketSimWasmModule['_physics_precomputeBotKickoffTimeline'];
+  physics_getBotKickoffTimelinePtr: RocketSimWasmModule['_physics_getBotKickoffTimelinePtr'];
+  physics_botSimdMatVecBias: RocketSimWasmModule['_physics_botSimdMatVecBias'];
+
+  physics_clearReconcilerHistory: RocketSimWasmModule['_physics_clearReconcilerHistory'];
+  physics_getReconcilerControlsRingPtr: RocketSimWasmModule['_physics_getReconcilerControlsRingPtr'];
+  physics_getReconcilerControlsRingCapacity: RocketSimWasmModule['_physics_getReconcilerControlsRingCapacity'];
+  physics_getReconcilerControlsEntryStride: RocketSimWasmModule['_physics_getReconcilerControlsEntryStride'];
+  physics_getReconcilerOutcomePtr: RocketSimWasmModule['_physics_getReconcilerOutcomePtr'];
+  physics_setReconcilerTickControls: RocketSimWasmModule['_physics_setReconcilerTickControls'];
+  physics_setReconcilerRemoteControls: RocketSimWasmModule['_physics_setReconcilerRemoteControls'];
+  physics_reconcileRollbackToTick: RocketSimWasmModule['_physics_reconcileRollbackToTick'];
+  physics_stepReconcilerRange: RocketSimWasmModule['_physics_stepReconcilerRange'];
 
   [key: string]: any;
 }

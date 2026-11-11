@@ -9,12 +9,22 @@ use std::{
     sync::Mutex,
 };
 
+use rc_audio_director::AudioDirectorInstance;
+use rc_bot_ai::BotDirector;
 use rc_physics_sim::sim_instance::SimInstance;
 
 struct GlobalSim(UnsafeCell<Option<SimInstance>>);
 unsafe impl Sync for GlobalSim {}
 
+struct GlobalAudioDirector(UnsafeCell<Option<AudioDirectorInstance>>);
+unsafe impl Sync for GlobalAudioDirector {}
+
+struct GlobalBotDirector(UnsafeCell<Option<BotDirector>>);
+unsafe impl Sync for GlobalBotDirector {}
+
 static SIM: GlobalSim = GlobalSim(UnsafeCell::new(None));
+static AUDIO_DIRECTOR: GlobalAudioDirector = GlobalAudioDirector(UnsafeCell::new(None));
+static BOT_DIRECTOR: GlobalBotDirector = GlobalBotDirector(UnsafeCell::new(None));
 static ALLOCATIONS: Mutex<Option<HashMap<usize, Layout>>> = Mutex::new(None);
 
 pub(crate) fn with_sim<R>(f: impl FnOnce(&mut SimInstance) -> R) -> R {
@@ -24,6 +34,45 @@ pub(crate) fn with_sim<R>(f: impl FnOnce(&mut SimInstance) -> R) -> R {
         f(inst)
     }
 }
+
+pub(crate) fn with_audio<R>(f: impl FnOnce(&mut AudioDirectorInstance) -> R) -> R {
+    unsafe {
+        let slot = &mut *AUDIO_DIRECTOR.0.get();
+        let inst = slot.get_or_insert_with(AudioDirectorInstance::new);
+        f(inst)
+    }
+}
+
+pub(crate) fn with_bot<R>(f: impl FnOnce(&mut BotDirector) -> R) -> R {
+    unsafe {
+        let slot = &mut *BOT_DIRECTOR.0.get();
+        let inst = slot.get_or_insert_with(BotDirector::new);
+        f(inst)
+    }
+}
+
+pub(crate) fn with_sim_and_audio<R>(
+    f: impl FnOnce(&mut SimInstance, &mut AudioDirectorInstance) -> R,
+) -> R {
+    unsafe {
+        let sim_slot = &mut *SIM.0.get();
+        let sim_inst = sim_slot.get_or_insert_with(SimInstance::new);
+        let audio_slot = &mut *AUDIO_DIRECTOR.0.get();
+        let audio_inst = audio_slot.get_or_insert_with(AudioDirectorInstance::new);
+        f(sim_inst, audio_inst)
+    }
+}
+
+pub(crate) fn with_sim_and_bot<R>(f: impl FnOnce(&mut SimInstance, &mut BotDirector) -> R) -> R {
+    unsafe {
+        let sim_slot = &mut *SIM.0.get();
+        let sim_inst = sim_slot.get_or_insert_with(SimInstance::new);
+        let bot_slot = &mut *BOT_DIRECTOR.0.get();
+        let bot_inst = bot_slot.get_or_insert_with(BotDirector::new);
+        f(sim_inst, bot_inst)
+    }
+}
+
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _malloc(size: usize) -> usize {

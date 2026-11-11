@@ -1,8 +1,5 @@
 use glam::{EulerRot, Mat3A, Vec3A};
-use rc_physics_sim::{
-    layout::{GameStateBufferPod, MAX_CARS},
-    sim_instance::SavedSlotSnapshot,
-};
+use rc_physics_sim::layout::{GameStateBufferPod, MAX_CARS};
 use rocketsim::{consts, BallState, CarCore, CarState, PhysState};
 
 use crate::with_sim;
@@ -91,39 +88,12 @@ pub extern "C" fn _physics_restoreCompactState(in_buffer: *const f32, float_coun
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_saveStateSlot(slot: i32) -> i32 {
-    if !(0..8).contains(&slot) {
-        return 0;
-    }
-    with_sim(|sim| {
-        let Some(arena) = sim.arena.as_ref() else {
-            return 0;
-        };
-        sim.saved_slots[slot as usize] = Some(SavedSlotSnapshot {
-            arena: arena.clone(),
-            car_slots: sim.car_slots,
-            car_custom: sim.car_custom,
-            state_buffer: sim.state_buffer,
-        });
-        1
-    })
+    with_sim(|sim| sim.save_state_slot(slot))
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_restoreStateSlot(slot: i32) -> i32 {
-    if !(0..8).contains(&slot) {
-        return 0;
-    }
-    with_sim(|sim| {
-        let Some(saved) = sim.saved_slots[slot as usize].as_ref() else {
-            return 0;
-        };
-        sim.arena = Some(saved.arena.clone());
-        sim.car_slots = saved.car_slots;
-        sim.car_custom = saved.car_custom;
-        sim.state_buffer = saved.state_buffer;
-        sim.sync_state_to_buffer();
-        1
-    })
+    with_sim(|sim| sim.restore_state_slot(slot))
 }
 
 #[unsafe(no_mangle)]
