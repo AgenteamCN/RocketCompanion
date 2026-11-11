@@ -17,7 +17,6 @@ import {
 } from './SafeTensorsLoader.ts';
 import { EarlPerceiverEngine } from './EarlPerceiverEngine.ts';
 import { SequentialMlpEngine, selectMaskedArgmax } from './SequentialMlpEngine.ts';
-import { RipplePerceiverEngine } from './RipplePerceiverEngine.ts';
 import {
   DEFAULT_90_ACTIONS,
   FURY_380_ACTIONS,
@@ -30,7 +29,6 @@ import {
 } from './botpack9700488Actions.ts';
 import {
   MLP_BOTPACK_SPECS,
-  RIPPLE_BOTPACK_SPECS,
   getExperimentalBotPolicyMeta,
   type ExperimentalBotPolicyMeta,
 } from './botpack9700488Specs.ts';
@@ -46,7 +44,6 @@ import {
   buildGalactusObs,
   type BallPredictionEnginePort,
 } from './botpack9700488ObsExtendedPipeline.ts';
-import { RippleAgentState } from './RippleObsBuilder.ts';
 import { multiCarHeuristicDecide } from './multiCarHeuristicPolicy.ts';
 import {
   DEFAULT_CAR_CONTROLS,
@@ -63,7 +60,6 @@ export type { ExperimentalBotPolicyMeta };
 // Shared zero-GC forward engines (stateless across calls; per-agent state stays on ExperimentalBotAgent)
 const sPerceiverEngine = new EarlPerceiverEngine();
 const sSequentialMlpEngine = new SequentialMlpEngine();
-const sRippleEngine = new RipplePerceiverEngine();
 
 /**
  * Preloads or retrieves a cached SafeTensors model for any neural policy.
@@ -118,7 +114,6 @@ export class ExperimentalBotAgent {
   mask380: Uint8Array;
   demoTimers: Float64Array;
   boostTimers: Float64Array;
-  rippleState: RippleAgentState;
   tickSkipCounter: number;
   lastInferenceMs: number;
   _warnedUnloadedFallback?: boolean;
@@ -135,7 +130,6 @@ export class ExperimentalBotAgent {
     this.mask380 = new Uint8Array(380);
     this.demoTimers = new Float64Array(8);
     this.boostTimers = new Float64Array(34);
-    this.rippleState = new RippleAgentState();
     this.tickSkipCounter = 0;
     this._staggered = false;
     this.lastInferenceMs = 0;
@@ -159,7 +153,6 @@ export class ExperimentalBotAgent {
     this.prevAction8.fill(0);
     this.demoTimers.fill(0);
     this.boostTimers.fill(0);
-    this.rippleState.reset();
     this.tickSkipCounter = 0;
     this._staggered = false;
   }
@@ -227,7 +220,7 @@ export class ExperimentalBotAgent {
   ): CarControls {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
-    if (this.botType === 'heuristic') {
+    if (this.botType === 'heuristic' || this.botType === 'ripple_v1_1') {
       this.action = multiCarHeuristicDecide(
         simState,
         boostPads,
@@ -300,20 +293,6 @@ export class ExperimentalBotAgent {
           parsedModel.tensors
         );
         this.action = decodeNectoLogits(logits12);
-        writeControlsToFloat8(this.action, this.prevAction8);
-      } else if (this.botType === 'ripple_v1_1') {
-        const enginePort = typeof physicsEngine === 'object' ? physicsEngine : null;
-        const rObs = this.rippleState.buildObs(
-          simState,
-          this.carIndex,
-          this.team,
-          activeCars,
-          enginePort
-        );
-        const rippleSpec = RIPPLE_BOTPACK_SPECS[this.botType];
-        const logits276 = sRippleEngine.forward(rObs, parsedModel.tensors, rippleSpec);
-        const actIdx = selectMaskedArgmax(logits276, null);
-        this.action = this.rippleState.stepDelayedActionQueue(actIdx);
         writeControlsToFloat8(this.action, this.prevAction8);
       } else {
         const enginePort = typeof physicsEngine === 'object' ? physicsEngine : null;
