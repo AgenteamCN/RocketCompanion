@@ -211,7 +211,9 @@ export function normalizeReplayDirectorCarEntry(
   const paintFinish =
     raw?.paintFinish === 'matte' || raw?.paintFinish === 'metallic' ? raw.paintFinish : 'metallic';
   const boostVisual =
-    raw?.boostVisual === 'cartoon' || raw?.boostVisual === 'gold-rush'
+    raw?.boostVisual === 'cartoon' ||
+    raw?.boostVisual === 'gold-rush' ||
+    raw?.boostVisual === 'custom'
       ? raw.boostVisual
       : 'cartoon';
   const boostAudio =

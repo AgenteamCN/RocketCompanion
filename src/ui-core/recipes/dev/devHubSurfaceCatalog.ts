@@ -29,6 +29,7 @@ import {
   GOAL_VOLUME_TUNER_PRESET,
   KEYBOARD_INPUT_OVERLAY_TUNER_PRESET,
   NAME_TAG_TUNER_PRESET,
+  PERFORMANCE_BOOST_TUNER_PRESET,
   SPATIAL_AUDIO_TUNER_PRESET,
   STATIC_TRAINING_BALL_CAM_TUNER_PRESET,
   SUPERSONIC_TRAIL_TUNER_PRESET,
@@ -124,6 +125,19 @@ export const ACTIVE_TUNER_SPECS: DevFloatingLauncherSpec[] = [
       'Developer tuner for the 3x3 Keyboard Input Overlay (opacity superposition, trapezoid bevels, 3D WASD attitude arrows) and 4-way 3D Car Nose Arrows',
     hoverTooltip:
       'Keyboard Input Overlay Tuner: Calibrate 3x3 retro keycap geometry, opacity superposition, 3D camera-relative WASD arrows, and 4-way 3D Car Nose Arrows.',
+    section: 'primary',
+  },
+  {
+    id: PERFORMANCE_BOOST_TUNER_PRESET.id,
+    preset: PERFORMANCE_BOOST_TUNER_PRESET,
+    icon: Sparkles,
+    iconColor: 'text-amber-400',
+    badge: 'Zero-Bloom · Attach vs Trail',
+    badgeTone: 'amber',
+    description:
+      'Extreme Performance Boost Tuner: Pose-Attached Laser Beam vs Trajectory Tube Ribbon, Single Color vs 3-Stop Gradient & alpha expire curves',
+    hoverTooltip:
+      'Performance Boost Tuner: Compare O(1) Pose-Attached Beam vs 120Hz Trajectory Tube Ribbon with Single Color or 3-Stop Bezier Gradient and auto-switch to Custom.',
     section: 'primary',
   },
   {

@@ -95,16 +95,17 @@ export const GarageLoadoutTab: React.FC<GarageLoadoutTabProps> = ({
         title="Boost Trail Effect"
         value={materials.boostVisual}
         onValueChange={(val) =>
-          updateMaterials({ boostVisual: val as 'cartoon' | 'gold-rush' })
+          updateMaterials({ boostVisual: val as 'cartoon' | 'gold-rush' | 'custom' })
         }
         options={[
           { value: 'cartoon', label: 'Cartoon' },
           { value: 'gold-rush', label: 'Gold Rush' },
+          { value: 'custom', label: 'Custom' },
         ]}
         isLight={isLight}
         onMouseEnter={() =>
           setHoveredDesc(
-            'Selects personal rocket booster particle and trail rendering style (Cartoon vs Gold Rush).'
+            'Selects personal rocket booster visual style (Cartoon, Gold Rush, or Custom Performance Boost).'
           )
         }
         onMouseLeave={onLeave}

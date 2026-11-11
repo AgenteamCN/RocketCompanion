@@ -216,8 +216,9 @@ export function encodeBoostVisualIndex(boostVisual: unknown): number {
   return boostVisual === 'cartoon' ? 1 : 0;
 }
 
-export function decodeBoostVisualIndex(index: unknown): 'gold-rush' | 'cartoon' {
+export function decodeBoostVisualIndex(index: unknown): 'gold-rush' | 'cartoon' | 'custom' {
   if (typeof index === 'string') {
+    if (index === 'custom') return 'custom';
     return index === 'cartoon' ? 'cartoon' : 'gold-rush';
   }
   return (Number(index) & 1) === 1 ? 'cartoon' : 'gold-rush';

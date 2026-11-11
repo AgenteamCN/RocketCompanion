@@ -196,7 +196,8 @@ export function stepArenaWorldFrame(
     world.playerCarIndex,
     world._headerView,
     world._currCarView,
-    carControlsResolver
+    carControlsResolver,
+    world.camera?.position ?? null
   );
 }
 

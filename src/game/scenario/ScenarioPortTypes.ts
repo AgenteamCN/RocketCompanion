@@ -20,7 +20,7 @@ export interface VirtualPeerLoadoutSpec {
   hitboxId: string;
   colorSlot: number;
   paintFinish: 'matte' | 'metallic';
-  boostVisual: 'gold-rush' | 'cartoon';
+  boostVisual: 'gold-rush' | 'cartoon' | 'custom';
   boostAudio: 'rush' | 'standard' | 'flamethrower' | 'plasma';
   replaySkipPolicy?: PeerReplaySkipPolicy;
 }

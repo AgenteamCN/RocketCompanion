@@ -128,7 +128,10 @@ export function setRegistrySlotCarBoostVisual(
   boostVisual: string | null
 ): void {
   if (typeof carIndex !== 'number' || carIndex < 0) return;
-  const normalized = boostVisual === 'cartoon' || boostVisual === 'gold-rush' ? boostVisual : null;
+  const normalized =
+    boostVisual === 'cartoon' || boostVisual === 'gold-rush' || boostVisual === 'custom'
+      ? boostVisual
+      : null;
   state.carBoostVisuals[carIndex] = normalized;
   const emitters = state.carBoosts[carIndex];
   if (Array.isArray(emitters)) {

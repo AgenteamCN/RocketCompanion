@@ -69,7 +69,8 @@ export function updateBoostVisuals(
   playerCarIndex = 0,
   headerView: ArenaHeaderView | null = null,
   currCarView: CarStateView | null = null,
-  carControlsResolver: CarControlsResolver | null = null
+  carControlsResolver: CarControlsResolver | null = null,
+  cameraPos: THREE.Vector3 | null = null
 ): void {
   const header = headerView?.attach(currState);
   const numCars = header ? header.numCars : cars.length;
@@ -109,7 +110,8 @@ export function updateBoostVisuals(
         activeVisuals && (forcePreview || currentThrottle > 0.01),
         carGroup.visible,
         delta,
-        activeVisuals
+        activeVisuals,
+        cameraPos
       );
     }
   }

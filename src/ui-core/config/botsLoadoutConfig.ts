@@ -18,7 +18,7 @@ import {
 } from './anthemCatalogConfig';
 
 export type BotPaintFinishOption = 'metallic' | 'matte';
-export type BotBoostVisualOption = 'cartoon' | 'gold-rush';
+export type BotBoostVisualOption = 'cartoon' | 'gold-rush' | 'custom';
 export type BotBoostAudioOption = 'standard' | 'rush' | 'flamethrower' | 'plasma';
 export type BotAnthemCategoryOption =
   | 'Aquatic'
@@ -42,6 +42,7 @@ export const PAINT_FINISH_CATALOG: readonly { id: BotPaintFinishOption; name: st
 export const BOOST_VISUAL_CATALOG: readonly { id: BotBoostVisualOption; name: string }[] = [
   { id: 'cartoon', name: 'Cartoon' },
   { id: 'gold-rush', name: 'Gold Rush' },
+  { id: 'custom', name: 'Custom (Perf)' },
 ];
 
 export const BOOST_AUDIO_CATALOG: readonly { id: BotBoostAudioOption; name: string }[] = [
@@ -96,6 +97,7 @@ export const ALL_BOT_PAINT_FINISHES: readonly BotPaintFinishOption[] = Object.fr
 export const ALL_BOT_BOOST_VISUALS: readonly BotBoostVisualOption[] = Object.freeze([
   'cartoon',
   'gold-rush',
+  'custom',
 ]);
 
 export const ALL_BOT_BOOST_AUDIOS: readonly BotBoostAudioOption[] = Object.freeze([

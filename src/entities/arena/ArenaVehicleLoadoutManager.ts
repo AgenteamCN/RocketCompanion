@@ -149,7 +149,9 @@ export class ArenaVehicleLoadoutManager {
   public setCarBoostVisual(carIndex: number, boostVisual: string | null): void {
     if (typeof carIndex !== 'number' || carIndex < 0) return;
     const normalized =
-      boostVisual === 'cartoon' || boostVisual === 'gold-rush' ? boostVisual : null;
+      boostVisual === 'cartoon' || boostVisual === 'gold-rush' || boostVisual === 'custom'
+        ? boostVisual
+        : null;
     this.carBoostVisuals[carIndex] = normalized;
     const emitters = this.registry.carBoosts?.[carIndex];
     if (Array.isArray(emitters)) {

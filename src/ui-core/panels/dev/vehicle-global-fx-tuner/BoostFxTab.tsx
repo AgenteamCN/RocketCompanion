@@ -5,8 +5,8 @@ import { ToggleSwitch } from '../../../primitives/ToggleSwitch';
 import type { BoostParticleRuntimeConfig } from '../../../config/vehicleTunerConfig';
 
 export interface BoostFxTabProps {
-  boostVisual?: 'cartoon' | 'gold-rush';
-  onBoostVisualChange?: (mode: 'cartoon' | 'gold-rush') => void;
+  boostVisual?: 'cartoon' | 'gold-rush' | 'custom';
+  onBoostVisualChange?: (mode: 'cartoon' | 'gold-rush' | 'custom') => void;
   particleConfig: BoostParticleRuntimeConfig;
   applyParticlePatch?: (patch: Partial<BoostParticleRuntimeConfig>) => void;
   isLight: boolean;
@@ -37,10 +37,11 @@ export const BoostFxTab: React.FC<BoostFxTabProps> = ({
           <span className="font-semibold text-[11px]">Active Boost Visual Style</span>
           <SegmentedSwitch
             value={boostVisual ?? 'gold-rush'}
-            onChange={(val) => onBoostVisualChange?.(val as 'cartoon' | 'gold-rush')}
+            onChange={(val) => onBoostVisualChange?.(val as 'cartoon' | 'gold-rush' | 'custom')}
             options={[
               { value: 'cartoon', label: 'Cartoon' },
               { value: 'gold-rush', label: 'Gold Rush' },
+              { value: 'custom', label: 'Custom (Perf)' },
             ]}
             size="sm"
             fullWidth

@@ -47,6 +47,7 @@ export const STORAGE_KEYS = Object.freeze({
   UNDERLINE_TABS_TOKENS: 'rc-underline-tabs-tokens-v1',
   STATIC_TRAINING_BALL_CAM_TUNER: 'rc_static_training_ball_cam_tuner_v2',
   KEYBOARD_INPUT_OVERLAY: 'rc_keyboard_input_overlay_v2',
+  PERFORMANCE_BOOST: 'rc_performance_boost_v1',
 });
 
 export const UI_THEME_STORAGE_KEY = STORAGE_KEYS.UI_THEME;

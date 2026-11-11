@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { boostParticleRuntimeConfig } from '../../../ui-core/config/vehicleTunerConfig.ts';
+import {
+  performanceBoostRuntimeConfig,
+  subscribePerformanceBoostConfig,
+  type PerformanceBoostConfig,
+} from '../../../ui-core/config/performanceBoostConfig.ts';
 import { ARCADE_DRIVE_COUNT, ARCADE_TRAIL_COUNT, ARCADE_BOOST_COLOR_HEX } from './boostCurves.ts';
 import { ArcadeBoostParticleMesh } from './ArcadeBoostParticleMesh.ts';
 import {
@@ -9,6 +14,8 @@ import {
 } from './arcadeConeVisual.ts';
 import { RealisticBoostEmitter } from './realisticBoostEmitter.ts';
 import { ArcadeParticlePhysics } from './arcadeParticlePhysics.ts';
+import { PerformanceBoostAttachVisual } from './PerformanceBoostAttachVisual.ts';
+import { PerformanceBoostTrailVisual } from './PerformanceBoostTrailVisual.ts';
 import {
   applyNozzleOffsetToVector,
   cloneOrCreateNozzleVector,
@@ -31,6 +38,7 @@ export class VehicleBoostEmitter {
   public drive: ArcadeBoostParticleMesh;
   public elapsed: number;
   public goldRush: RealisticBoostEmitter;
+  public isPrimary: boolean;
   public light: THREE.PointLight | null;
   public nozzleFlash:
     | THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>
@@ -43,17 +51,22 @@ export class VehicleBoostEmitter {
   public theme: string;
   public trail: ArcadeBoostParticleMesh;
 
+  public customAttach: PerformanceBoostAttachVisual | null = null;
+  public customTrail: PerformanceBoostTrailVisual | null = null;
+  private _unsubPerfConfig: (() => void) | null = null;
+
   setSpatial(_isSpatial: boolean): void {}
 
   constructor(
     scene: THREE.Scene | THREE.Object3D,
     carRoot: THREE.Object3D,
     nozzleLocal: THREE.Vector3,
-    _isPrimary = true,
+    isPrimary = true,
     isBot = false
   ) {
     this.scene = scene;
     this.car = carRoot;
+    this.isPrimary = Boolean(isPrimary);
     this.nozzleLocal = cloneOrCreateNozzleVector(nozzleLocal);
     this.offset = this.nozzleLocal;
     this.cone = new THREE.Group();
@@ -112,6 +125,25 @@ export class VehicleBoostEmitter {
 
     this.goldRush = new RealisticBoostEmitter(scene, carRoot, this.nozzleLocal, this.light);
     this._scratchWorldNozzle = new THREE.Vector3();
+
+    this._unsubPerfConfig = subscribePerformanceBoostConfig((cfg: PerformanceBoostConfig) => {
+      this.customAttach?.syncConfig(cfg);
+      this.customTrail?.syncConfig(cfg);
+    });
+  }
+
+  private _ensureCustomAttach(): PerformanceBoostAttachVisual {
+    if (!this.customAttach) {
+      this.customAttach = new PerformanceBoostAttachVisual(this.car);
+    }
+    return this.customAttach;
+  }
+
+  private _ensureCustomTrail(): PerformanceBoostTrailVisual {
+    if (!this.customTrail) {
+      this.customTrail = new PerformanceBoostTrailVisual(this.scene as THREE.Scene);
+    }
+    return this.customTrail;
   }
 
   _syncNozzlePositions(): void {
@@ -134,10 +166,12 @@ export class VehicleBoostEmitter {
   }
 
   setBoostVisual(theme: string | null | undefined): void {
-    this.boostVisualOverride = theme === 'cartoon' || theme === 'gold-rush' ? theme : null;
+    this.boostVisualOverride =
+      theme === 'cartoon' || theme === 'gold-rush' || theme === 'custom' ? theme : null;
   }
 
   get bloomActive(): boolean {
+    if (this.theme === 'custom') return false;
     if (!boostParticleRuntimeConfig.bloomEnabled) return false;
     if (this.theme === 'gold-rush') {
       return this.goldRush.bloomActive;
@@ -160,7 +194,8 @@ export class VehicleBoostEmitter {
     driving: boolean,
     visible: boolean,
     dt: number,
-    _isFocused = true
+    _isFocused = true,
+    cameraPos: THREE.Vector3 | null = null
   ): void {
     this._syncNozzlePositions();
     const isBoosting = boosting && visible;
@@ -171,6 +206,36 @@ export class VehicleBoostEmitter {
     if (this.theme !== currentTheme) {
       this.resetVisual();
       this.theme = currentTheme;
+    }
+
+    if (currentTheme === 'custom') {
+      if (this.light) this.light.intensity = 0;
+      const cfg = performanceBoostRuntimeConfig;
+
+      if (cfg.mergeCenterNozzle && !this.isPrimary) {
+        this.customAttach?.reset();
+        this.customTrail?.reset();
+        return;
+      }
+
+      if (cfg.mode === 'attach') {
+        this.customTrail?.reset();
+        const attach = this._ensureCustomAttach();
+        attach.step(dt, isBoosting, this.nozzleLocal, cfg);
+      } else {
+        this.customAttach?.reset();
+        const trail = this._ensureCustomTrail();
+        if (typeof this.car.updateMatrixWorld === 'function') {
+          this.car.updateMatrixWorld();
+        }
+        const nz = cfg.mergeCenterNozzle ? 0 : this.nozzleLocal.z;
+        this._scratchWorldNozzle.set(this.nozzleLocal.x, this.nozzleLocal.y, nz);
+        if (typeof this.car.localToWorld === 'function') {
+          this.car.localToWorld(this._scratchWorldNozzle);
+        }
+        trail.step(dt, isBoosting, this._scratchWorldNozzle, cameraPos, cfg);
+      }
+      return;
     }
 
     if (currentTheme === 'gold-rush') {
@@ -222,6 +287,8 @@ export class VehicleBoostEmitter {
   resetVisual(): void {
     this.physics.reset();
     this.goldRush.reset();
+    this.customAttach?.reset();
+    this.customTrail?.reset();
     this.coneOpacity = 0;
     this.cone.visible = false;
     if (this.nozzleFlash) this.nozzleFlash.visible = false;
@@ -229,16 +296,17 @@ export class VehicleBoostEmitter {
   }
 
   reset(): void {
-    this.physics.reset();
-    this.goldRush.reset();
-    this.coneOpacity = 0;
-    this.cone.visible = false;
-    if (this.nozzleFlash) this.nozzleFlash.visible = false;
-    if (this.light) this.light.intensity = 0;
+    this.resetVisual();
   }
 
   dispose(): void {
     this.resetVisual();
+    this._unsubPerfConfig?.();
+    this._unsubPerfConfig = null;
+    this.customAttach?.dispose();
+    this.customAttach = null;
+    this.customTrail?.dispose();
+    this.customTrail = null;
     this.goldRush.dispose();
     this.trail.dispose(this.scene);
     this.drive.dispose(this.car);

@@ -3,7 +3,7 @@ import { STORAGE_KEYS, safeStorage } from '../../config/storageHelpers';
 import { DEFAULT_CAMERA_SETTINGS, getInitialCamera } from '../../config/cameraDefaults';
 import { DEFAULT_REPLAY_DIRECTOR_FOV_DEG } from '../../config/replayDirectorConfig';
 import { updateReplayDirectorConfig } from '../../config/replayDirectorConfig';
-import { setMaterialsConfig, getInitialMaterials } from '../../config/materialsConfig';
+import { setMaterialsConfig, getInitialMaterials, onMaterialsConfigChange } from '../../config/materialsConfig';
 import { getInitialGraphics } from '../../config/trainingDefaults';
 import { getInitialTelemetry } from '../../config/uiConfig';
 import { type AppState } from '../appStoreTypes';
@@ -33,14 +33,24 @@ export const createCameraAndGraphicsSlice: StateCreator<
   [],
   [],
   CameraAndGraphicsSlice
-> = (set, get) => ({
-  renderScale: getInitialGraphics().renderScale ?? 50,
-  setRenderScale: (scale) => get().updateGraphics({ renderScale: scale }),
+> = (set, get) => {
+  onMaterialsConfigChange((nextMats) => {
+    const cur = get().materials;
+    if (!cur || cur.boostVisual !== nextMats.boostVisual || cur.paintFinish !== nextMats.paintFinish) {
+      const merged = { ...cur, ...nextMats };
+      set({ materials: merged });
+      get().bridge.onMaterialsChange?.(merged);
+    }
+  });
 
-  camera: getInitialCamera(),
-  graphics: getInitialGraphics(),
-  materials: getInitialMaterials(),
-  telemetry: getInitialTelemetry(),
+  return {
+    renderScale: getInitialGraphics().renderScale ?? 50,
+    setRenderScale: (scale) => get().updateGraphics({ renderScale: scale }),
+
+    camera: getInitialCamera(),
+    graphics: getInitialGraphics(),
+    materials: getInitialMaterials(),
+    telemetry: getInitialTelemetry(),
 
   updateCamera: (patch) => {
     set((s) => {
@@ -109,4 +119,5 @@ export const createCameraAndGraphicsSlice: StateCreator<
     updateReplayDirectorConfig({ cameraFovDeg: safeFov });
     get().bridge.onFreeCamFovChange?.(safeFov);
   },
-});
+  };
+};
