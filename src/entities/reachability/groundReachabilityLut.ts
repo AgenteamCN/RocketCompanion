@@ -15,6 +15,7 @@
  * is externalized at `/assets/models/ground_reachability_lut.bin`.
  */
 
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
 import { validateAssetResponse, resolveAssetPath } from '../../utils/AssetResponseValidator.ts';
 
 export const GROUND_REACHABILITY_LUT_URL = '/assets/models/ground_reachability_lut.bin';
@@ -35,14 +36,20 @@ export const GROUND_REACHABILITY_LUT_META = Object.freeze({
   unitScaleUU: 0.1,
 });
 
-let _decodedLut: any = null;
-let _loadingPromise: any = null;
+export const HORIZON_COLORS_HEX = Object.freeze([0x0df2a6, 0xffd91a, 0xff47a6]); // 1s Cyan-Green, 2s Gold, 3s Rose
+
+let _rawU16Lut: Uint16Array | null = null;
+let _decodedLut: Float32Array | null = null;
+let _loadingPromise: Promise<Float32Array | null> | null = null;
+const _uploadedWasmModules = new WeakSet<object>();
 
 /**
  * Asynchronously fetches, validates, and decodes the external binary Uint16Array LUT
  * into a cached Float32Array in Unreal Units (UU).
  */
-export async function preloadGroundReachabilityLut(rawUrl = GROUND_REACHABILITY_LUT_URL) {
+export async function preloadGroundReachabilityLut(
+  rawUrl = GROUND_REACHABILITY_LUT_URL
+): Promise<Float32Array | null> {
   const url = resolveAssetPath(rawUrl);
   if (_decodedLut) {
     return _decodedLut;
@@ -66,6 +73,7 @@ export async function preloadGroundReachabilityLut(rawUrl = GROUND_REACHABILITY_
           );
         }
         const u16 = new Uint16Array(buf, 0, GROUND_REACHABILITY_LUT_META.totalElements);
+        _rawU16Lut = u16;
         const f32 = new Float32Array(u16.length);
         const scale = GROUND_REACHABILITY_LUT_META.unitScaleUU;
         for (let i = 0; i < u16.length; i++) {
@@ -89,10 +97,46 @@ export async function preloadGroundReachabilityLut(rawUrl = GROUND_REACHABILITY_
 }
 
 /**
- * Synchronously returns the decoded Float32Array LUT if already preloaded,
- * or triggers background preloading and returns null so callers can fall back to the analytical model.
+ * Synchronously uploads the preloaded Uint16Array LUT into WASM `rc_trajectory_mesh`
+ * via `_physics_loadGroundReachabilityLut` if not already uploaded for `wasmModule`.
  */
-export function getGroundReachabilityLut() {
+export function ensureWasmGroundReachabilityLutLoaded(
+  wasmModule: RocketSimWasmModule | null | undefined
+): boolean {
+  if (!wasmModule || typeof wasmModule._physics_loadGroundReachabilityLut !== 'function') {
+    return false;
+  }
+  if (_uploadedWasmModules.has(wasmModule)) {
+    return true;
+  }
+  if (!_rawU16Lut) {
+    preloadGroundReachabilityLut();
+    return false;
+  }
+  const byteLen = _rawU16Lut.byteLength;
+  const ptr = wasmModule._malloc(byteLen);
+  if (!ptr) {
+    return false;
+  }
+  try {
+    const heapU16 = new Uint16Array(wasmModule.HEAPU8.buffer, ptr, _rawU16Lut.length);
+    heapU16.set(_rawU16Lut);
+    const ok =
+      wasmModule._physics_loadGroundReachabilityLut(
+        ptr,
+        _rawU16Lut.length,
+        GROUND_REACHABILITY_LUT_META.unitScaleUU
+      ) === 1;
+    if (ok) {
+      _uploadedWasmModules.add(wasmModule);
+    }
+    return ok;
+  } finally {
+    wasmModule._free(ptr);
+  }
+}
+
+export function getGroundReachabilityLut(): Float32Array | null {
   if (_decodedLut) {
     return _decodedLut;
   }
@@ -100,6 +144,6 @@ export function getGroundReachabilityLut() {
   return null;
 }
 
-export function isGroundReachabilityLutReady() {
+export function isGroundReachabilityLutReady(): boolean {
   return Boolean(_decodedLut);
 }

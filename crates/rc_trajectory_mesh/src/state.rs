@@ -1,14 +1,25 @@
 //! Static linear memory pool and state container for `rc_trajectory_mesh`.
 
-use rc_physics_sim::layout::{BallPredSlicePod, GameStateBufferPod};
+use rc_physics_sim::layout::{BallPredSlicePod, GameStateBufferPod, MAX_CARS};
 
-use crate::layout::{
-    BounceMarkerPod, InterceptSolutionPod, ReachabilityOutputHeaderPod, TrajectoryMeshConfigPod,
-    TrajectoryMeshHeaderPod, BUBBLE_RIB_VERTS_COUNT, BUBBLE_VERTS_COUNT, FUNNEL_RAIL_SEGMENTS_VERTS,
-    FUNNEL_RING_LINE_VERTS, FUNNEL_VERTS_COUNT, GROUND_FILL0_VERTS, GROUND_FILL_BAND_VERTS,
-    GROUND_HORIZON_COUNT, GROUND_LUT_TOTAL_ELEMENTS, GROUND_RADII_FLOATS, GROUND_RING_VERTS,
-    MAX_BOUNCE_MARKERS, MAX_DASH_RANGES, MAX_GROUND_DROP_FLOATS, MAX_PREDICTION_SLICES,
-    MAX_RADIAL_SEGMENTS, MAX_TUBE_INDICES, MAX_TUBE_VERTICES,
+use crate::{
+    aerial_reachability::{update_aerial_bubbles_geometry, update_aerial_funnel_geometry},
+    ground_reachability::update_ground_reachability_geometry,
+    intercept_solver::solve_optimal_intercept,
+    layout::{
+        BounceMarkerPod, InterceptSolutionPod, ReachabilityOutputHeaderPod,
+        TrajectoryMeshConfigPod, TrajectoryMeshHeaderPod, BUBBLE_RIB_VERTS_COUNT,
+        BUBBLE_VERTS_COUNT, FUNNEL_RAIL_SEGMENTS_VERTS, FUNNEL_RING_LINE_VERTS, FUNNEL_VERTS_COUNT,
+        GROUND_FILL0_VERTS, GROUND_FILL_BAND_VERTS, GROUND_HORIZON_COUNT,
+        GROUND_LUT_TOTAL_ELEMENTS, GROUND_RADII_FLOATS, GROUND_RING_VERTS, MAX_BOUNCE_MARKERS,
+        MAX_DASH_RANGES, MAX_GROUND_DROP_FLOATS, MAX_PREDICTION_SLICES, MAX_RADIAL_SEGMENTS,
+        MAX_TUBE_INDICES, MAX_TUBE_VERTICES,
+    },
+    reachability_constants::{
+        BubbleSphereTables, REACH_FLAG_AERIAL_BUBBLES, REACH_FLAG_CROSS_TRAJECTORY_ORIENT,
+        REACH_FLAG_GROUND_ANALYTICAL, REACH_FLAG_INCLUDE_JUMP_IMPULSE, REACH_FLAG_SHOW_AERIAL,
+        REACH_FLAG_SHOW_CLOSEST_FALLBACK, REACH_FLAG_SHOW_GROUND, REACH_FLAG_SHOW_INTERCEPT,
+    },
 };
 
 #[repr(C)]
@@ -59,6 +70,7 @@ pub struct TrajectoryMeshInstance {
     pub bubble_positions: [[f32; BUBBLE_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
     pub bubble_colors: [[f32; BUBBLE_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
     pub bubble_rib_positions: [[f32; BUBBLE_RIB_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
+    pub bubble_tables: BubbleSphereTables,
 }
 
 impl Default for TrajectoryMeshInstance {
@@ -100,6 +112,7 @@ impl TrajectoryMeshInstance {
             bubble_positions: [[0.0; BUBBLE_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
             bubble_colors: [[0.0; BUBBLE_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
             bubble_rib_positions: [[0.0; BUBBLE_RIB_VERTS_COUNT * 3]; GROUND_HORIZON_COUNT],
+            bubble_tables: BubbleSphereTables::generate(),
         }
     }
 
@@ -162,19 +175,135 @@ impl TrajectoryMeshInstance {
         self.mesh_header.index_count
     }
 
-    /// Foundation stub for computing Ground/Aerial Reachability & Spacetime Intercept in WASM.
-    /// Tier 2 branches will fill in LUT trilinear interpolation, funnel/bubble generation, and intercept solver.
+    /// Computes Ground/Aerial Reachability & Spacetime Intercept in WASM.
     pub fn update_reachability_and_intercept(
         &mut self,
-        _state: &GameStateBufferPod,
-        _car_index: usize,
-        _elapsed_ticks: i32,
-        _flags: u32,
-        _cross_arm_length: f32,
+        state: &GameStateBufferPod,
+        car_index: usize,
+        elapsed_ticks: i32,
+        flags: u32,
+        cross_arm_length: f32,
     ) -> u32 {
-        self.reachability_header.ground_visible = 0;
-        self.reachability_header.aerial_visible = 0;
-        self.reachability_header.intercept = InterceptSolutionPod::default();
+        let idx = car_index.min(MAX_CARS - 1);
+        let car = &state.cars[idx];
+        if car.is_demoed > 0.5 {
+            self.reachability_header.ground_visible = 0;
+            self.reachability_header.aerial_visible = 0;
+            self.reachability_header.intercept = InterceptSolutionPod::default();
+            self.has_prev_ground_radii = false;
+            return 0;
+        }
+
+        let is_on_ground = car.is_on_ground > 0.5;
+        let show_ground = (flags & REACH_FLAG_SHOW_GROUND) != 0;
+        let use_analytical = (flags & REACH_FLAG_GROUND_ANALYTICAL) != 0;
+        let show_aerial = (flags & REACH_FLAG_SHOW_AERIAL) != 0;
+        let is_bubbles = (flags & REACH_FLAG_AERIAL_BUBBLES) != 0;
+        let include_jump = (flags & REACH_FLAG_INCLUDE_JUMP_IMPULSE) != 0;
+        let show_intercept = (flags & REACH_FLAG_SHOW_INTERCEPT) != 0;
+        let cross_trajectory = (flags & REACH_FLAG_CROSS_TRAJECTORY_ORIENT) != 0;
+        let show_fallback = (flags & REACH_FLAG_SHOW_CLOSEST_FALLBACK) != 0;
+
+        let forward_spd = car.vel[0] * car.forward[0]
+            + car.vel[1] * car.forward[1]
+            + car.vel[2] * car.forward[2];
+        self.reachability_header.car_forward_speed_uu = forward_spd;
+        self.reachability_header.car_boost_amount = car.boost;
+
+        let car_pos = car.pos;
+
+        // 1. Ground Reachability (auto-hides when car is not on ground)
+        if show_ground && is_on_ground {
+            self.reachability_header.ground_visible = 1;
+            update_ground_reachability_geometry(
+                car,
+                car_pos,
+                use_analytical,
+                &self.ground_reachability_lut,
+                &mut self.ground_raw_radii,
+                &mut self.ground_smoothed_radii,
+                &mut self.has_prev_ground_radii,
+                &mut self.ground_line_positions,
+                &mut self.ground_fill0_positions,
+                &mut self.ground_fill1_positions,
+                &mut self.ground_fill2_positions,
+            );
+        } else {
+            self.reachability_header.ground_visible = 0;
+            self.has_prev_ground_radii = false;
+        }
+
+        // 2. Aerial Reachability (Funnel vs Bubbles)
+        self.reachability_header.aerial_mode = u32::from(is_bubbles);
+        if show_aerial {
+            self.reachability_header.aerial_visible = 1;
+            if is_bubbles {
+                update_aerial_bubbles_geometry(
+                    car,
+                    car_pos,
+                    include_jump,
+                    &self.bubble_tables,
+                    &mut self.bubble_positions,
+                    &mut self.bubble_colors,
+                    &mut self.bubble_rib_positions,
+                );
+            } else {
+                update_aerial_funnel_geometry(
+                    car,
+                    car_pos,
+                    include_jump,
+                    &mut self.funnel_positions,
+                    &mut self.funnel_colors,
+                    &mut self.funnel_ring_line_positions,
+                    &mut self.funnel_rail_positions,
+                );
+            }
+        } else {
+            self.reachability_header.aerial_visible = 0;
+        }
+
+        // 3. Optimal Spacetime Intercept Solver
+        if show_intercept {
+            let pred_count = (self.mesh_header.prediction_count as usize).min(MAX_PREDICTION_SLICES);
+            if pred_count > 1 {
+                self.reachability_header.intercept = solve_optimal_intercept(
+                    &self.raw_predicted_points[..pred_count * 3],
+                    pred_count,
+                    elapsed_ticks,
+                    car,
+                    car_pos,
+                    include_jump,
+                    show_fallback,
+                    cross_trajectory,
+                    cross_arm_length,
+                );
+            } else {
+                // Stationary / fallback ball trajectory (360 ticks at current ball position)
+                let [bx, by, bz] = state.ball.pos;
+                let mut fallback_pts = [0.0f32; 360 * 3];
+                for i in 0..360 {
+                    let off = i * 3;
+                    fallback_pts[off] = bx;
+                    fallback_pts[off + 1] = by;
+                    fallback_pts[off + 2] = bz;
+                }
+                self.reachability_header.intercept = solve_optimal_intercept(
+                    &fallback_pts,
+                    360,
+                    0,
+                    car,
+                    car_pos,
+                    include_jump,
+                    show_fallback,
+                    cross_trajectory,
+                    cross_arm_length,
+                );
+            }
+        } else {
+            self.reachability_header.intercept = InterceptSolutionPod::default();
+        }
+
         self.reachability_header.intercept.status
     }
 }
+
