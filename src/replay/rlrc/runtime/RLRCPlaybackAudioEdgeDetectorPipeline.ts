@@ -4,12 +4,7 @@
  * car jumps/dodges/boost/supersonic, pad pickups, ball impacts, goals, bumps, demos, and match state cues.
  */
 
-import {
-  BALL_REST_Z,
-  GRAVITY_Z,
-  INCIDENT_EVENT_TYPES as EV,
-  STANDARD_GOAL_VOLUME_BOX,
-} from '../../../physics/RocketSimConstants.ts';
+import { GRAVITY_Z, INCIDENT_EVENT_TYPES as EV } from '../../../physics/RocketSimConstants.ts';
 import { STANDARD_BOOST_PADS_34 as PADS } from '../catalog/RLRCBoostPadLocationsTable.ts';
 import type {
   RLRCBookmarkRecord,
@@ -17,6 +12,14 @@ import type {
   RLRCFrame120Hz as Frame,
   RLRCVec3,
 } from '../RLRCReplayTypes.ts';
+import {
+  computeMaxSurfaceNormalReversal,
+  COS_MIN_POST_DEFLECT_RAD,
+  COS_MIN_WORLD_DEFLECT_RAD,
+  hasSignificantVectorDeflection,
+  isNearGoalPostSurface,
+  RLRC_ARENA_HALF_Y,
+} from './RLRCBallSurfaceImpactKinematics.ts';
 
 export type SoundCueId =
   'match_countdown_321' | 'match_start_go' | 'match_entering_overtime' | 'sfx_goal_poof' | string;
@@ -46,6 +49,8 @@ export interface RLRCSynthesizedAudioFrameBatch {
 
 export interface AudioEdgeTrackerState {
   lastHitTick: number;
+  lastWorldHitTick?: number;
+  lastPostHitTick?: number;
   lastGoalTick: number;
   lastOtTick: number;
   lastCdNum: number;
@@ -55,18 +60,10 @@ export interface AudioEdgeTrackerState {
 }
 
 const GRAV_DV = GRAVITY_Z / 120;
-const GOAL_MAX_Z = STANDARD_GOAL_VOLUME_BOX.maxZ;
-const ARENA_X = 4096;
-const ARENA_Y = 5120;
-const ARENA_Z = 2044;
 
 const tup3 = (v: RLRCVec3): AudioVec3Tuple => [v.x, v.y, v.z];
 const dist3 = (a: RLRCVec3, b: RLRCVec3): number => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const speed3 = (v: RLRCVec3): number => Math.hypot(v.x, v.y, v.z);
-const nearPost = (p: RLRCVec3): boolean => {
-  const ax = Math.abs(p.x);
-  return Math.abs(p.y) >= 4960 && ax <= 940 && p.z <= 700 && (ax >= 790 || p.z >= GOAL_MAX_Z - 95);
-};
 
 const pushEv = (
   b: RLRCSynthesizedAudioFrameBatch,
@@ -168,7 +165,7 @@ export function detectBallAndGoalAudioEdges(
   if (
     (curr.blueScore > prev.blueScore ||
       curr.orangeScore > prev.orangeScore ||
-      (pB.entityActive && !cB.entityActive && Math.abs(pPos.y) >= ARENA_Y - 350)) &&
+      (pB.entityActive && !cB.entityActive && Math.abs(pPos.y) >= RLRC_ARENA_HALF_Y - 350)) &&
     tick - tracker.lastGoalTick >= 60
   ) {
     tracker.lastGoalTick = tick;
@@ -189,12 +186,16 @@ export function detectBallAndGoalAudioEdges(
   const dt1 = Math.max(1, tick - prev.frameIndex120Hz);
   const vC = cB.rigidBody.linearVelocity;
   const vP = pB.rigidBody.linearVelocity;
-  const imp1 = Math.hypot(vC.x - vP.x, vC.y - vP.y, vC.z - vP.z - GRAV_DV * dt1);
+  const vPGrav: RLRCVec3 = { x: vP.x, y: vP.y, z: vP.z + GRAV_DV * dt1 };
+  const imp1 = Math.hypot(vC.x - vPGrav.x, vC.y - vPGrav.y, vC.z - vPGrav.z);
   let impW = 0;
+  let vInRef: RLRCVec3 = vPGrav;
   if (anchor.ball.entityActive && tick > anchor.frameIndex120Hz) {
     const vA = anchor.ball.rigidBody.linearVelocity;
     const dtW = tick - anchor.frameIndex120Hz;
-    impW = Math.hypot(vC.x - vA.x, vC.y - vA.y, vC.z - vA.z - GRAV_DV * dtW);
+    const vAGrav: RLRCVec3 = { x: vA.x, y: vA.y, z: vA.z + GRAV_DV * dtW };
+    impW = Math.hypot(vC.x - vAGrav.x, vC.y - vAGrav.y, vC.z - vAGrav.z);
+    if (impW * 0.85 > imp1) vInRef = vAGrav;
   }
   if (imp1 < 185 && !(impW >= 230 && imp1 >= 75)) return;
 
@@ -213,21 +214,41 @@ export function detectBallAndGoalAudioEdges(
       bestSlot = s;
     }
   }
-  if (bestSlot >= 0 && bestD <= 265) {
+  if (bestSlot >= 0 && bestD <= 285) {
     tracker.lastHitTick = tick;
     pushEv(batch, EV.CAR_BALL_HIT, bestSlot, 0, imp, hitPos);
-  } else if (nearPost(bPos) && imp >= 220) {
+    return;
+  }
+
+  const lastPostTick = tracker.lastPostHitTick ?? -999;
+  if (isNearGoalPostSurface(bPos) && imp >= 240 && tick - lastPostTick >= 16) {
+    const postSurface = computeMaxSurfaceNormalReversal(bPos, vInRef, vC);
+    const postDeflected =
+      hasSignificantVectorDeflection(vInRef, vC, COS_MIN_POST_DEFLECT_RAD, 160) ||
+      hasSignificantVectorDeflection(vPGrav, vC, COS_MIN_POST_DEFLECT_RAD, 160);
+    if (postSurface.maxReversal >= 220 || (postDeflected && imp >= 280)) {
+      tracker.lastHitTick = tick;
+      tracker.lastPostHitTick = tick;
+      pushEv(batch, EV.BALL_GOALPOST_HIT, 0, 0, Math.max(imp, postSurface.maxReversal), hitPos);
+      return;
+    }
+  }
+
+  const lastWorldTick = tracker.lastWorldHitTick ?? -999;
+  if (tick - lastWorldTick < 18) return;
+  const surfaceCheck = computeMaxSurfaceNormalReversal(bPos, vInRef, vC);
+  if (!surfaceCheck.nearSurface) return;
+  const hasNormalBounce = surfaceCheck.maxReversal >= 240;
+  const hasSharpVectorBounce =
+    imp >= 320 &&
+    imp1 >= 185 &&
+    surfaceCheck.minInwardVel < -120 &&
+    (hasSignificantVectorDeflection(vInRef, vC, COS_MIN_WORLD_DEFLECT_RAD, 200) ||
+      hasSignificantVectorDeflection(vPGrav, vC, COS_MIN_WORLD_DEFLECT_RAD, 200));
+  if (hasNormalBounce || hasSharpVectorBounce) {
     tracker.lastHitTick = tick;
-    pushEv(batch, EV.BALL_GOALPOST_HIT, 0, 0, imp, hitPos);
-  } else if (
-    imp >= 195 &&
-    (bPos.z <= BALL_REST_Z + 38 ||
-      Math.abs(bPos.x) >= ARENA_X - BALL_REST_Z - 140 ||
-      Math.abs(bPos.y) >= ARENA_Y - BALL_REST_Z - 140 ||
-      bPos.z >= ARENA_Z - BALL_REST_Z - 90)
-  ) {
-    tracker.lastHitTick = tick;
-    pushEv(batch, EV.BALL_WORLD_HIT, 0, 0, imp, hitPos);
+    tracker.lastWorldHitTick = tick;
+    pushEv(batch, EV.BALL_WORLD_HIT, 0, 0, Math.max(imp, surfaceCheck.maxReversal), hitPos);
   }
 }
 
@@ -243,7 +264,8 @@ export function detectCollisionAndDemoAudioEdges(
   let deact = -1;
   let deactN = 0;
   for (let s = 0; s < n; s++) {
-    if (prev.cars[s]!.entityActive && !curr.cars[s]!.entityActive) {
+    const currCar = curr.cars[s]!;
+    if (prev.cars[s]!.entityActive && !currCar.entityActive && currCar.isDemolished !== false) {
       deactN++;
       deact = s;
     }

@@ -135,6 +135,7 @@ export function packRLRCFrameToTrack0Slot(
     if (!car || !car.entityActive) {
       const pos = car?.rigidBody.position;
       const isParked =
+        car?.isDemolished === false ||
         !pos ||
         (pos.x <= -5000 && pos.z <= -200) ||
         (pos.x === 0 && pos.y === 0 && pos.z === 0);
@@ -211,12 +212,12 @@ export function unpackRLRCFrameFromTrack0Slot(
     const c = SIM.CARS + i * C_STRIDE;
     const j = EXT.CAR_JUMP_AIR_BASE + i * EXT.CAR_JUMP_AIR_STRIDE;
     const isParked = s[c + C_OFF.POS] <= -5000 && s[c + C_OFF.POS + 2] <= -200;
-    const entityActive = meta
-      ? (mask & (1 << i)) !== 0
-      : !isParked && s[c + C_OFF.DEMOED] < 0.5;
+    const isDemolished = !isParked && s[c + C_OFF.DEMOED] >= 0.5;
+    const entityActive = meta ? (mask & (1 << i)) !== 0 : !isParked && !isDemolished;
     cars[i] = {
       slotIndex: i,
       entityActive,
+      isDemolished: !entityActive && isDemolished,
       rigidBody: isParked ? SLEEP_RB : readRb(s, c + C_OFF.POS, c + C_OFF.FWD, !entityActive),
       boostAmount: s[c + C_OFF.BOOST],
       isOnGround: s[c + C_OFF.ON_GROUND] >= 0.5,

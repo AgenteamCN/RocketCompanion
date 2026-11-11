@@ -149,7 +149,7 @@ export function writeParkedCarSlice(slotIndex: number, destination: Float32Array
   destination.fill(0);
   destination[CAR_STATE_OFFSETS.POS] = -5500;
   destination[CAR_STATE_OFFSETS.POS + 1] = slotIndex * 300;
-  destination[CAR_STATE_OFFSETS.POS + 2] = -500;
+  destination[CAR_STATE_OFFSETS.POS + 2] = -2000;
   destination[CAR_STATE_OFFSETS.FWD] = 1;
   destination[CAR_STATE_OFFSETS.RIGHT + 1] = 1;
   destination[CAR_STATE_OFFSETS.UP + 2] = 1;
@@ -160,7 +160,9 @@ export function writeCarFrameToSlice(car: RLRCCarFrameState120Hz, destination: F
   if (!car.entityActive) {
     const pos = rigidBody.position;
     const isParked =
-      (pos.x <= -5000 && pos.z <= -200) || (pos.x === 0 && pos.y === 0 && pos.z === 0);
+      car.isDemolished === false ||
+      (pos.x <= -5000 && pos.z <= -200) ||
+      (pos.x === 0 && pos.y === 0 && pos.z === 0);
     if (isParked) {
       writeParkedCarSlice(car.slotIndex, destination);
       return;

@@ -42,12 +42,7 @@ export type RLRCVisualId =
 export type RLRCTeamIndex = 0 | 1;
 
 export type RLRCBookmarkKind =
-  | 'user-mark'
-  | 'goal'
-  | 'save'
-  | 'kickoff'
-  | 'demolish'
-  | 'ue-keyframe';
+  'user-mark' | 'goal' | 'save' | 'kickoff' | 'demolish' | 'ue-keyframe';
 
 export type RLRCNonPovInterventionMode = 'disappear' | 'no-input' | 'follow-state' | 'bot-takeover';
 
@@ -138,6 +133,7 @@ export interface RLRCCarComponentActiveFlags {
 export interface RLRCCarFrameState120Hz {
   readonly slotIndex: number;
   readonly entityActive: boolean;
+  readonly isDemolished?: boolean;
   readonly rigidBody: RLRCRigidBodySample;
   readonly rbUpdated?: boolean;
   readonly actorId?: number;

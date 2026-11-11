@@ -132,7 +132,7 @@ export function decodeRLRCPropertyAttribute(
 ): { type: RLRCPropertyType; value: unknown } {
   const type = inferRLRCPropertyType(propName);
   const readVec = () => br.readCompressedVector(vectorMaxBits, 100.0);
-  const readLinVel = () => br.readCompressedVector(vectorMaxBits, 10.0);
+  const readLinVel = () => br.readCompressedVector(vectorMaxBits, 100.0);
   const readAngVel = () => br.readCompressedVector(vectorMaxBits, 10000.0);
   const readDemolishTail = () => ({
     attacker: readActiveActor(br),

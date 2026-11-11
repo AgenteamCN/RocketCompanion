@@ -82,11 +82,8 @@ export function isDupRb(a: RLRCRigidBodySample, b: RLRCRigidBodySample): boolean
   );
 }
 
-export function calibrateNetStreamVel(v: RLRCVec3, secantSpeed: number): RLRCVec3 {
-  const vs = vLen(v);
-  return secantSpeed > 60 && vs > 2 && secantSpeed / vs > 5.0 && secantSpeed / vs < 16.0
-    ? vScale(v, 10)
-    : v;
+export function calibrateNetStreamVel(v: RLRCVec3, _secantSpeed?: number): RLRCVec3 {
+  return v;
 }
 
 /**
@@ -159,17 +156,19 @@ export function interpolateRigidBodyHermiteSlerp(
   maxSpeedUu = 4500
 ): RLRCRigidBodySample {
   const tau = clamp(alpha, 0, 1);
-  if (tau <= 0 || dtSeconds <= 1e-6) return s0;
-  if (tau >= 1) return s1;
   const r0 = isRest(s0);
   const r1 = isRest(s1);
-  if ((s0.sleeping && s1.sleeping) || isDupRb(s0, s1)) {
+  if (dtSeconds <= 1e-6 || (s0.sleeping && s1.sleeping) || isDupRb(s0, s1)) {
+    const sRef = tau >= 1 ? s1 : s0;
+    const rRef = tau >= 1 ? r1 : r0;
+    const rawVel = rRef ? ZERO_VEC : sRef.linearVelocity;
+    const spd = vLen(rawVel);
     return {
       sleeping: s0.sleeping && s1.sleeping,
-      position: s0.position,
-      rotation: s0.rotation,
-      linearVelocity: r0 ? ZERO_VEC : s0.linearVelocity,
-      angularVelocity: r0 ? ZERO_VEC : sanitizeAngularVel(s0.angularVelocity),
+      position: sRef.position,
+      rotation: sRef.rotation,
+      linearVelocity: spd > maxSpeedUu && spd > 1e-5 ? vScale(rawVel, maxSpeedUu / spd) : rawVel,
+      angularVelocity: rRef ? ZERO_VEC : sanitizeAngularVel(sRef.angularVelocity),
     };
   }
 
@@ -190,6 +189,26 @@ export function interpolateRigidBodyHermiteSlerp(
   const v1 = r1 ? ZERO_VEC : calibrateNetStreamVel(s1.linearVelocity, secSpeed);
   const w0 = r0 ? ZERO_VEC : sanitizeAngularVel(s0.angularVelocity);
   const w1 = r1 ? ZERO_VEC : sanitizeAngularVel(s1.angularVelocity);
+  const t0 = clampTan(v0, sec, maxSpeedUu);
+  const t1 = clampTan(v1, sec, maxSpeedUu);
+  if (tau <= 0) {
+    return {
+      sleeping: s0.sleeping,
+      position: p0,
+      rotation: s0.rotation,
+      linearVelocity: method === 'linear' ? (vLen(v0) > 1e-3 ? v0 : sec) : t0,
+      angularVelocity: w0,
+    };
+  }
+  if (tau >= 1) {
+    return {
+      sleeping: s1.sleeping,
+      position: p1,
+      rotation: s1.rotation,
+      linearVelocity: method === 'linear' ? (vLen(v1) > 1e-3 ? v1 : sec) : t1,
+      angularVelocity: w1,
+    };
+  }
   const rotation = interpolateQuatHermiteWithAngularVelocity(
     s0.rotation,
     s1.rotation,
@@ -210,9 +229,6 @@ export function interpolateRigidBodyHermiteSlerp(
       angularVelocity,
     };
   }
-
-  const t0 = clampTan(v0, sec, maxSpeedUu);
-  const t1 = clampTan(v1, sec, maxSpeedUu);
   const u2 = tau * tau;
   const u3 = u2 * tau;
   const h00 = 2 * u3 - 3 * u2 + 1;
