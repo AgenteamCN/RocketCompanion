@@ -228,7 +228,7 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
     if (overrides.config === undefined) {
       setInternalConfig(next);
     }
-    if (next.playerName) {
+    if (patch.playerName !== undefined && next.playerName) {
       setOnlineSession({ playerName: next.playerName });
     }
     overrides.onChange?.(next, patch);

@@ -17,10 +17,7 @@ import {
   loadStoredPlayerName,
   saveStoredPlayerName,
 } from '../config/vehiclePresets';
-import {
-  generateRandomRoomCode,
-  parseRoomCode,
-} from '../config/roomCodeConnectivityCodec';
+import { parseRoomCode } from '../config/roomCodeConnectivityCodec';
 import { OnlineRoomIdentityFields } from './online/OnlineRoomIdentityFields';
 import {
   DEFAULT_JOIN_ROOM_STEPS,
@@ -124,7 +121,7 @@ export const SURFACE_META: SurfaceMeta = {
 
 export const DEFAULT_JOIN_ROOM_CONFIG: JoinRoomConfig = {
   playerName: `Player${Math.floor(1000 + Math.random() * 9000)}`,
-  roomCode: generateRandomRoomCode(0x0f),
+  roomCode: '',
   roomKey: '',
   allowSpectating: true,
 };
@@ -191,7 +188,7 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
     if (overrides.config === undefined) {
       setInternalConfig(next);
     }
-    if (next.playerName) {
+    if (patch.playerName !== undefined && next.playerName) {
       setOnlineSession({ playerName: next.playerName });
     }
     overrides.onChange?.(next, patch);
@@ -228,7 +225,6 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
     const canonicalCode = parsedCode.canonicalRoomCode;
     const cleanName = playerName.trim() || generateDefaultPlayerName();
     saveStoredPlayerName(cleanName);
-    setOnlineSession({ playerName: cleanName });
 
     const finalConfig: JoinRoomConfig = {
       playerName: cleanName,
