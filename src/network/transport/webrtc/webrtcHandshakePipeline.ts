@@ -15,7 +15,6 @@ import type { SimulatedPayload } from './NetworkSimulator.ts';
 
 export interface HandshakeMetadataState {
   role: string;
-  isHost?: boolean;
   peerId: string | null;
   playerName: string;
   roomId: string | null;
@@ -31,7 +30,6 @@ export interface HandshakeMetadataState {
 
 export const DEFAULT_HANDSHAKE_STATE: HandshakeMetadataState = {
   role: 'host',
-  isHost: true,
   peerId: null,
   playerName: 'Player 1',
   roomId: null,
@@ -275,7 +273,7 @@ export function classifyRoomMessage(
   }
 
   if (msg.type === 'cross_tab_join') {
-    if (!state.isHost || state.role === 'client') return { action: 'ignore' };
+    if (state.role !== 'host') return { action: 'ignore' };
     const clientName = typeof msg.clientName === 'string' ? msg.clientName : 'Player 2';
     return {
       action: 'cross_tab_join',
@@ -289,7 +287,7 @@ export function classifyRoomMessage(
   }
 
   if (msg.type === 'cross_tab_ack') {
-    if (state.isHost || state.role !== 'client') return { action: 'ignore' };
+    if (state.role !== 'client') return { action: 'ignore' };
     const offerToken = typeof msg.offerToken === 'string' && msg.offerToken ? msg.offerToken : null;
     const shouldAcceptOffer = Boolean(offerToken && !state.answerToken && !hasRemoteDescription);
     const hostName = typeof msg.hostName === 'string' ? msg.hostName : 'Host';
@@ -307,7 +305,6 @@ export function classifyRoomMessage(
 
   if (
     msg.type === 'room_answer' &&
-    state.isHost &&
     state.role === 'host' &&
     typeof msg.sdp === 'string'
   ) {

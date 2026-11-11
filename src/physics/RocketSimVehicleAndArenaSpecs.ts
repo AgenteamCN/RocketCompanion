@@ -46,53 +46,77 @@ export const HITBOX_PRESETS = Object.freeze({
     name: 'Octane',
     size: [120.507, 86.6994, 38.6591],
     offset: [13.8757, 0, 20.755],
-    frontWheels: { radius: 12.5, susRest: 38.755, offset: [51.25, 25.9, 20.755] },
-    backWheels: { radius: 15.0, susRest: 37.055, offset: [-33.75, 29.5, 20.755] },
+    frontWheels: { radius: 12.5, susRest: 39.2369, offset: [51.25, 25.9, 20.755] },
+    backWheels: { radius: 15.0, susRest: 36.7377, offset: [-33.75, 29.5, 20.755] },
   },
   DOMINUS: {
     name: 'Dominus',
     size: [130.427, 85.7799, 33.8],
     offset: [9.0, 0, 15.75],
-    frontWheels: { radius: 12.0, susRest: 33.95, offset: [50.3, 31.1, 15.75] },
-    backWheels: { radius: 13.5, susRest: 33.85, offset: [-34.75, 33.0, 15.75] },
+    frontWheels: { radius: 12.0, susRest: 34.833, offset: [50.3, 31.1, 15.75] },
+    backWheels: { radius: 13.5, susRest: 33.24, offset: [-34.75, 33.0, 15.75] },
   },
   PLANK: {
     name: 'Plank',
     size: [131.32, 87.1704, 31.8944],
     offset: [9.00857, 0, 12.0942],
-    frontWheels: { radius: 12.5, susRest: 31.9242, offset: [49.97, 27.8, 12.0942] },
-    backWheels: { radius: 17.0, susRest: 27.9242, offset: [-35.43, 20.28, 12.0942] },
+    frontWheels: { radius: 12.5, susRest: 32.3011, offset: [49.97, 27.8, 12.0942] },
+    backWheels: { radius: 17.0, susRest: 27.6569, offset: [-35.43, 20.28, 12.0942] },
   },
   BREAKOUT: {
     name: 'Breakout',
     size: [133.992, 83.021, 32.8],
     offset: [12.5, 0, 11.75],
-    frontWheels: { radius: 13.5, susRest: 29.7, offset: [51.5, 26.67, 11.75] },
-    backWheels: { radius: 15.0, susRest: 29.666, offset: [-35.75, 35.0, 11.75] },
+    frontWheels: { radius: 13.5, susRest: 30.6259, offset: [51.5, 26.67, 11.75] },
+    backWheels: { radius: 15.0, susRest: 29.0234, offset: [-35.75, 35.0, 11.75] },
   },
   HYBRID: {
     name: 'Hybrid',
     size: [129.519, 84.6879, 36.6591],
     offset: [13.8757, 0, 20.755],
-    frontWheels: { radius: 12.5, susRest: 38.755, offset: [51.25, 25.9, 20.755] },
-    backWheels: { radius: 15.0, susRest: 37.055, offset: [-34.0, 29.5, 20.755] },
+    frontWheels: { radius: 12.5, susRest: 39.2441, offset: [51.25, 25.9, 20.755] },
+    backWheels: { radius: 15.0, susRest: 36.7305, offset: [-34.0, 29.5, 20.755] },
   },
   MERC: {
     name: 'Merc',
     size: [123.22, 79.2103, 44.1591],
     offset: [11.3757, 0, 21.505],
-    frontWheels: { radius: 15.0, susRest: 39.505, offset: [51.25, 25.9, 21.505] },
-    backWheels: { radius: 15.0, susRest: 39.105, offset: [-33.75, 29.5, 21.505] },
+    frontWheels: { radius: 15.0, susRest: 39.2634, offset: [51.25, 25.9, 21.505] },
+    backWheels: { radius: 15.0, susRest: 39.2642, offset: [-33.75, 29.5, 21.505] },
   },
   PSYCLOPS: {
     name: 'Psyclops (Three-Wheeler)',
     size: [120.641, 86.8334, 38.7931],
     offset: [13.8757, 0, 15.0],
     threeWheels: true,
-    frontWheels: { radius: 12.5, susRest: 33.0, offset: [51.25, 5.0, 15.0] },
-    backWheels: { radius: 15.0, susRest: 31.3, offset: [-33.75, 29.5, 15.0] },
+    frontWheels: { radius: 12.5, susRest: 33.4819, offset: [51.25, 5.0, 15.0] },
+    backWheels: { radius: 15.0, susRest: 30.9827, offset: [-33.75, 29.5, 15.0] },
   },
 });
+
+const CALIBRATED_WASM_HITBOX_SUS_REST: ReadonlyArray<readonly [number, number]> = Object.freeze([
+  [HITBOX_PRESETS.OCTANE.frontWheels.susRest, HITBOX_PRESETS.OCTANE.backWheels.susRest],
+  [HITBOX_PRESETS.DOMINUS.frontWheels.susRest, HITBOX_PRESETS.DOMINUS.backWheels.susRest],
+  [HITBOX_PRESETS.PLANK.frontWheels.susRest, HITBOX_PRESETS.PLANK.backWheels.susRest],
+  [HITBOX_PRESETS.BREAKOUT.frontWheels.susRest, HITBOX_PRESETS.BREAKOUT.backWheels.susRest],
+  [HITBOX_PRESETS.HYBRID.frontWheels.susRest, HITBOX_PRESETS.HYBRID.backWheels.susRest],
+  [HITBOX_PRESETS.MERC.frontWheels.susRest, HITBOX_PRESETS.MERC.backWheels.susRest],
+]);
+
+export function applyCalibratedCarSuspensionConfigsToWasm(wasmModule: {
+  HEAPF32?: Float32Array;
+  _physics_getCarConfig?: (hitboxIndex: number) => number;
+}): void {
+  if (!wasmModule?.HEAPF32 || typeof wasmModule._physics_getCarConfig !== 'function') return;
+  for (let h = 0; h < CALIBRATED_WASM_HITBOX_SUS_REST.length; h++) {
+    const ptr = wasmModule._physics_getCarConfig(h);
+    if (ptr > 0) {
+      const fIdx = ptr >> 2;
+      wasmModule.HEAPF32[fIdx + 9] = CALIBRATED_WASM_HITBOX_SUS_REST[h][0];
+      wasmModule.HEAPF32[fIdx + 17] = CALIBRATED_WASM_HITBOX_SUS_REST[h][1];
+    }
+  }
+}
 
 export const MUTATOR_CONFIG_FLOAT_COUNT = 36;
 export const MUTATOR_OFFSETS = Object.freeze({

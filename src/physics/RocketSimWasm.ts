@@ -7,6 +7,7 @@ import loadDirectRocketSimWasm, {
   type RocketSimWasmModule,
   type RocketSimWasmModuleOptions,
 } from './core.js';
+import { applyCalibratedCarSuspensionConfigsToWasm } from './RocketSimVehicleAndArenaSpecs.ts';
 
 export type { RocketSimWasmModule, RocketSimWasmModuleOptions };
 
@@ -17,6 +18,7 @@ export async function loadRocketSimWasmModule(
 ): Promise<RocketSimWasmModule> {
   const isIsolated = moduleArg.freshInstance || moduleArg.isolated;
   if (cachedInstance && !isIsolated) {
+    applyCalibratedCarSuspensionConfigsToWasm(cachedInstance);
     return cachedInstance;
   }
 
@@ -31,6 +33,7 @@ export async function loadRocketSimWasmModule(
   };
 
   const Module: RocketSimWasmModule = await loadDirectRocketSimWasm(options);
+  applyCalibratedCarSuspensionConfigsToWasm(Module);
 
   // Dynamically bind every Emscripten `_physics_*` export to its unprefixed `physics_*` alias.
   for (const key of Object.keys(Module)) {

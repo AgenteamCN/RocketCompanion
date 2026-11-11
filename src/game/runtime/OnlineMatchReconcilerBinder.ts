@@ -364,7 +364,10 @@ export class OnlineMatchReconcilerBinder {
         joinCfg.localVisualId,
         false
       );
-      if (msg?.state === 'lobby' || !msg?.state) {
+      if (
+        (msg?.state === 'lobby' || !msg?.state) &&
+        diagnosticsProbe.diagnosticsFleetController?.enabled
+      ) {
         await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
       }
       interpolator?.sync?.(performance.now());

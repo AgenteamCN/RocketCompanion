@@ -144,8 +144,17 @@ export function drainAndParseServerPacketBatch(
           }
           measuredRtt = (baseMeasuredRtt || 0) + extraRtt;
           if (ctx.channel && Number.isFinite(measuredRtt)) {
-            if (typeof ctx.channel.rttMs !== 'undefined') {
-              ctx.channel.measuredRttMs = measuredRtt;
+            if (ctx.channel.simulator) {
+              ctx.channel.simulator.measuredRttMs = Math.max(0, measuredRtt);
+              ctx.channel.simulator.baseMeasuredRttMs = Math.max(0, baseMeasuredRtt || 0);
+            } else {
+              const desc = Object.getOwnPropertyDescriptor(
+                Object.getPrototypeOf(ctx.channel) ?? ctx.channel,
+                'measuredRttMs'
+              );
+              if (!desc || desc.writable || typeof desc.set === 'function') {
+                ctx.channel.measuredRttMs = measuredRtt;
+              }
             }
           }
         }
