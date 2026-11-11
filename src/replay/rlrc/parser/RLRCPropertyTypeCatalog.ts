@@ -16,6 +16,7 @@ export type RLRCPropertyType =
   | 'DemolishExtended'
   | 'Enum'
   | 'Explosion'
+  | 'ExplosionReactive'
   | 'ExtendedExplosion'
   | 'Float'
   | 'HistoryKey'
@@ -38,6 +39,45 @@ export type RLRCPropertyType =
 
 export type RLRCOnlineProductAttributeKind =
   'NewPaint' | 'NewColor' | 'Title' | 'TeamEdition' | 'SpecialEdition';
+
+export const UE3_CLASS_PARENT_BY_NAME: Readonly<Record<string, string>> = Object.freeze({
+  'Engine.Actor': 'Core.Object',
+  'Engine.Pawn': 'Engine.Actor',
+  'ProjectX.Pawn_X': 'Engine.Pawn',
+  'TAGame.RBActor_TA': 'ProjectX.Pawn_X',
+  'TAGame.Vehicle_TA': 'TAGame.RBActor_TA',
+  'TAGame.Car_TA': 'TAGame.Vehicle_TA',
+  'TAGame.Ball_TA': 'TAGame.RBActor_TA',
+  'TAGame.CarComponent_TA': 'Engine.Actor',
+  'TAGame.CarComponent_AirActivate_TA': 'TAGame.CarComponent_TA',
+  'TAGame.CarComponent_DoubleJump_TA': 'TAGame.CarComponent_AirActivate_TA',
+  'TAGame.CarComponent_Dodge_TA': 'TAGame.CarComponent_AirActivate_TA',
+  'TAGame.CarComponent_Boost_TA': 'TAGame.CarComponent_AirActivate_TA',
+  'TAGame.CarComponent_FlipCar_TA': 'TAGame.CarComponent_TA',
+  'TAGame.CarComponent_Jump_TA': 'TAGame.CarComponent_TA',
+  'TAGame.GameEvent_TA': 'Engine.Actor',
+  'TAGame.GameEvent_Team_TA': 'TAGame.GameEvent_TA',
+  [UE3_MATCH_EVENT_CLASS]: 'TAGame.GameEvent_Team_TA',
+  'Engine.Info': 'Engine.Actor',
+  'Engine.ReplicationInfo': 'Engine.Info',
+  'Engine.PlayerReplicationInfo': 'Engine.ReplicationInfo',
+  'ProjectX.PRI_X': 'Engine.PlayerReplicationInfo',
+  'TAGame.PRI_TA': 'ProjectX.PRI_X',
+  'Engine.GameReplicationInfo': 'Engine.ReplicationInfo',
+  'ProjectX.GRI_X': 'Engine.GameReplicationInfo',
+  'TAGame.GRI_TA': 'ProjectX.GRI_X',
+  'Engine.TeamInfo': 'Engine.ReplicationInfo',
+  'TAGame.Team_TA': 'Engine.TeamInfo',
+  [`TAGame.Team_${'Soc' + 'car'}_TA`]: 'TAGame.Team_TA',
+  'TAGame.CameraSettingsActor_TA': 'Engine.ReplicationInfo',
+  'TAGame.ViralItemActor_TA': 'Engine.ReplicationInfo',
+  'TAGame.RumblePickups_TA': 'Engine.ReplicationInfo',
+  'ProjectX.NetModeReplicator_X': 'Engine.ReplicationInfo',
+  'TAGame.CrowdActor_TA': 'Engine.ReplicationInfo',
+  'TAGame.CrowdManager_TA': 'Engine.ReplicationInfo',
+  'TAGame.VehiclePickup_TA': 'Engine.ReplicationInfo',
+  'TAGame.VehiclePickup_Boost_TA': 'TAGame.VehiclePickup_TA',
+});
 
 export const PROPERTY_TYPE_BY_EXACT_NAME: Readonly<Record<string, RLRCPropertyType>> =
   Object.freeze({
@@ -64,6 +104,7 @@ export const PROPERTY_TYPE_BY_EXACT_NAME: Readonly<Record<string, RLRCPropertyTy
     'Engine.TeamInfo:Score': 'Int',
     'ProjectX.GRI_X:GameServerID': 'String',
     'ProjectX.GRI_X:MatchGUID': 'String',
+    'ProjectX.GRI_X:MatchGuid': 'String',
     'ProjectX.GRI_X:ReplicatedGameMutatorIndex': 'Int',
     'ProjectX.GRI_X:ReplicatedGamePlaylist': 'Int',
     'ProjectX.GRI_X:ReplicatedServerRegion': 'String',
@@ -73,9 +114,12 @@ export const PROPERTY_TYPE_BY_EXACT_NAME: Readonly<Record<string, RLRCPropertyTy
     'TAGame.Ball_TA:HitTeamNum': 'Byte',
     'TAGame.Ball_TA:ReplicatedExplosionData': 'Explosion',
     'TAGame.Ball_TA:ReplicatedExplosionDataExtended': 'ExtendedExplosion',
+    'TAGame.Ball_TA:ReplicatedExplosionDataReactive': 'ExplosionReactive',
     'TAGame.Ball_TA:ReplicatedBallScale': 'Float',
     'TAGame.CameraSettingsActor_TA:CameraPitch': 'Byte',
     'TAGame.CameraSettingsActor_TA:CameraYaw': 'Byte',
+    'TAGame.CameraSettingsActor_TA:FreeLookAnchorPitch': 'Byte',
+    'TAGame.CameraSettingsActor_TA:FreeLookAnchorYaw': 'Byte',
     'TAGame.CameraSettingsActor_TA:PRI': 'ActiveActor',
     'TAGame.CameraSettingsActor_TA:ProfileSettings': 'CamSettings',
     'TAGame.CameraSettingsActor_TA:bUsingBehindView': 'Boolean',
@@ -141,6 +185,7 @@ export const PROPERTY_TYPE_BY_EXACT_NAME: Readonly<Record<string, RLRCPropertyTy
     'TAGame.PRI_TA:PersistentCamera': 'ActiveActor',
     'TAGame.PRI_TA:PartyLeader': 'PartyLeader',
     'TAGame.PRI_TA:PlayerHistoryKey': 'HistoryKey',
+    'TAGame.PRI_TA:PlayerStatus': 'Byte',
     'TAGame.PRI_TA:ReplicatedGameEvent': 'ActiveActor',
     'TAGame.PRI_TA:ReplicatedWorstNetQualityBeyondLatency': 'Byte',
     'TAGame.PRI_TA:SelfDemolitions': 'Int',

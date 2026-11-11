@@ -8,6 +8,7 @@ import { RLRCBoostPadSpatialTracker } from '../catalog/RLRCBoostPadSpatialTracke
 import type { RLRCBoostPadPickupEvent, RLRCVec3 } from '../RLRCReplayTypes.ts';
 import { RLRCBitReader } from './RLRCBitReader.ts';
 import { decodeRLRCPropertyAttribute } from './RLRCPropertyAttributeDecoder.ts';
+import { UE3_CLASS_PARENT_BY_NAME } from './RLRCPropertyTypeCatalog.ts';
 import type { RLRCParsedReplayHeaderAndBookmarks } from './RLRCReplayHeaderAndBookmarkParser.ts';
 
 export interface RLRCNetStreamNewActorInput {
@@ -56,11 +57,24 @@ export function buildRLRCClassNetCacheLookup(
   const nodes: RLRCResolvedClassNetCacheNode[] = [];
   for (let i = 0; i < container.netCache.length; i++) {
     const nc = container.netCache[i];
+    const className = container.objects[nc.objectInd] || '';
     let parentIdx: number | null = null;
     if (i > 0) {
-      if (nodes[i - 1].cacheId === nc.parentId || nodes[i - 1].maxStreamId === nc.parentId) {
-        parentIdx = i - 1;
-      } else {
+      let expectedParentClass: string | undefined = UE3_CLASS_PARENT_BY_NAME[className];
+      while (expectedParentClass) {
+        const foundIdx = nodes.findIndex(
+          (n) => (container.objects[n.objectInd] || '') === expectedParentClass
+        );
+        if (
+          foundIdx >= 0 &&
+          (nodes[foundIdx].cacheId === nc.parentId || nodes[foundIdx].maxStreamId === nc.parentId)
+        ) {
+          parentIdx = foundIdx;
+          break;
+        }
+        expectedParentClass = UE3_CLASS_PARENT_BY_NAME[expectedParentClass];
+      }
+      if (parentIdx === null) {
         for (let j = i - 1; j >= 0; j--) {
           if (nodes[j].cacheId === nc.parentId || nodes[j].maxStreamId === nc.parentId) {
             parentIdx = j;
@@ -129,6 +143,10 @@ export function decodeRLRCNetStreamFrames(
   const maxChannels = parsedHeader.maxChannels || 2047;
   const netVersion = parsedHeader.netVersion ?? 7;
   const vectorMaxBits = netVersion >= 7 ? 22 : 20;
+  const extendedCamSettings =
+    (parsedHeader.minorVersion ?? 0) >= 34 ||
+    netVersion >= 12 ||
+    parsedHeader.objects.includes('TAGame.CameraSettingsActor_TA:FreeLookAnchorYaw');
   const expectedFrames = parsedHeader.header.sourceFrameCount || 0;
   const activeActorObjectIds = new Map<number, number>();
   const carPositionsByActorId = new Map<number, RLRCVec3>();
@@ -206,7 +224,8 @@ export function decodeRLRCNetStreamFrames(
               br,
               propertyName,
               parsedHeader.objects,
-              vectorMaxBits
+              vectorMaxBits,
+              extendedCamSettings
             );
 
             if (

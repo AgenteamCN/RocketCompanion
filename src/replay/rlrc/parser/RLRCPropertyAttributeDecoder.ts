@@ -128,7 +128,8 @@ export function decodeRLRCPropertyAttribute(
   br: RLRCBitReader,
   propName: string,
   objects: readonly string[],
-  vectorMaxBits: number
+  vectorMaxBits: number,
+  extendedCamSettings = false
 ): { type: RLRCPropertyType; value: unknown } {
   const type = inferRLRCPropertyType(propName);
   const readVec = () => br.readCompressedVector(vectorMaxBits, 100.0);
@@ -185,8 +186,8 @@ export function decodeRLRCPropertyAttribute(
         return readPartyLeader(br);
       case 'HistoryKey':
         return br.readBits(14);
-      case 'CamSettings':
-        return {
+      case 'CamSettings': {
+        const base = {
           fov: br.readF32(),
           height: br.readF32(),
           angle: br.readF32(),
@@ -195,6 +196,15 @@ export function decodeRLRCPropertyAttribute(
           swivel: br.readF32(),
           transition: br.readF32(),
         };
+        if (extendedCamSettings) {
+          br.readF32();
+          br.readF32();
+          br.readF32();
+          br.readBool();
+          br.readBool();
+        }
+        return base;
+      }
       case 'TeamPaint':
         return {
           team: br.readU8(),
@@ -249,6 +259,8 @@ export function decodeRLRCPropertyAttribute(
       }
       case 'StatEvent':
         return { unknown1: br.readBool(), objectId: br.readI32() };
+      case 'ExplosionReactive':
+        return { flag: br.readBool(), data: br.readU8() };
       case 'Explosion':
       case 'ExtendedExplosion': {
         const flag = br.readBool();
