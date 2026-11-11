@@ -7,8 +7,9 @@ use tauri::{Manager, WindowEvent};
 use tray_manager::setup_system_tray;
 use window_manager::{
     launch_main_window_with_config, open_configurator_window, tauri_get_launch_state,
-    tauri_launch_game, tauri_open_configurator, tauri_reset_launch_config,
-    tauri_save_launch_config, tauri_set_display_window_mode,
+    tauri_launch_game, tauri_open_configurator, tauri_open_vault_folder,
+    tauri_open_workspace_folder, tauri_reset_launch_config, tauri_save_launch_config,
+    tauri_set_display_window_mode,
 };
 
 fn should_start_tray_only_from_env() -> bool {
@@ -35,6 +36,8 @@ pub fn run() {
             tauri_reset_launch_config,
             tauri_open_configurator,
             tauri_set_display_window_mode,
+            tauri_open_workspace_folder,
+            tauri_open_vault_folder,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

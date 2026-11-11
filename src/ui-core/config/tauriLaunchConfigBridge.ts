@@ -1,14 +1,17 @@
 /**
  * tauriLaunchConfigBridge.ts
  * Zero-dependency TypeScript bridge for the Tauri pre-launch Configurator,
- * window mode switching, and `?clean=1` / `?cleanStartup=1` startup sanitization.
+ * window mode switching, and startup sanitization.
  */
 
 export type TauriWindowMode = 'windowed' | 'borderless' | 'fullscreen';
+export type TauriThemeMode = 'dark' | 'light';
 export type TauriPlatformTag = 'macos' | 'windows' | 'linux' | 'web';
 
 export interface TauriLaunchConfig {
   windowMode: TauriWindowMode;
+  themeMode: TauriThemeMode;
+  additionalParamsEnabled: boolean;
   additionalParams: string;
   useAsDefault: boolean;
   launchConfiguratorEveryTime: boolean;
@@ -44,8 +47,16 @@ const PRIVATE_VAULT_STORAGE_KEYS = new Set<string>([
   'rc_dev_remote_profile_bundle_v1',
 ]);
 
+export const DEV_PARAM_REGEX = /dev=1/;
+
+export function matchesDevLaunchParameter(raw: string): boolean {
+  return DEV_PARAM_REGEX.test(raw);
+}
+
 export const DEFAULT_TAURI_LAUNCH_CONFIG: TauriLaunchConfig = {
   windowMode: 'windowed',
+  themeMode: 'dark',
+  additionalParamsEnabled: false,
   additionalParams: '',
   useAsDefault: false,
   launchConfiguratorEveryTime: false,
@@ -100,10 +111,9 @@ export function isCleanStartupRequested(): boolean {
 }
 
 /**
- * Executes synchronously before engine/UI stores initialize when `?clean=1` or
- * `?cleanStartup=1` is present in the URL query string. Clears all user settings
- * and session state while preserving isolated `.rctbnspib` vault keys unless
- * `?cleanVault=1` is explicitly passed.
+ * Executes synchronously before engine/UI stores initialize when clean startup is
+ * present in the URL query string. Clears all user settings and session state while
+ * preserving isolated `.rctbnspib` vault keys unless `?cleanVault=1` is passed.
  */
 export function applyCleanStartupFromQueryIfNeeded(): boolean {
   if (!isCleanStartupRequested()) return false;
@@ -131,7 +141,7 @@ export function applyCleanStartupFromQueryIfNeeded(): boolean {
       sessionStorage.clear();
     }
 
-    console.info('[CleanStartup] Cleared user storage via ?clean=1 launch parameter.');
+    console.info('[CleanStartup] Cleared user storage via launch parameter.');
     return true;
   } catch (err) {
     console.warn('[CleanStartup] Storage wipe warning:', err);
@@ -222,7 +232,15 @@ export async function launchGameFromConfigurator(
   }
   const state = await saveTauriLaunchConfig(config);
   if (typeof window !== 'undefined') {
-    const raw = config.additionalParams.trim();
+    try {
+      localStorage.setItem('rc_theme', config.themeMode);
+      document.documentElement.classList.toggle('dark', config.themeMode === 'dark');
+      document.documentElement.classList.toggle('light', config.themeMode === 'light');
+      document.documentElement.dataset.theme = config.themeMode;
+    } catch {
+      // ignore
+    }
+    const raw = config.additionalParamsEnabled ? config.additionalParams.trim() : '';
     const normalized = !raw ? '' : raw.startsWith('?') ? raw : `?${raw.replace(/^&+/, '')}`;
     window.location.href = `/${normalized}`;
   }
@@ -264,4 +282,23 @@ export async function setTauriDisplayWindowMode(
     return (applied as TauriWindowMode) || windowMode;
   }
   return windowMode;
+}
+
+export async function openTauriWorkspaceFolder(): Promise<string> {
+  const invoke = getTauriInvoke();
+  if (invoke) {
+    return await invoke<string>('tauri_open_workspace_folder');
+  }
+  return loadWebFallbackState().workspaceDir;
+}
+
+export async function openTauriVaultFolder(additionalParams: string): Promise<string> {
+  if (!matchesDevLaunchParameter(additionalParams)) {
+    throw new Error('Private Vault folder requires active developer parameters.');
+  }
+  const invoke = getTauriInvoke();
+  if (invoke) {
+    return await invoke<string>('tauri_open_vault_folder', { additionalParams });
+  }
+  return loadWebFallbackState().vaultDir;
 }

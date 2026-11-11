@@ -17,17 +17,12 @@ export function mountTauriConfigurator(host: HTMLElement): Root {
   if (!rootEl) {
     rootEl = document.createElement('div');
     rootEl.id = 'tauri-configurator-root';
-    rootEl.className =
-      'dark w-full h-full flex items-center justify-center p-4 bg-neutral-950 text-neutral-100 select-none overflow-auto';
+    rootEl.className = 'w-full h-full flex flex-col select-none overflow-hidden';
     host.innerHTML = '';
     host.appendChild(rootEl);
   }
 
   const root = createRoot(rootEl);
-  root.render(
-    <div className="w-full max-w-[660px] my-auto">
-      <Layer1TauriConfiguratorRecipe isLight={false} />
-    </div>
-  );
+  root.render(<Layer1TauriConfiguratorRecipe />);
   return root;
 }

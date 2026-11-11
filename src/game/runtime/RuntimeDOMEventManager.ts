@@ -123,9 +123,17 @@ export class RuntimeDOMEventManager {
       (r.openOverlays.size > 0 && !isLivePreviewDockCollapsed)
     );
     const isMinimized = typeof document !== 'undefined' && Boolean(document.hidden);
+    const isTauriWebview =
+      typeof window !== 'undefined' &&
+      Boolean(
+        (window as unknown as { __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown }).__TAURI__ ||
+          (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+      );
     const hasFocus =
       typeof document !== 'undefined'
-        ? !isMinimized && (typeof document.hasFocus === 'function' ? document.hasFocus() : true)
+        ? !isMinimized &&
+          (isTauriWebview ||
+            (typeof document.hasFocus === 'function' ? document.hasFocus() : true))
         : true;
     if (subsystemState.runtime) {
       subsystemState.runtime.isWindowFocused = hasFocus;

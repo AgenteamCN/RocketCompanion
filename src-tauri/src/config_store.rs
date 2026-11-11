@@ -8,6 +8,10 @@ use tauri::{AppHandle, Manager};
 pub struct TauriLaunchConfig {
     #[serde(default = "default_window_mode")]
     pub window_mode: String,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
+    #[serde(default)]
+    pub additional_params_enabled: bool,
     #[serde(default)]
     pub additional_params: String,
     #[serde(default)]
@@ -22,16 +26,26 @@ fn default_window_mode() -> String {
     "windowed".to_string()
 }
 
+fn default_theme_mode() -> String {
+    "dark".to_string()
+}
+
 impl Default for TauriLaunchConfig {
     fn default() -> Self {
         Self {
             window_mode: default_window_mode(),
+            theme_mode: default_theme_mode(),
+            additional_params_enabled: false,
             additional_params: String::new(),
             use_as_default: false,
             launch_configurator_every_time: false,
             tray_only_mode: false,
         }
     }
+}
+
+pub fn has_dev_param_flag(raw: &str) -> bool {
+    raw.contains("dev=1")
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -138,8 +152,18 @@ pub fn sanitize_config_for_platform(mut config: TauriLaunchConfig) -> TauriLaunc
         }
         _ => "windowed".to_string(),
     };
+    let theme = config.theme_mode.trim().to_lowercase();
+    config.theme_mode = if theme == "light" {
+        "light".to_string()
+    } else {
+        "dark".to_string()
+    };
     config.additional_params = config.additional_params.trim().to_string();
     config
+}
+
+pub fn is_dev_console_unlocked(config: &TauriLaunchConfig) -> bool {
+    config.additional_params_enabled && has_dev_param_flag(&config.additional_params)
 }
 
 pub fn save_launch_config(

@@ -228,7 +228,7 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({
       <SettingActionRow
         icon={Sliders}
         title="Desktop Launch Configurator"
-        description="Configure Window Mode, startup query parameters (?dev=1&clean=1), and System Tray default launch"
+        description="Configure Window Mode, startup query parameters, and System Tray default launch"
         hoverDescription="Desktop Launch Configurator: Open the pre-launch Configurator window to modify Window Mode, additional launch parameters, or default tray startup."
         actionLabel="Configurator"
         showButtonArrow={false}
