@@ -376,7 +376,10 @@ export class ClientClockPacingController {
       if (currentDelta > targetDelta + this.skipThresholdOffset) {
         desiredClientTick = Math.max(serverTick, targetClientTick);
         action = 'skip';
-      } else if (currentDelta < targetDelta + this.catchupThresholdOffset) {
+      } else if (
+        currentDelta < targetDelta + this.catchupThresholdOffset ||
+        (isUnimpairedLoopback && currentDelta < targetDelta)
+      ) {
         desiredClientTick = targetClientTick;
         action = 'catchup';
       }
@@ -396,10 +399,18 @@ export class ClientClockPacingController {
           desiredClientTick = boostedTargetClientTick;
           action = 'catchup';
         }
-      } else if (stepOut.requestStepCatchup || currentDelta <= 0) {
+      } else if (
+        stepOut.requestStepCatchup ||
+        currentDelta <= 0 ||
+        currentDelta < targetDelta + this.catchupThresholdOffset ||
+        (isUnimpairedLoopback && currentDelta < targetDelta)
+      ) {
         desiredClientTick = boostedTargetClientTick;
         action = 'catchup';
-      } else if (stepOut.requestStepSkip) {
+      } else if (
+        stepOut.requestStepSkip ||
+        (isUnimpairedLoopback && currentDelta > targetDelta + this.skipThresholdOffset)
+      ) {
         desiredClientTick = Math.max(serverTick, boostedTargetClientTick);
         action = 'skip';
       }

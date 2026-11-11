@@ -32,6 +32,7 @@ export class NetworkInputBuffer {
   carInputBuffers = new Map<number, Map<number, Partial<CarControls>>>();
   maxReceivedTickByCar = new Map<number, number>();
   starvationCounts = new Map<number, number>();
+  consecutiveStarvationCounts = new Map<number, number>();
   staleCars = new Set<number>();
   isPaused = false;
   lobbyMode = false;
@@ -46,6 +47,7 @@ export class NetworkInputBuffer {
     if (!this.lobbyMode) {
       this.lobbyLoggedCars.clear();
       this.starvationCounts.clear();
+      this.consecutiveStarvationCounts.clear();
     }
   }
 
@@ -54,12 +56,14 @@ export class NetworkInputBuffer {
       this.carInputBuffers.set(carIndex, new Map());
     }
     this.staleCars.delete(carIndex);
+    this.consecutiveStarvationCounts.delete(carIndex);
   }
 
   unregisterCar(carIndex: number): void {
     this.carInputBuffers.delete(carIndex);
     this.maxReceivedTickByCar.delete(carIndex);
     this.starvationCounts.delete(carIndex);
+    this.consecutiveStarvationCounts.delete(carIndex);
     this.staleCars.delete(carIndex);
   }
 
@@ -68,6 +72,7 @@ export class NetworkInputBuffer {
       this.staleCars.add(carIndex);
     } else {
       this.staleCars.delete(carIndex);
+      this.consecutiveStarvationCounts.delete(carIndex);
     }
   }
 
@@ -82,14 +87,14 @@ export class NetworkInputBuffer {
     controls: Partial<CarControls>
   ): boolean {
     this.staleCars.delete(carIndex);
+    this.consecutiveStarvationCounts.delete(carIndex);
     if (typeof targetTick !== 'number' || !Number.isFinite(targetTick)) return false;
 
     const prevMax = this.maxReceivedTickByCar.get(carIndex);
-    if (prevMax !== undefined && targetTick <= prevMax) {
-      return false;
-    }
     if (targetTick < currentTick) {
-      this.maxReceivedTickByCar.set(carIndex, targetTick);
+      if (prevMax === undefined || targetTick > prevMax) {
+        this.maxReceivedTickByCar.set(carIndex, targetTick);
+      }
       return false;
     }
     if (targetTick - currentTick > this.maxBufferTicks) return false;
@@ -103,7 +108,9 @@ export class NetworkInputBuffer {
       return false;
     }
 
-    this.maxReceivedTickByCar.set(carIndex, targetTick);
+    if (prevMax === undefined || targetTick > prevMax) {
+      this.maxReceivedTickByCar.set(carIndex, targetTick);
+    }
     buf.set(targetTick, { ...controls });
     return true;
   }
@@ -119,6 +126,7 @@ export class NetworkInputBuffer {
   ): number {
     if (!Array.isArray(inputList)) return 0;
     this.staleCars.delete(carIndex);
+    this.consecutiveStarvationCounts.delete(carIndex);
     let accepted = 0;
     for (let i = 0; i < inputList.length; i++) {
       const item = inputList[i];
@@ -132,6 +140,11 @@ export class NetworkInputBuffer {
     return accepted;
   }
 
+  peekControlsForTick(carIndex: number, tick: number): Partial<CarControls> | null {
+    const buf = this.carInputBuffers.get(carIndex);
+    return buf && buf.has(tick) ? buf.get(tick)! : null;
+  }
+
   getControlsForTick(
     carIndex: number,
     tick: number,
@@ -139,13 +152,14 @@ export class NetworkInputBuffer {
   ): Partial<CarControls> {
     let buf = this.carInputBuffers.get(carIndex);
     if (buf && buf.has(tick)) {
+      this.consecutiveStarvationCounts.delete(carIndex);
       return buf.get(tick)!;
     }
 
     const isStale = this.staleCars.has(carIndex);
     const resolved: Partial<CarControls> =
       !isStale && fallbackControls ? { ...fallbackControls } : { ...NEUTRAL_CONTROLS };
-    if (this.isPaused) {
+    if (this.isPaused || isStale) {
       return resolved;
     }
     if (this.lobbyMode) {
@@ -157,14 +171,23 @@ export class NetworkInputBuffer {
       }
       return resolved;
     }
+    if (!this.maxReceivedTickByCar.has(carIndex)) {
+      return resolved;
+    }
     if (!buf) {
       buf = new Map();
       this.carInputBuffers.set(carIndex, buf);
     }
     buf.set(tick, resolved);
+    const consecutive = (this.consecutiveStarvationCounts.get(carIndex) || 0) + 1;
+    this.consecutiveStarvationCounts.set(carIndex, consecutive);
+    if (consecutive >= 24) {
+      this.staleCars.add(carIndex);
+      return resolved;
+    }
     const count = (this.starvationCounts.get(carIndex) || 0) + 1;
     this.starvationCounts.set(carIndex, count);
-    if (count <= 3 || count % 60 === 0) {
+    if (consecutive > 8 && (count <= 3 || count % 60 === 0)) {
       console.warn(
         `[NetworkInputBuffer] Input starvation for car #${carIndex} at tick #${tick} (total starvations: ${count}), falling back to ${
           !isStale && fallbackControls ? 'last acknowledged controls' : 'neutral controls'
@@ -212,6 +235,7 @@ export class NetworkInputBuffer {
   clear(): void {
     this.carInputBuffers.clear();
     this.maxReceivedTickByCar.clear();
+    this.consecutiveStarvationCounts.clear();
     this.staleCars.clear();
   }
 }

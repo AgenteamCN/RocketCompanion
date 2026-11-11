@@ -203,25 +203,29 @@ export function sampleAuthoritativeCarControlsForTick(params: {
 
   for (const carIndex of activeCarIndices) {
     const isLobbyRemoteMasked = lobbyGhostCoordinator.shouldMaskRemoteLobbyInput(carIndex);
+    const isInputMasked = mask || isLobbyRemoteMasked;
     const last = lastAcknowledgedControls.get(carIndex);
     const rawCandidate = directControls.has(carIndex)
       ? directControls.get(carIndex)!
-      : inputBuffer
-        ? inputBuffer.getControlsForTick(carIndex, tick, last)
-        : last
-          ? { ...last }
-          : { ...NEUTRAL_CONTROLS };
+      : isInputMasked
+        ? (inputBuffer?.peekControlsForTick(carIndex, tick) ??
+          (last ? { ...last } : { ...NEUTRAL_CONTROLS }))
+        : inputBuffer
+          ? inputBuffer.getControlsForTick(carIndex, tick, last)
+          : last
+            ? { ...last }
+            : { ...NEUTRAL_CONTROLS };
 
     if (jumpSuppressedCarIndices) {
-      if (rawCandidate.jump && (mask || isLobbyRemoteMasked)) {
+      if (rawCandidate.jump && isInputMasked) {
         jumpSuppressedCarIndices.add(carIndex);
-      } else if (!rawCandidate.jump && !mask && !isLobbyRemoteMasked) {
+      } else if (!rawCandidate.jump && !isInputMasked) {
         jumpSuppressedCarIndices.delete(carIndex);
       }
     }
 
     let effectiveControls: CarControlsInput;
-    if (mask || isLobbyRemoteMasked) {
+    if (isInputMasked) {
       effectiveControls = { ...NEUTRAL_CONTROLS };
     } else if (jumpSuppressedCarIndices?.has(carIndex) && rawCandidate.jump) {
       effectiveControls = { ...rawCandidate, jump: false };

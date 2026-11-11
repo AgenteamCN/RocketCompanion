@@ -62,7 +62,7 @@ export class RuntimeKickoffSignalSubController {
     reconciler.setLobbyDualWorldMode?.(false);
     reconciler.setReplayPlaybackMode?.(false);
     reconciler.setMatchTelemetryActive?.(true, true);
-    reconciler.resetTimelineState?.();
+    reconciler.resetTimelineState?.(true);
   }
 
   public handleSignal(
@@ -223,7 +223,7 @@ export class RuntimeKickoffSignalSubController {
           this.latch.lastKickoffTargetFrame = targetFrame;
           this.latch.latchedKickoffSeconds.clear();
           ctx.resetBotKickoffStep();
-          reconciler.resetTimelineState?.();
+          reconciler.resetTimelineState?.(true);
         }
 
         const muteSignalInReplay = isSignalAudioMutedInGoalReplay(ctx);

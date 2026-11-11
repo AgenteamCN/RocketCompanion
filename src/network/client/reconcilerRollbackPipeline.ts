@@ -50,6 +50,7 @@ export interface RollbackStepperSyncInput {
   downlinkTicks: number;
   hardSnapCount: number;
   isRedundant: boolean;
+  countAsHardSnap?: boolean;
   sendOutboundInput: (tick: number, controls: CarControls | null, nowMs: number) => void;
 }
 
@@ -144,7 +145,8 @@ export function executeSyncTimelineStep(
     );
   }
   const currentClientTick = Math.floor(sim.getHeaderView!().tickCount);
-  const hardSnapCount = (input.hardSnapCount || 0) + 1;
+  const countAsHardSnap = input.countAsHardSnap !== false;
+  const hardSnapCount = countAsHardSnap ? (input.hardSnapCount || 0) + 1 : input.hardSnapCount || 0;
   visualSmoother.reset();
   sim.saveStateSlot(currentClientTick % 256);
   historyBuffer.saveTickSnapshot(currentClientTick, sim);
@@ -203,7 +205,8 @@ export function executeReplayAndEvaluateCorrection(
   kickoffMaskUntilTick: number,
   tolerances: ReconciliationTolerances,
   metrics: ReconcilerMetrics,
-  state: RollbackStepState
+  state: RollbackStepState,
+  forceStateRestore = false
 ): RollbackStepState {
   let { skippedCorrections, hardSnapCount, totalCorrections, maxCorrectionDelta } = state;
   sim.saveStateSlot?.(currentClientTick % 256);
@@ -223,7 +226,7 @@ export function executeReplayAndEvaluateCorrection(
     }
   );
   if (evalResult.canCompare) {
-    if (evalResult.withinTier1) {
+    if (evalResult.withinTier1 && !forceStateRestore) {
       skippedCorrections = (skippedCorrections || 0) + 1;
       metrics.applyTier1Skip(
         evalResult.localPosDelta,

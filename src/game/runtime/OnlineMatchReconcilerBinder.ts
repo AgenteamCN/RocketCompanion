@@ -117,7 +117,13 @@ export class OnlineMatchReconcilerBinder {
     const serverSnapshot = authoritativeServer.sim.saveCompactState();
     const serverTick = Math.floor(authoritativeServer.sim.getHeaderView().tickCount);
     if (!requireActiveCar || (serverSnapshot && serverSnapshot[2] >= 1)) {
-      reconciler.syncTimeline(serverSnapshot, serverTick);
+      reconciler.rollbackStepper.syncSessionTimeline(
+        reconciler,
+        serverSnapshot,
+        serverTick,
+        performance.now(),
+        false
+      );
     }
   }
 
@@ -188,7 +194,6 @@ export class OnlineMatchReconcilerBinder {
       hostLobbyMode: isMatchLobby,
       isMatchTelemetryActive: true,
     });
-    this.syncServerTimelineIfReady(server, reconciler, isMatchLobby);
     return { server, channel, reconciler };
   }
 
