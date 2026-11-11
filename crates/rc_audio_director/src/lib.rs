@@ -1,30 +1,17 @@
 //! `rc_audio_director`: Deterministic WASM acoustic cue bitmask, impact cooldown filter,
 //! and 8-car continuous loop synthesizer (`AudioFrameCuePod`) for WebAudio playback.
 
-use rc_physics_sim::layout::MAX_CARS;
+pub mod config_pod;
+pub mod director;
+pub mod drivetrain_state;
+pub mod pod_types;
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct CarAcousticLoopPod {
-    pub engine_rpm_norm: f32,
-    pub engine_load: f32,
-    pub engine_gain: f32,
-    pub engine_pitch: f32,
-    pub boost_gain: f32,
-    pub boost_pitch: f32,
-    pub skid_gain: f32,
-    pub air_roll_gain: f32,
-}
+pub use config_pod::{AttenuationProfilePod, AudioDirectorConfigPod, EngineTuningConfigPod};
+pub use director::AudioDirectorInstance;
+pub use drivetrain_state::VehicleDrivetrainState;
+pub use pod_types::{
+    edge_mask_bits, AudioFrameCuePod, AudioListenerStatePod, AudioOneShotSlotPod,
+    BallAcousticLoopPod, CarAcousticLoopPod, StadiumBusBlendPod, AUDIO_ATTENUATION_CATEGORY_COUNT,
+    MAX_AUDIBLE_REMOTE_ENGINES, MAX_AUDIO_ONE_SHOT_SLOTS, MAX_ENGINE_GRANULAR_SLICES,
+};
 
-/// Fixed-layout per-frame WebAudio cue table read zero-copy by TypeScript `AudioStage`.
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct AudioFrameCuePod {
-    pub one_shot_edge_mask_lo: u32,
-    pub one_shot_edge_mask_hi: u32,
-    pub primary_impact_gain: f32,
-    pub primary_impact_pitch: f32,
-    pub primary_impact_pos: [f32; 3],
-    pub ball_roll_gain: f32,
-    pub cars: [CarAcousticLoopPod; MAX_CARS],
-}

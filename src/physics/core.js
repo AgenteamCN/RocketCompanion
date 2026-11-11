@@ -195,6 +195,15 @@ async function loadDirectRocketSimWasm(moduleArg = {}) {
   Module['_physics_getCarDemoRespawnTimer'] = wasmExports._physics_getCarDemoRespawnTimer;
   Module['_physics_getCarFlipsRemaining'] = wasmExports._physics_getCarFlipsRemaining;
   Module['_physics_getCarFlipWindowTimer'] = wasmExports._physics_getCarFlipWindowTimer;
+  Module['_physics_stepAudioDirector'] = wasmExports._physics_stepAudioDirector;
+  Module['_physics_getAudioCuePtr'] = wasmExports._physics_getAudioCuePtr;
+  Module['_physics_getAudioCueSize'] = wasmExports._physics_getAudioCueSize;
+  Module['_physics_getAudioConfigPtr'] = wasmExports._physics_getAudioConfigPtr;
+  Module['_physics_getAudioConfigSize'] = wasmExports._physics_getAudioConfigSize;
+  Module['_physics_getAudioListenerPtr'] = wasmExports._physics_getAudioListenerPtr;
+  Module['_physics_setAudioListenerState'] = wasmExports._physics_setAudioListenerState;
+  Module['_physics_resetAudioDirector'] = wasmExports._physics_resetAudioDirector;
+  Module['_physics_triggerAudioCarAction'] = wasmExports._physics_triggerAudioCarAction;
 
   for (const [key, val] of Object.entries(wasmExports)) {
     if (typeof val === 'function' && key.startsWith('_physics_')) {

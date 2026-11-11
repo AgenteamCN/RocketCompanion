@@ -198,6 +198,28 @@ export interface RocketSimWasmModule {
   _physics_getCarDemoRespawnTimer(carIndex: number): number;
   _physics_getCarFlipsRemaining(carIndex: number): number;
   _physics_getCarFlipWindowTimer(carIndex: number): number;
+  _physics_stepAudioDirector(dtSec: number): number;
+  _physics_getAudioCuePtr(): number;
+  _physics_getAudioCueSize(): number;
+  _physics_getAudioConfigPtr(): number;
+  _physics_getAudioConfigSize(): number;
+  _physics_getAudioListenerPtr(): number;
+  _physics_setAudioListenerState(
+    posX: number,
+    posY: number,
+    posZ: number,
+    fwdX: number,
+    fwdY: number,
+    fwdZ: number,
+    upX: number,
+    upY: number,
+    upZ: number,
+    activeCarIndex: number,
+    effectiveNumCars: number,
+    flags: number
+  ): void;
+  _physics_resetAudioDirector(activeCarIndex: number): void;
+  _physics_triggerAudioCarAction(carIndex: number, actionCode: number): void;
 
   // Semantic unprefixed aliases bound by RocketSimWasm.ts
   physics_init: RocketSimWasmModule['_physics_init'];
@@ -313,6 +335,15 @@ export interface RocketSimWasmModule {
   physics_getCarDemoRespawnTimer: RocketSimWasmModule['_physics_getCarDemoRespawnTimer'];
   physics_getCarFlipsRemaining: RocketSimWasmModule['_physics_getCarFlipsRemaining'];
   physics_getCarFlipWindowTimer: RocketSimWasmModule['_physics_getCarFlipWindowTimer'];
+  physics_stepAudioDirector: RocketSimWasmModule['_physics_stepAudioDirector'];
+  physics_getAudioCuePtr: RocketSimWasmModule['_physics_getAudioCuePtr'];
+  physics_getAudioCueSize: RocketSimWasmModule['_physics_getAudioCueSize'];
+  physics_getAudioConfigPtr: RocketSimWasmModule['_physics_getAudioConfigPtr'];
+  physics_getAudioConfigSize: RocketSimWasmModule['_physics_getAudioConfigSize'];
+  physics_getAudioListenerPtr: RocketSimWasmModule['_physics_getAudioListenerPtr'];
+  physics_setAudioListenerState: RocketSimWasmModule['_physics_setAudioListenerState'];
+  physics_resetAudioDirector: RocketSimWasmModule['_physics_resetAudioDirector'];
+  physics_triggerAudioCarAction: RocketSimWasmModule['_physics_triggerAudioCarAction'];
 
   [key: string]: any;
 }
