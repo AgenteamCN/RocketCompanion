@@ -157,8 +157,8 @@ export function stepRLRCPlaybackCursor(params: {
   const next = Math.round(frac);
   let tick = prevTick;
   if (next !== prevCursor) {
-    applyFrame(next, dir > 0);
     const done = (dir > 0 && next >= maxF) || (dir < 0 && next <= 0);
+    applyFrame(next, dir > 0 && !done);
     tick = (prevTick + 1) & 3;
     if (done || tick === 0) {
       useReplayToRcsImporterStore

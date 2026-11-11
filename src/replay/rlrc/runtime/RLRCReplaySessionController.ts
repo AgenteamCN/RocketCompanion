@@ -183,6 +183,7 @@ export class RLRCReplaySessionController {
     if (!this.session || this.isIntervening) return;
     this.runtime?.audioSubsystem?.resetAudio?.();
     this.audioEdgeSynthesizer.reset();
+    this._applyFrame(this.cursorFrame120Hz, false);
     setTelem({
       viewerState: 'paused',
       cursorFrame: this.cursorFrame120Hz,

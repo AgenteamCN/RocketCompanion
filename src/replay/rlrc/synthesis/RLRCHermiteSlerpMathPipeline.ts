@@ -135,15 +135,21 @@ export function resolveEffectivePhysicsDt(
   const v1 = r1 ? ZERO_VEC : calibrateNetStreamVel(v1Raw, rawSecSpeed);
   const s0Len = vLen(v0);
   const s1Len = vLen(v1);
-  const avgVecSpeed = 0.5 * vLen(vAdd(v0, v1));
+  const vAvg = vScale(vAdd(v0, v1), 0.5);
+  const avgVecSpeed = vLen(vAvg);
   const avgScalarSpeed = 0.5 * (s0Len + s1Len);
-  const refSpeed = avgVecSpeed > 0.85 * avgScalarSpeed ? avgVecSpeed : avgScalarSpeed;
+  const dp = vSub(p1, p0);
+  const projDist =
+    avgVecSpeed > 50 ? (dp.x * vAvg.x + dp.y * vAvg.y + dp.z * vAvg.z) / avgVecSpeed : dist;
+  const useDirectional = avgVecSpeed > 0.8 * avgScalarSpeed && projDist > 0.75 * dist;
+  const refSpeed = useDirectional ? avgVecSpeed : avgScalarSpeed;
+  const effDist = useDirectional ? projDist : dist;
   if (refSpeed <= 100) return dtWall;
 
-  const impliedDt = dist / refSpeed;
+  const impliedDt = effDist / refSpeed;
   const quantizedTicks = Math.max(1, Math.round(impliedDt / RLRC_FIXED_DT));
   const dtPhys = quantizedTicks * RLRC_FIXED_DT;
-  const maxTickJitter = Math.min(2.5 * RLRC_FIXED_DT, 0.35 * dtWall);
+  const maxTickJitter = Math.max(4.5 * RLRC_FIXED_DT, 0.85 * dtWall);
   return Math.abs(dtPhys - dtWall) <= maxTickJitter ? dtPhys : dtWall;
 }
 
@@ -174,15 +180,7 @@ export function interpolateRigidBodyHermiteSlerp(
 
   const p0 = s0.position;
   const p1 = s1.position;
-  const dt = resolveEffectivePhysicsDt(
-    p0,
-    p1,
-    s0.linearVelocity,
-    s1.linearVelocity,
-    dtSeconds,
-    r0,
-    r1
-  );
+  const dt = Math.max(RLRC_FIXED_DT * 0.5, dtSeconds);
   const sec = vScale(vSub(p1, p0), 1 / dt);
   const secSpeed = vLen(sec);
   const v0 = r0 ? ZERO_VEC : calibrateNetStreamVel(s0.linearVelocity, secSpeed);

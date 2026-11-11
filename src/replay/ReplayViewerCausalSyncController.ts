@@ -239,9 +239,10 @@ export class ReplayViewerCausalSyncController {
         totalFrames: session.frames.length,
         effectiveFlowPct: store.effectiveFlowPct || 100,
       });
-      session._applyFrameAtCursor(true, true, { preserveEngineTick: true });
+      const isFinished = outcome.finishedAtFrame !== null;
+      session._applyFrameAtCursor(!isFinished, true, { preserveEngineTick: true });
       this._syncAuthoritativeServerState(r);
-      if (outcome.finishedAtFrame !== null) {
+      if (isFinished) {
         session._silenceContinuousAudio();
         store.updateLiveTelemetry({
           viewerState: 'paused',
