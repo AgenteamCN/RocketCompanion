@@ -198,6 +198,15 @@ export const MenuShell: React.FC<MenuShellProps> = ({ inspectorSlot }) => {
           onExpandedChange={(expanded) => {
             setEdgeInspectorExpanded(expanded);
           }}
+          isMenuOpen={isOpen && !isDockState}
+          blockedTooltipText={
+            activeRoute === 'settings'
+              ? 'Please close settings window first'
+              : 'Please close active menu first'
+          }
+          onBlockedClick={() => {
+            triggerShake();
+          }}
           side="right"
           topOffset={72}
           bottomOffset={184}

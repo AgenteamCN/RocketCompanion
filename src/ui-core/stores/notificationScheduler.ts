@@ -120,6 +120,56 @@ export const resolveActiveOngoing = (
 };
 
 /**
+ * Resolves the compound deduplication identity (`sourceNamespace::collapseKey`) for a notification item.
+ * Returns `null` when the notification does not participate in collapse/upsert arbitration (`APPEND_ONLY`).
+ */
+export const resolveCompoundCollapseIdentity = (
+  item: Pick<
+    QuickNotificationItem,
+    'collapseKey' | 'sourceNamespace' | 'collapseStrategy'
+  >
+): string | null => {
+  if (!item.collapseKey || item.collapseStrategy === 'APPEND_ONLY') {
+    return null;
+  }
+  const ns = (item.sourceNamespace || 'default').trim() || 'default';
+  return `${ns}::${item.collapseKey.trim()}`;
+};
+
+/**
+ * Checks whether an existing notification item matches a target identifier
+ * (system primary `id`, legacy `externalId`, `collapseKey`, or compound `sourceNamespace::collapseKey`).
+ */
+export const matchesNotificationIdentifier = (
+  item: QuickNotificationItem,
+  targetIdOrKey: string
+): boolean => {
+  if (!targetIdOrKey) return false;
+  if (item.id === targetIdOrKey) return true;
+  if (item.externalId && item.externalId === targetIdOrKey) return true;
+  if (item.collapseKey && item.collapseKey === targetIdOrKey) return true;
+  const compound = resolveCompoundCollapseIdentity(item);
+  return compound !== null && compound === targetIdOrKey;
+};
+
+const canCollapseReplaceExisting = (
+  existing: QuickNotificationItem,
+  incoming: QuickNotificationItem
+): boolean => {
+  const incomingKey = resolveCompoundCollapseIdentity(incoming);
+  if (!incomingKey) return false;
+  const existingKey = resolveCompoundCollapseIdentity(existing);
+  if (existingKey !== incomingKey) return false;
+
+  const strategy = incoming.collapseStrategy || 'REPLACE_UNREAD';
+  if (strategy === 'APPEND_ONLY') return false;
+  if (strategy === 'REPLACE_UNREAD' && existing.isRead) {
+    return false;
+  }
+  return true;
+};
+
+/**
  * Notification Scheduler: Pure state arbitration engine
  */
 export const notificationScheduler = {
@@ -131,7 +181,38 @@ export const notificationScheduler = {
     let nextPreempted = [...state.preemptedPersistentStack];
     let nextUnread = [...state.unreadStack];
 
-    if (currentActive) {
+    // 1. Compound Key Collapse / Upsert Arbitration (`sourceNamespace::collapseKey`)
+    let priorVersion = 0;
+    const isReplacingCurrentActive = Boolean(
+      currentActive && canCollapseReplaceExisting(currentActive, newItem)
+    );
+    if (isReplacingCurrentActive && currentActive) {
+      priorVersion = Math.max(priorVersion, currentActive.version ?? 1);
+    }
+
+    nextPreempted = nextPreempted.filter((existing) => {
+      if (canCollapseReplaceExisting(existing, newItem)) {
+        priorVersion = Math.max(priorVersion, existing.version ?? 1);
+        return false;
+      }
+      return true;
+    });
+
+    nextUnread = nextUnread.filter((existing) => {
+      if (canCollapseReplaceExisting(existing, newItem)) {
+        priorVersion = Math.max(priorVersion, existing.version ?? 1);
+        return false;
+      }
+      return true;
+    });
+
+    const finalNewItem: QuickNotificationItem =
+      priorVersion > 0
+        ? { ...newItem, version: priorVersion + 1 }
+        : { ...newItem, version: newItem.version ?? 1 };
+
+    // 2. Foreground Preemption (only push previous active into stack if it wasn't replaced by this collapse key)
+    if (currentActive && !isReplacingCurrentActive) {
       if (currentActive.type === 'persistent') {
         nextPreempted = [currentActive, ...nextPreempted];
       } else if (currentActive.type === 'temporary') {
@@ -140,7 +221,7 @@ export const notificationScheduler = {
     }
 
     return {
-      activeNotification: newItem,
+      activeNotification: finalNewItem,
       preemptedPersistentStack: nextPreempted,
       unreadStack: nextUnread,
       totalUnreadCount: nextUnread.length + nextPreempted.length,
@@ -178,7 +259,14 @@ export const notificationScheduler = {
     restoredItem: QuickNotificationItem | null;
   } => {
     const currentActive = state.activeNotification;
-    const nextUnread = currentActive ? [currentActive, ...state.unreadStack] : [...state.unreadStack];
+    let nextUnread = [...state.unreadStack];
+
+    if (currentActive) {
+      nextUnread = nextUnread.filter(
+        (existing) => !canCollapseReplaceExisting(existing, currentActive)
+      );
+      nextUnread = [currentActive, ...nextUnread];
+    }
 
     let nextActive: QuickNotificationItem | null = null;
     let nextPreempted = [...state.preemptedPersistentStack];
@@ -205,7 +293,10 @@ export const notificationScheduler = {
     const currentActive = state.activeNotification;
     if (!currentActive) return {};
 
-    const nextUnread = [currentActive, ...state.unreadStack];
+    const filteredUnread = state.unreadStack.filter(
+      (existing) => !canCollapseReplaceExisting(existing, currentActive)
+    );
+    const nextUnread = [currentActive, ...filteredUnread];
     return {
       activeNotification: null,
       unreadStack: nextUnread,
@@ -221,12 +312,18 @@ export const notificationScheduler = {
     restoredItem: QuickNotificationItem | null;
   } => {
     let nextActive = state.activeNotification;
-    let nextPreempted = state.preemptedPersistentStack.filter((item) => item.id !== id);
-    const nextUnread = state.unreadStack.filter((item) => item.id !== id);
-    const nextOngoing = state.ongoingTasks.filter((item) => item.id !== id);
+    let nextPreempted = state.preemptedPersistentStack.filter(
+      (item) => !matchesNotificationIdentifier(item, id)
+    );
+    const nextUnread = state.unreadStack.filter(
+      (item) => !matchesNotificationIdentifier(item, id)
+    );
+    const nextOngoing = state.ongoingTasks.filter(
+      (item) => !matchesNotificationIdentifier(item, id)
+    );
     let restoredItem: QuickNotificationItem | null = null;
 
-    if (nextActive && nextActive.id === id) {
+    if (nextActive && matchesNotificationIdentifier(nextActive, id)) {
       if (nextPreempted.length > 0) {
         restoredItem = nextPreempted[0];
         nextActive = restoredItem;

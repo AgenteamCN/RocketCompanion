@@ -2241,17 +2241,32 @@
         "user-l1-freeplay": {
           "status": "rejected",
           "approvedAt": "2026-11-11T09:34:00.000Z",
-          "note": "Resume black primary button should not show an orange focus-visible ring when selected/focused via keyboard navigation; keep orange selection styling only on secondary cards (Play/Garage/Settings)."
+          "note": "Resume black primary button should not show an orange focus-visible ring when selected/focused via keyboard navigation; keep orange selection styling only on secondary cards (Play/Garage/Settings).",
+          "fileVisualHashes": {
+            "src/ui-core/layout/MainMenuRow.tsx": "0000000000000000",
+            "src/ui-core/recipes/Layer1MainMenuRecipe.tsx": "f71ccccf3618cfa1",
+            "src/ui-core/recipes/layer1MenuContextSpecs.ts": "2d9f11eca56944ef"
+          }
         },
         "user-l1-replay-viewer": {
           "status": "rejected",
           "approvedAt": "2026-11-11T09:34:00.000Z",
-          "note": "Intermittent orange focus ring appears on the black Resume button when switching between Layer 1 context pages."
+          "note": "Intermittent orange focus ring appears on the black Resume button when switching between Layer 1 context pages.",
+          "fileVisualHashes": {
+            "src/ui-core/layout/MainMenuRow.tsx": "0000000000000000",
+            "src/ui-core/recipes/Layer1MainMenuRecipe.tsx": "f71ccccf3618cfa1",
+            "src/ui-core/recipes/layer1MenuContextSpecs.ts": "2d9f11eca56944ef"
+          }
         },
         "user-l1-static-training-edit": {
           "status": "rejected",
           "approvedAt": "2026-11-11T09:34:00.000Z",
-          "note": "Right-edge TAB EdgeInspectorDrawer trigger pill renders while Layer 1 pause menu is open even though Tab hotkey is disabled while menu is open."
+          "note": "Right-edge TAB EdgeInspectorDrawer trigger pill renders while Layer 1 pause menu is open even though Tab hotkey is disabled while menu is open.",
+          "fileVisualHashes": {
+            "src/ui-core/navigation/EdgeInspectorDrawer.tsx": "0000000000000000",
+            "src/ui-core/recipes/Layer1MainMenuRecipe.tsx": "f71ccccf3618cfa1",
+            "src/ui-core/recipes/layer1MenuContextSpecs.ts": "2d9f11eca56944ef"
+          }
         },
         "user-l1-exhibition": {
           "status": "approved",
@@ -2388,12 +2403,24 @@
           "note": "Display name for TriOctane4 and TriOctane3 should both be TriOctane; badge below should be Octane and 3 instead of Octane (Three-Wheeler)."
         },
         "paint": {
-          "status": "deferred",
-          "approvedAt": "2026-11-06T00:00:00.000Z"
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Vehicle Paint Finishes uses horizontally flipped spray-can; Primary Team Priority renamed to Team Priority with Blue / Orange options and user-star icon."
+        },
+        "user-l2-garage-paint": {
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Vehicle Paint Finishes uses horizontally flipped spray-can; Primary Team Priority renamed to Team Priority with Blue / Orange options and user-star icon."
         },
         "loadout": {
           "status": "deferred",
-          "approvedAt": "2026-11-06T00:00:00.000Z"
+          "approvedAt": "2026-11-11T10:01:04.067Z",
+          "note": "Ball style 以及 demolition effect 可以直接删掉了。"
+        },
+        "user-l2-garage-loadout": {
+          "status": "deferred",
+          "approvedAt": "2026-11-11T10:01:04.067Z",
+          "note": "Ball style 以及 demolition effect 可以直接删掉了。"
         },
         "anthem": {
           "status": "deferred",

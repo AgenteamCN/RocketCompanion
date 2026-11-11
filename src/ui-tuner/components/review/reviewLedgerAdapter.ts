@@ -189,9 +189,10 @@ export function classifySurfaceBucket(params: {
   const effectiveDecision =
     isDecisionSupersededByLedger || isDecisionSupersededByLiveCode ? undefined : runtimeDecision;
 
+  const ledgerEffectiveStatus = variantRecord?.status ?? ledgerRecord?.status;
   const isLedgerApprovalStale = Boolean(
     !effectiveDecision &&
-    (variantRecord?.status === 'approved' || ledgerRecord?.status === 'approved') &&
+    (ledgerEffectiveStatus === 'approved' || ledgerEffectiveStatus === 'rejected') &&
     changedSubtreeFiles.length > 0
   );
 

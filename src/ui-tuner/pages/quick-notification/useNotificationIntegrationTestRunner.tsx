@@ -12,6 +12,7 @@ import {
   executeScenario3CollapseIsolation,
   executeScenario5SchemaValidation,
   executeScenario6OngoingTaskYield,
+  executeScenario7CollapseKeyAndNamespaceIsolation,
   type NotificationScenarioContext,
 } from './notificationIntegrationScenarios';
 
@@ -58,6 +59,12 @@ export const INITIAL_NOTIFICATION_TEST_RESULTS: Record<string, TestCaseResult> =
   test6: {
     id: 'test6',
     name: 'scene 6: Ongoing Competition test between lowest-priority tasks and interactive notifications (Background execution and foreground yield)',
+    status: 'idle',
+    log: [],
+  },
+  test7: {
+    id: 'test7',
+    name: 'scene 7: Collapse Key & Namespace Isolation (Alpha/Bravo dual-buffer 1s overwrite without cross-service collision)',
     status: 'idle',
     log: [],
   },
@@ -212,6 +219,7 @@ Trace:
     if (testId === 'test4') runTest4();
     if (testId === 'test5') executeScenario5SchemaValidation(scenarioCtx);
     if (testId === 'test6') executeScenario6OngoingTaskYield(scenarioCtx);
+    if (testId === 'test7') executeScenario7CollapseKeyAndNamespaceIsolation(scenarioCtx);
   };
 
   const handleRunAll = async () => {
@@ -227,6 +235,8 @@ Trace:
     executeScenario5SchemaValidation(scenarioCtx);
     await new Promise((r) => setTimeout(r, 1000));
     await executeScenario6OngoingTaskYield(scenarioCtx);
+    await new Promise((r) => setTimeout(r, 1000));
+    await executeScenario7CollapseKeyAndNamespaceIsolation(scenarioCtx);
     setIsRunningAll(false);
   };
 

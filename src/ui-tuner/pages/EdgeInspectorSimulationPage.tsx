@@ -173,6 +173,15 @@ export const EdgeInspectorSimulationPage: React.FC<EdgeInspectorSimulationPagePr
         <EdgeInspectorDrawer
           isExpanded={isDrawerExpanded}
           onExpandedChange={setIsDrawerExpanded}
+          isMenuOpen={isEscMenuOpen}
+          blockedTooltipText={
+            escMenuRoute === 'settings'
+              ? 'Please close settings window first'
+              : 'Please close active menu first'
+          }
+          onBlockedClick={() => {
+            showToast('[!] Please close active menu first (Edge Inspector blocked while menu is open)');
+          }}
           side={drawerSide}
           expandedWidth={expandedWidth}
           collapsedWidth={collapsedWidth}

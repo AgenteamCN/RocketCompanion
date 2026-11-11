@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { KeycapBadge } from '../primitives/KeycapBadge';
 import { UI_EASING } from '../tokens/easing';
@@ -30,6 +30,12 @@ export interface EdgeInspectorDrawerProps {
   shortcutKey?: string;
   /** Whether to listen to the keyboard shortcut (default: true) */
   enableHotkey?: boolean;
+  /** Whether an active menu modal is currently open, blocking drawer expansion and auto-collapsing to pill */
+  isMenuOpen?: boolean;
+  /** Custom tooltip message when hover-blocked by an active menu */
+  blockedTooltipText?: string;
+  /** Callback fired when user clicks the collapsed pill or presses hotkey while blocked by an active menu */
+  onBlockedClick?: () => void;
   /** Positioning mode: 'absolute' inside stage container (default) or 'fixed' to viewport */
   positionMode?: 'absolute' | 'fixed';
   /** Light or dark theme */
@@ -70,23 +76,27 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
   edgeMargin = 16,
   shortcutKey = 'TAB',
   enableHotkey = true,
+  isMenuOpen = false,
+  blockedTooltipText,
+  onBlockedClick,
   positionMode = 'absolute',
   isLight = false,
   className = '',
   children,
 }) => {
+  const effectiveExpanded = isExpanded && !isMenuOpen;
   const [phase, setPhase] = useState<EdgeDrawerAnimPhase>(
-    isExpanded ? 'expanded' : 'collapsed'
+    effectiveExpanded ? 'expanded' : 'collapsed'
   );
   const [isPillHovered, setIsPillHovered] = useState(false);
 
-  // Sync external `isExpanded` prop changes with internal sequenced state machine.
+  // Sync external `isExpanded` / `isMenuOpen` prop changes with internal sequenced state machine.
   // Clear both outer and inner timers on cleanup so rapid toggling never leaks stale phase changes.
   useEffect(() => {
     let t1: ReturnType<typeof setTimeout> | undefined;
     let t2: ReturnType<typeof setTimeout> | undefined;
 
-    if (isExpanded && phase !== 'expanded') {
+    if (effectiveExpanded && phase !== 'expanded') {
       setPhase('expanding_content');
       t1 = setTimeout(() => {
         setPhase('expanding_resize');
@@ -94,7 +104,7 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
           setPhase('expanded');
         }, 250);
       }, 70);
-    } else if (!isExpanded && phase !== 'collapsed') {
+    } else if (!effectiveExpanded && phase !== 'collapsed') {
       setPhase('collapsing_content');
       t1 = setTimeout(() => {
         setPhase('collapsing_resize');
@@ -108,7 +118,13 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
       if (t1) clearTimeout(t1);
       if (t2) clearTimeout(t2);
     };
-  }, [isExpanded]);
+  }, [effectiveExpanded]);
+
+  useEffect(() => {
+    if (isMenuOpen && isExpanded) {
+      onExpandedChange(false);
+    }
+  }, [isMenuOpen, isExpanded, onExpandedChange]);
 
   // Listen for TAB (or custom shortcutKey)
   useEffect(() => {
@@ -124,12 +140,16 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
       if (e.key.toUpperCase() === shortcutKey.toUpperCase()) {
         e.preventDefault();
         e.stopPropagation();
+        if (isMenuOpen) {
+          onBlockedClick?.();
+          return;
+        }
         onExpandedChange(!isExpanded);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enableHotkey, shortcutKey, isExpanded, onExpandedChange]);
+  }, [enableHotkey, shortcutKey, isExpanded, isMenuOpen, onBlockedClick, onExpandedChange]);
 
   const isDockGeometry =
     phase === 'collapsed' ||
@@ -153,7 +173,7 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
     : `calc(100% - ${topOffset + bottomOffset}px)`;
 
   const ExpandChevron = side === 'right' ? ChevronLeft : ChevronRight;
-  const hoverNudgeX = side === 'right' ? -2.5 : 2.5;
+  const hoverNudgeX = isMenuOpen ? 0 : side === 'right' ? -2.5 : 2.5;
 
   return (
     <MorphContainerContext.Provider value={true}>
@@ -176,7 +196,9 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
           position: positionMode,
           ...horizontalAnchorStyle,
         }}
-        className={`z-30 pointer-events-auto select-none overflow-hidden flex flex-col transition-shadow duration-280 ${
+        className={`z-30 pointer-events-auto select-none ${
+          isDockGeometry && isMenuOpen ? 'overflow-visible opacity-85' : 'overflow-hidden'
+        } flex flex-col transition-shadow duration-280 ${
           isDockGeometry
             ? isLight
               ? 'border border-neutral-300 bg-white/98 hover:bg-white text-neutral-900 shadow-md cursor-pointer'
@@ -185,7 +207,17 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
             ? 'border border-neutral-300/90 bg-neutral-50/98 text-neutral-900 shadow-2xl'
             : 'border border-neutral-700/70 bg-neutral-900/98 text-neutral-100 shadow-2xl'
         } ${className}`}
-        onClick={isDockGeometry ? () => onExpandedChange(true) : undefined}
+        onClick={
+          isDockGeometry
+            ? () => {
+                if (isMenuOpen) {
+                  onBlockedClick?.();
+                  return;
+                }
+                onExpandedChange(true);
+              }
+            : undefined
+        }
         onMouseEnter={() => isDockGeometry && setIsPillHovered(true)}
         onMouseLeave={() => setIsPillHovered(false)}
       >
@@ -218,6 +250,29 @@ export const EdgeInspectorDrawer: React.FC<EdgeInspectorDrawerProps> = ({
 
           <KeycapBadge shortcut={shortcutKey} size="sm" isLight={isLight} />
         </div>
+
+        {/* Blocked Tooltip when Hovering Collapsed Pill with Open Menu */}
+        <AnimatePresence>
+          {isDockGeometry && isMenuOpen && isPillHovered && (
+            <motion.div
+              key="blocked-edge-inspector-tooltip"
+              initial={{ opacity: 0, y: 4, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 2, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className={`absolute top-full mt-2.5 ${
+                side === 'left' ? 'left-0' : 'right-0'
+              } px-3 py-1.5 rounded-xl border text-xs whitespace-nowrap shadow-xl pointer-events-none select-none z-50 flex items-center gap-1.5 font-medium ${
+                isLight
+                  ? 'bg-neutral-900/98 text-neutral-100 border-neutral-700'
+                  : 'bg-neutral-850/98 text-neutral-100 border-neutral-650'
+              }`}
+            >
+              <span className="text-amber-400 text-xs font-mono font-bold shrink-0">[!]</span>
+              <span>{blockedTooltipText || 'Please close active menu first'}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 2. Expanded Content Wrapper:
             Permanently mounted at `w-full` with `minWidth: expandedWidth - 2` (accounting for 1px left + 1px right border)

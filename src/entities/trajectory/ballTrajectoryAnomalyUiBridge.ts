@@ -81,10 +81,11 @@ export function bindBallTrajectoryAnomalyUiBridge(
   recorder.setOnAnomalyCaptured((sample) => {
     tunerStore.publishTelemetry({ anomalySummary: recorder.getSummary() });
     if (tunerStore.getNotifyAnomalyAlerts?.() === false) return;
-    dismissNotification?.(notifId);
     const groupLabel = (sample.bufferGroup ?? 'alpha').toUpperCase();
     pushNotification?.({
-      id: notifId,
+      collapseKey: notifId,
+      sourceNamespace: 'ball-trajectory-predictor',
+      collapseStrategy: 'ALWAYS_REPLACE',
       type: 'temporary',
       tone: 'warning',
       icon: 'alert-triangle',
