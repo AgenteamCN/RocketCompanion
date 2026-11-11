@@ -1,24 +1,175 @@
-import {
-  getUuToMeters,
-  SPATIAL_CONFIG,
-  SPATIAL_AUDIO_CONFIG,
-  applySpatialConfigPatch,
-  calculateDistanceGain,
-  type AudioAttenuationCategory,
-  type SpatialAttenuationProfile,
-  type SpatialConfigPatch,
-  type SpatialVector3Like,
-  type SpatialPositionInput,
-} from './spatialAudioMath.ts';
 import { audioConfig } from '../ui-core/config/audioConfig.ts';
-
-export type {
+import type {
   AudioAttenuationCategory,
   SpatialAttenuationProfile,
-  SpatialConfigPatch,
-  SpatialVector3Like,
-  SpatialPositionInput,
+} from '../ui-core/config/spatialAttenuationProfiles.ts';
+import {
+  evaluateCategoryDistanceGain,
+  isAttenuationDistanceCulled,
+  setArenaAcousticScale,
+} from '../ui-core/config/spatialAudioVisualizerConfig.ts';
+
+export type { AudioAttenuationCategory, SpatialAttenuationProfile };
+
+export const UU_TO_METERS = 0.01;
+
+export interface SpatialConfigPatch {
+  spatialAudio?: boolean;
+  arenaAcousticScale?: number;
+  distanceUnitScale?: number;
+  rolloffMinDistance?: number;
+  rolloffMaxDistance?: number;
+  minAudibleGainFloor?: number;
+  spatialPanningModel?: PanningModelType | string;
+  distanceModel?: string;
+}
+
+export interface SpatialVector3Like {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface SpatialPositionInput {
+  isVector3?: boolean;
+  isAudioCoords?: boolean;
+  x?: number;
+  y?: number;
+  z?: number;
+  posX?: number;
+  posY?: number;
+  posZ?: number;
+}
+
+export const SPATIAL_CONFIG = {
+  spatialAudio: true,
+  arenaAcousticScale: 1.0,
+  distanceUnitScale: 0.01,
+  minDistance: 500,
+  maxDistance: 9000,
+  minGainFloor: 0.05,
+  panningModel: 'equalpower' as PanningModelType,
+  distanceModel: 'smoothstep',
+  rolloffFactor: 1.0,
+  rampTime: 0.025,
 };
+
+export const SPATIAL_AUDIO_CONFIG = {
+  get MIN_DISTANCE() {
+    return SPATIAL_CONFIG.minDistance;
+  },
+  get MAX_DISTANCE() {
+    return SPATIAL_CONFIG.maxDistance;
+  },
+  get MAX_GAIN() {
+    return 1.0;
+  },
+  get RAMP_TIME() {
+    return SPATIAL_CONFIG.rampTime;
+  },
+};
+
+export function getUuToMeters(): number {
+  return SPATIAL_CONFIG.distanceUnitScale;
+}
+
+export function getArenaAcousticScale(): number {
+  return SPATIAL_CONFIG.arenaAcousticScale;
+}
+
+export function isDistanceCulled(
+  distanceUU: number,
+  categoryOrProfile: AudioAttenuationCategory | SpatialAttenuationProfile | string | null,
+  distanceRadiusScale = 1.0
+): boolean {
+  return isAttenuationDistanceCulled(distanceUU, categoryOrProfile, distanceRadiusScale);
+}
+
+export function calculateIncidentDistanceGain(
+  distance: number,
+  category?: AudioAttenuationCategory | SpatialAttenuationProfile | string | null,
+  distanceRadiusScale = 1.0
+): number {
+  if (!Number.isFinite(distance)) return 1.0;
+  return evaluateCategoryDistanceGain(distance, category || 'car_ball_hit', distanceRadiusScale);
+}
+
+export function calculateDistanceGain(
+  distance: number,
+  category?: AudioAttenuationCategory | SpatialAttenuationProfile | string | null,
+  distanceRadiusScale = 1.0
+): number {
+  if (!Number.isFinite(distance)) return 0;
+  return calculateIncidentDistanceGain(distance, category ?? 'engine_other', distanceRadiusScale);
+}
+
+export function toAudioCoordinates(
+  out: SpatialVector3Like,
+  pos: SpatialPositionInput | null | undefined
+): SpatialVector3Like | null {
+  if (!pos) return null;
+  if (pos.isVector3 || pos.isAudioCoords) {
+    out.x = pos.x ?? 0;
+    out.y = pos.y ?? 0;
+    out.z = pos.z ?? 0;
+    return out;
+  }
+  if (Number.isFinite(pos.posX) && Number.isFinite(pos.posY) && Number.isFinite(pos.posZ)) {
+    out.x = pos.posX as number;
+    out.y = pos.posZ as number;
+    out.z = pos.posY as number;
+    return out;
+  }
+  if (Number.isFinite(pos.x) && Number.isFinite(pos.y) && Number.isFinite(pos.z)) {
+    out.x = pos.x as number;
+    out.y = pos.z as number;
+    out.z = pos.y as number;
+    return out;
+  }
+  return null;
+}
+
+export function applySpatialConfigPatch(
+  patch: SpatialConfigPatch | null | undefined,
+  onPanningModelChange: ((model: PanningModelType) => void) | null = null
+): void {
+  if (!patch || typeof patch !== 'object') return;
+  if (typeof patch.spatialAudio === 'boolean') {
+    SPATIAL_CONFIG.spatialAudio = patch.spatialAudio;
+  }
+  if (Number.isFinite(patch.arenaAcousticScale) && (patch.arenaAcousticScale as number) > 0) {
+    SPATIAL_CONFIG.arenaAcousticScale = patch.arenaAcousticScale as number;
+    setArenaAcousticScale(SPATIAL_CONFIG.arenaAcousticScale);
+  }
+  if (Number.isFinite(patch.distanceUnitScale) && (patch.distanceUnitScale as number) > 0) {
+    SPATIAL_CONFIG.distanceUnitScale = patch.distanceUnitScale as number;
+  }
+  if (Number.isFinite(patch.rolloffMinDistance) && (patch.rolloffMinDistance as number) >= 0) {
+    SPATIAL_CONFIG.minDistance = patch.rolloffMinDistance as number;
+  }
+  if (
+    Number.isFinite(patch.rolloffMaxDistance) &&
+    (patch.rolloffMaxDistance as number) > SPATIAL_CONFIG.minDistance
+  ) {
+    SPATIAL_CONFIG.maxDistance = patch.rolloffMaxDistance as number;
+  }
+  if (Number.isFinite(patch.minAudibleGainFloor) && (patch.minAudibleGainFloor as number) >= 0) {
+    SPATIAL_CONFIG.minGainFloor = Math.max(0, Math.min(1.0, patch.minAudibleGainFloor as number));
+  }
+  if (patch.spatialPanningModel === 'equalpower' || patch.spatialPanningModel === 'HRTF') {
+    SPATIAL_CONFIG.panningModel = patch.spatialPanningModel;
+    onPanningModelChange?.(
+      SPATIAL_CONFIG.spatialAudio ? SPATIAL_CONFIG.panningModel : 'equalpower'
+    );
+  } else if (typeof patch.spatialAudio === 'boolean') {
+    onPanningModelChange?.(
+      SPATIAL_CONFIG.spatialAudio ? SPATIAL_CONFIG.panningModel : 'equalpower'
+    );
+  }
+  if (typeof patch.distanceModel === 'string') {
+    SPATIAL_CONFIG.distanceModel = patch.distanceModel;
+  }
+}
 
 export interface AudioPositionVector extends SpatialVector3Like {
   copy(p?: Partial<SpatialVector3Like> | null): AudioPositionVector;
@@ -76,13 +227,10 @@ function createAudioPositionVector(): AudioPositionVector {
 
 export function updateSpatialConfig(patch: SpatialConfigPatch | null | undefined): void {
   applySpatialConfigPatch(patch, (panningModel) => {
-    if (listenerManager) {
-      listenerManager.updateSourcesPanningModel(panningModel);
-    }
+    listenerManager?.updateSourcesPanningModel(panningModel);
   });
 }
 
-// Internal listener state shared across all spatial audio instances
 class AudioListenerManager {
   _lastFx: number | undefined;
   _lastFy: number | undefined;
@@ -138,12 +286,11 @@ class AudioListenerManager {
 
   updateSourcesPanningModel(model: PanningModelType): void {
     for (const source of this.sources) {
-      if (source && source.panner) {
+      if (source?.panner) {
         try {
           source.panner.panningModel = model;
         } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          console.warn('[SpatialAudioSource] Failed to set panningModel:', errMsg);
+          console.warn('[SpatialAudioSource] Failed to set panningModel:', err);
         }
       }
     }
@@ -171,55 +318,36 @@ class AudioListenerManager {
     };
   }
 
-  /**
-   * Updates global audio listener state from 3D camera.
-   * @param {Object} camera - Three.js camera or equivalent transform object
-   */
   updateFromCamera(camera: CameraTransformLike | null | undefined): void {
     if (!camera) return;
-
     try {
-      if (typeof camera.updateWorldMatrix === 'function') {
-        camera.updateWorldMatrix(true, false);
-      }
+      camera.updateWorldMatrix?.(true, false);
 
-      if (camera.matrixWorld && camera.matrixWorld.elements) {
+      if (camera.matrixWorld?.elements) {
         const te = camera.matrixWorld.elements;
-        this.position.x = te[12];
-        this.position.y = te[13];
-        this.position.z = te[14];
-
+        this.position.set(te[12], te[13], te[14]);
         const fx = -te[8],
           fy = -te[9],
           fz = -te[10];
         const flen = Math.hypot(fx, fy, fz) || 1;
-        this.forward.x = fx / flen;
-        this.forward.y = fy / flen;
-        this.forward.z = fz / flen;
+        this.forward = { x: fx / flen, y: fy / flen, z: fz / flen };
 
         const ux = te[4],
           uy = te[5],
           uz = te[6];
         const ulen = Math.hypot(ux, uy, uz) || 1;
-        this.up.x = ux / ulen;
-        this.up.y = uy / ulen;
-        this.up.z = uz / ulen;
+        this.up = { x: ux / ulen, y: uy / ulen, z: uz / ulen };
       } else {
         if (typeof camera.getWorldPosition === 'function') {
           camera.getWorldPosition(this.position);
         } else if (camera.position) {
-          this.position.x = camera.position.x ?? 0;
-          this.position.y = camera.position.y ?? 0;
-          this.position.z = camera.position.z ?? 0;
+          this.position.copy(camera.position);
         }
 
         if (typeof camera.getWorldQuaternion === 'function') {
           camera.getWorldQuaternion(this.quaternion);
         } else if (camera.quaternion) {
-          this.quaternion.x = camera.quaternion.x ?? 0;
-          this.quaternion.y = camera.quaternion.y ?? 0;
-          this.quaternion.z = camera.quaternion.z ?? 0;
-          this.quaternion.w = camera.quaternion.w ?? 1;
+          this.quaternion.copy(camera.quaternion);
         }
 
         this.forward = this.rotateVector({ x: 0, y: 0, z: -1 }, this.quaternion);
@@ -228,11 +356,12 @@ class AudioListenerManager {
 
       this.hasListener = true;
 
-      if (this.context && this.context.listener) {
+      if (this.context?.listener) {
         const listener = this.context.listener;
-        const lx = this.position.x * getUuToMeters();
-        const ly = this.position.y * getUuToMeters();
-        const lz = this.position.z * getUuToMeters();
+        const scale = getUuToMeters();
+        const lx = this.position.x * scale;
+        const ly = this.position.y * scale;
+        const lz = this.position.z * scale;
         const fx = this.forward.x;
         const fy = this.forward.y;
         const fz = this.forward.z;
@@ -242,23 +371,15 @@ class AudioListenerManager {
 
         const changed =
           this._lastLx === undefined ||
-          this._lastLy === undefined ||
-          this._lastLz === undefined ||
-          this._lastFx === undefined ||
-          this._lastFy === undefined ||
-          this._lastFz === undefined ||
-          this._lastUx === undefined ||
-          this._lastUy === undefined ||
-          this._lastUz === undefined ||
           Math.abs(lx - this._lastLx) > 1e-4 ||
-          Math.abs(ly - this._lastLy) > 1e-4 ||
-          Math.abs(lz - this._lastLz) > 1e-4 ||
-          Math.abs(fx - this._lastFx) > 1e-4 ||
-          Math.abs(fy - this._lastFy) > 1e-4 ||
-          Math.abs(fz - this._lastFz) > 1e-4 ||
-          Math.abs(ux - this._lastUx) > 1e-4 ||
-          Math.abs(uy - this._lastUy) > 1e-4 ||
-          Math.abs(uz - this._lastUz) > 1e-4;
+          Math.abs(ly - (this._lastLy ?? 0)) > 1e-4 ||
+          Math.abs(lz - (this._lastLz ?? 0)) > 1e-4 ||
+          Math.abs(fx - (this._lastFx ?? 0)) > 1e-4 ||
+          Math.abs(fy - (this._lastFy ?? 0)) > 1e-4 ||
+          Math.abs(fz - (this._lastFz ?? 0)) > 1e-4 ||
+          Math.abs(ux - (this._lastUx ?? 0)) > 1e-4 ||
+          Math.abs(uy - (this._lastUy ?? 0)) > 1e-4 ||
+          Math.abs(uz - (this._lastUz ?? 0)) > 1e-4;
 
         if (changed) {
           this._lastLx = lx;
@@ -307,24 +428,21 @@ export function updateAudioListener(camera: CameraTransformLike | null | undefin
   }
 }
 
-/**
- * 3D Spatial Audio Source for individual sound emitters (e.g. car engines, boost nozzles).
- */
 export class SpatialAudioSource {
-  _lastGainTime: number;
+  _lastGainTime = 0;
   _lastPx: number | undefined;
   _lastPy: number | undefined;
   _lastPz: number | undefined;
   _lastWrittenGain: number | undefined;
-  _smoothedGain: number;
+  _smoothedGain = 0;
   category: AudioAttenuationCategory;
   context: AudioContext | null;
-  enabled: boolean;
+  enabled = true;
   input: GainNode;
-  output: GainNode | null;
-  panner: PannerNode | null;
-  position: AudioPositionVector;
-  targetGain: number;
+  output: GainNode | null = null;
+  panner: PannerNode | null = null;
+  position: AudioPositionVector = createAudioPositionVector();
+  targetGain = -1;
 
   constructor(
     context: AudioContext | null,
@@ -333,18 +451,9 @@ export class SpatialAudioSource {
   ) {
     this.context = context;
     this.category = category;
-    this.enabled = true;
-    this.targetGain = -1;
-    this._smoothedGain = 0;
-    this._lastGainTime = 0;
     this.input = null!;
-    this.output = null;
-    this.panner = null;
-    this.position = createAudioPositionVector();
 
-    if (!context) {
-      return;
-    }
+    if (!context) return;
 
     try {
       this.input = context.createGain();
@@ -385,16 +494,15 @@ export class SpatialAudioSource {
     }
     if (!this.context || !this.panner) return;
     try {
-      const px = this.position.x * getUuToMeters();
-      const py = this.position.y * getUuToMeters();
-      const pz = this.position.z * getUuToMeters();
+      const scale = getUuToMeters();
+      const px = this.position.x * scale;
+      const py = this.position.y * scale;
+      const pz = this.position.z * scale;
       if (
         this._lastPx === undefined ||
-        this._lastPy === undefined ||
-        this._lastPz === undefined ||
         Math.abs(px - this._lastPx) > 1e-4 ||
-        Math.abs(py - this._lastPy) > 1e-4 ||
-        Math.abs(pz - this._lastPz) > 1e-4
+        Math.abs(py - (this._lastPy ?? 0)) > 1e-4 ||
+        Math.abs(pz - (this._lastPz ?? 0)) > 1e-4
       ) {
         this._lastPx = px;
         this._lastPy = py;
@@ -430,8 +538,7 @@ export class SpatialAudioSource {
       const dx = this.position.x - listenerManager.position.x;
       const dy = this.position.y - listenerManager.position.y;
       const dz = this.position.z - listenerManager.position.z;
-      const distance = Math.hypot(dx, dy, dz);
-      target = calculateDistanceGain(distance, this.category);
+      target = calculateDistanceGain(Math.hypot(dx, dy, dz), this.category);
     }
 
     this.targetGain = target;

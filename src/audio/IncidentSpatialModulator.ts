@@ -14,7 +14,7 @@
 
 import { type AudioAttenuationCategory } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import { SURFACE_SUBTYPES } from '../physics/RocketSimConstants.ts';
-import { type SpatialPositionInput } from './spatialAudioMath.ts';
+import { type SpatialPositionInput } from './SpatialAudioSource.ts';
 
 export interface PhysicsImpactAudioEvent extends SpatialPositionInput {
   type?: number | string;

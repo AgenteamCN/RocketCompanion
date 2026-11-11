@@ -1,12 +1,12 @@
 import { audioConfig } from '../ui-core/config/audioConfig.ts';
 import { getAudioContext, getMasterAudioInput } from './audioContext.ts';
-import { listenerManager } from './SpatialAudioSource.ts';
 import {
+  listenerManager,
   toAudioCoordinates,
   getUuToMeters,
   calculateIncidentDistanceGain,
   type SpatialVector3Like,
-} from './spatialAudioMath.ts';
+} from './SpatialAudioSource.ts';
 
 export const BALL_AUDIO_CONFIG = Object.freeze({
   FLYING_FADE_OUT_SECONDS: 0.08, // Configurable short fade-out (50ms - 100ms)

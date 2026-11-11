@@ -5,19 +5,17 @@
 
 import * as THREE from 'three';
 import {
-  evaluateProfileDistanceGain,
-  getArenaAcousticScale,
-  isDistanceCulled,
-  solveIsoGainRadiusUU,
-} from '../../audio/SpatialAttenuationEvaluator.ts';
-import {
   getSpatialAttenuationProfile,
   spatialAttenuationProfiles,
 } from '../../ui-core/config/spatialAttenuationProfiles.ts';
 import {
+  evaluateAttenuationProfileGain,
+  getArenaAcousticScale,
   getSpatialAudioVisualizerConfig,
+  isAttenuationDistanceCulled,
   publishSpatialAudioVisualizerTelemetry,
   registerSpatialAudioVisualizerApplier,
+  solveAttenuationIsoRadiusUU,
   type SpatialAudioVisualizerConfig,
 } from '../../ui-core/config/spatialAudioVisualizerConfig.ts';
 import {
@@ -153,13 +151,13 @@ export class SpatialAudioDebugVisualizer {
     const acousticScale = getArenaAcousticScale();
     const rMin = Math.max(10, profile.minDistanceUU * acousticScale);
     const rMax = Math.max(rMin + 20, profile.maxDistanceUU * acousticScale);
-    const r75 = solveIsoGainRadiusUU(profile, 0.75);
-    const r50 = solveIsoGainRadiusUU(profile, 0.5);
-    const r25 = solveIsoGainRadiusUU(profile, 0.25);
+    const r75 = solveAttenuationIsoRadiusUU(profile, 0.75);
+    const r50 = solveAttenuationIsoRadiusUU(profile, 0.5);
+    const r25 = solveAttenuationIsoRadiusUU(profile, 0.25);
 
     const distUU = this._emitterPos.distanceTo(this._listenerPos);
-    const culled = isDistanceCulled(distUU, profile);
-    const gain = culled ? 0.0 : evaluateProfileDistanceGain(distUU, profile);
+    const culled = isAttenuationDistanceCulled(distUU, profile);
+    const gain = culled ? 0.0 : evaluateAttenuationProfileGain(distUU, profile);
 
     const opacityScale = cfg.sphereOpacity;
     const depthTest = cfg.depthTest;

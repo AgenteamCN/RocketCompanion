@@ -7,9 +7,10 @@ import { getAudioSettings } from '../ui-core/config/audioConfig.ts';
 import {
   SpatialAudioSource,
   listenerManager,
+  isDistanceCulled,
+  getArenaAcousticScale,
   type SpatialVector3Like,
 } from './SpatialAudioSource.ts';
-import { isDistanceCulled, getArenaAcousticScale } from './SpatialAttenuationEvaluator.ts';
 import { getSpatialAttenuationProfile } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import type { CarStateView } from '../physics/RocketSimStateViews.ts';
 
