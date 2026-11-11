@@ -11,16 +11,19 @@ import {
   resolveUnifiedPlaylistByScope,
   type UnifiedPlaylistScope,
 } from '../../pages/menu-layer/menuLayerLinearPlaylists';
+import { stripInjectedDiffSuffixFromNote } from './exportDiffAndSizeTiering';
 import {
   computeLiveSubtreeCombinedHash,
   detectChangedSubtreeFiles,
 } from './liveSubtreeHashScanner';
 import type {
+  ReviewQueueFilterId,
   ReviewStaleReason,
   ReviewTriageBucketId,
   RuntimeReviewDecision,
   SurfaceVariantReviewUnit,
 } from './reviewTypes';
+import type { SurfaceVariantApprovalUnit } from '../../../ui-core/manifest/surfaceMetaTypes';
 
 /**
  * Resolves the canonical `uiApprovalLedger.json` surface ID from a component name,
@@ -85,11 +88,18 @@ export function findUnitIndexByKeyOrSurface(
   return list.findIndex((u) => u.surfaceId === targetSurfaceId);
 }
 
-/**
- * Extracts all shared Workspace Alpha foundation dependencies (Shells, Primitives,
- * Compounds, Charts, Tokens, Stores/Configs) for a surface record so Alpha <-> Bravo
- * root-cause attribution can cluster shared components across surfaces.
- */
+export function resolveLedgerVariantRecord(
+  ledgerRecord: SurfaceApprovalRecord | undefined,
+  variantId: string
+): SurfaceVariantApprovalUnit | undefined {
+  if (!ledgerRecord?.variants || variantId === 'default') return undefined;
+  if (ledgerRecord.variants[variantId]) return ledgerRecord.variants[variantId];
+  const stripped = variantId
+    .replace(/^(?:user|dev)-l\d+-(?:garage|settings|main-menu)-/, '')
+    .replace(/^(?:user|dev)-l1-/, '');
+  return ledgerRecord.variants[stripped];
+}
+
 export function extractAlphaMotherDeps(record?: SurfaceApprovalRecord): string[] {
   if (!record) return ['src/ui-core/layout/UniversalThreeStageShell.tsx'];
   const deps = new Set<string>(['src/ui-core/layout/UniversalThreeStageShell.tsx']);
@@ -112,6 +122,26 @@ export function extractAlphaMotherDeps(record?: SurfaceApprovalRecord): string[]
   return Array.from(deps).sort();
 }
 
+export function filterReviewUnitsByQueueFilter(
+  units: readonly SurfaceVariantReviewUnit[],
+  filter: ReviewQueueFilterId
+): SurfaceVariantReviewUnit[] {
+  if (filter === 'all') return [...units];
+  if (filter === 'rejected-only') {
+    return units.filter((u) => u.status === 'rejected');
+  }
+  if (filter === 'bucket-1-visual') {
+    return units.filter((u) => u.status === 'pending' || u.changedSubtreeFiles.length > 0);
+  }
+  if (filter === 'bucket-2-config') {
+    return units.filter((u) => u.status === 'deferred' && u.changedSubtreeFiles.length === 0);
+  }
+  if (filter === 'reviewed-healthy') {
+    return units.filter((u) => u.status === 'approved');
+  }
+  return units.filter((u) => u.bucket === filter);
+}
+
 export function classifySurfaceBucket(params: {
   surfaceId: string;
   variantId?: string;
@@ -124,6 +154,7 @@ export function classifySurfaceBucket(params: {
   bucket: ReviewTriageBucketId;
   staleReason: ReviewStaleReason;
   changedSubtreeFiles: string[];
+  effectiveDecision?: RuntimeReviewDecision;
 } {
   const {
     surfaceId,
@@ -134,43 +165,56 @@ export function classifySurfaceBucket(params: {
     globalTemplateStaleOverride,
   } = params;
 
-  const variantRecord =
-    variantId !== 'default' ? ledgerRecord?.variants?.[variantId] : undefined;
-  const recordedHashes =
-    variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes;
+  const variantRecord = resolveLedgerVariantRecord(ledgerRecord, variantId);
+  const recordedHashes = variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes;
   const changedSubtreeFiles = detectChangedSubtreeFiles(recordedHashes);
   const liveVisualHash = computeLiveSubtreeCombinedHash(
     recordedHashes,
     sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
   );
 
-  const isRuntimeDecisionStale = Boolean(
+  const ledgerTimestamp = variantRecord?.approvedAt ?? ledgerRecord?.approvedAt ?? '';
+  const isDecisionSupersededByLedger = Boolean(
     runtimeDecision &&
-      runtimeDecision.status === 'approved' &&
-      ((runtimeDecision.visualHashSnapshot &&
-        runtimeDecision.visualHashSnapshot !== liveVisualHash) ||
-        (!runtimeDecision.visualHashSnapshot && changedSubtreeFiles.length > 0))
+    ledgerTimestamp &&
+    runtimeDecision.updatedAt &&
+    ledgerTimestamp > runtimeDecision.updatedAt
+  );
+  const isDecisionSupersededByLiveCode = Boolean(
+    runtimeDecision &&
+    runtimeDecision.visualHashSnapshot &&
+    runtimeDecision.visualHashSnapshot !== liveVisualHash
   );
 
+  const effectiveDecision =
+    isDecisionSupersededByLedger || isDecisionSupersededByLiveCode ? undefined : runtimeDecision;
+
   const isLedgerApprovalStale = Boolean(
-    !runtimeDecision &&
-      (variantRecord?.status === 'approved' || ledgerRecord?.status === 'approved') &&
-      changedSubtreeFiles.length > 0
+    !effectiveDecision &&
+    (variantRecord?.status === 'approved' || ledgerRecord?.status === 'approved') &&
+    changedSubtreeFiles.length > 0
   );
 
   const rawStatus: SurfaceApprovalStatus =
-    runtimeDecision?.status ??
-    variantRecord?.status ??
-    ledgerRecord?.status ??
-    'deferred';
+    effectiveDecision?.status ?? variantRecord?.status ?? ledgerRecord?.status ?? 'deferred';
 
   const status: SurfaceApprovalStatus =
-    isRuntimeDecisionStale || isLedgerApprovalStale ? 'deferred' : rawStatus;
+    isDecisionSupersededByLiveCode || isLedgerApprovalStale
+      ? 'pending'
+      : rawStatus === 'unreviewed'
+        ? 'deferred'
+        : rawStatus;
 
-  if (runtimeDecision?.simulatedStaleReason) {
-    const sim = runtimeDecision.simulatedStaleReason;
+  if (effectiveDecision?.simulatedStaleReason) {
+    const sim = effectiveDecision.simulatedStaleReason;
     if (sim === 'unreviewed' || sim === 'visual-stale' || sim === 'rejected-rework') {
-      return { status, bucket: 'bucket-1-visual', staleReason: sim, changedSubtreeFiles };
+      return {
+        status,
+        bucket: 'bucket-1-visual',
+        staleReason: sim,
+        changedSubtreeFiles,
+        effectiveDecision,
+      };
     }
     if (sim === 'config-stale') {
       return {
@@ -178,6 +222,7 @@ export function classifySurfaceBucket(params: {
         bucket: 'bucket-2-config',
         staleReason: 'config-stale',
         changedSubtreeFiles,
+        effectiveDecision,
       };
     }
     if (sim === 'template-stale') {
@@ -186,6 +231,7 @@ export function classifySurfaceBucket(params: {
         bucket: 'bucket-3-template',
         staleReason: 'template-stale',
         changedSubtreeFiles,
+        effectiveDecision,
       };
     }
   }
@@ -196,6 +242,7 @@ export function classifySurfaceBucket(params: {
       bucket: status === 'approved' ? 'reviewed-healthy' : 'bucket-2-config',
       staleReason: status === 'approved' ? 'up-to-date' : 'deferred-hold',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
@@ -205,28 +252,30 @@ export function classifySurfaceBucket(params: {
       bucket: 'bucket-1-visual',
       staleReason: 'rejected-rework',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
-  if (status === 'pending' || status === 'unreviewed') {
+  if (status === 'pending' || changedSubtreeFiles.length > 0) {
     return {
-      status: 'deferred',
-      bucket: 'bucket-2-config',
-      staleReason: 'deferred-hold',
+      status: status === 'approved' ? 'approved' : 'pending',
+      bucket: 'bucket-1-visual',
+      staleReason: 'visual-stale',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
   if (status === 'deferred') {
     return {
-      status,
-      bucket: changedSubtreeFiles.length > 0 ? 'bucket-1-visual' : 'bucket-2-config',
-      staleReason: changedSubtreeFiles.length > 0 ? 'visual-stale' : 'deferred-hold',
+      status: 'deferred',
+      bucket: 'bucket-2-config',
+      staleReason: 'deferred-hold',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
-  // Check template hash drift or Workspace Alpha live shell preview override
   if (
     globalTemplateStaleOverride ||
     (UI_APPROVAL_LEDGER.templateHash &&
@@ -237,16 +286,17 @@ export function classifySurfaceBucket(params: {
       bucket: 'bucket-3-template',
       staleReason: 'template-stale',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
-  // Check if calibration overrides exist for this surface
   if (SURFACE_CALIBRATION_OVERRIDES[surfaceId]) {
     return {
       status,
       bucket: 'bucket-2-config',
       staleReason: 'config-stale',
       changedSubtreeFiles,
+      effectiveDecision,
     };
   }
 
@@ -255,6 +305,7 @@ export function classifySurfaceBucket(params: {
     bucket: 'reviewed-healthy',
     staleReason: 'up-to-date',
     changedSubtreeFiles,
+    effectiveDecision,
   };
 }
 
@@ -267,7 +318,10 @@ export function buildAllReviewUnits(params: {
   decisionsMap: Record<string, RuntimeReviewDecision>;
   registeredUnitsMap: Record<
     string,
-    Omit<SurfaceVariantReviewUnit, 'status' | 'bucket' | 'staleReason' | 'note' | 'updatedAt'>
+    Omit<
+      SurfaceVariantReviewUnit,
+      'playlistIndex' | 'status' | 'bucket' | 'staleReason' | 'note' | 'updatedAt'
+    >
   >;
   globalTemplateStaleOverride?: boolean;
   activeUnitKey?: string;
@@ -283,49 +337,55 @@ export function buildAllReviewUnits(params: {
   const playlist = resolveUnifiedPlaylistByScope(playlistScope);
   const units: SurfaceVariantReviewUnit[] = [];
 
-  for (const step of playlist) {
-    const auditInfo = resolveRouteAuditInfo(
-      step.route,
-      step.tier,
-      step.contextMode,
-      step
-    );
+  for (let i = 0; i < playlist.length; i++) {
+    const step = playlist[i];
+    const auditInfo = resolveRouteAuditInfo(step.route, step.tier, step.contextMode, step);
     const { surfaceId, variantId } = auditInfo;
     const unitKey = buildUnitKey(surfaceId, variantId);
     const defaultKey = buildUnitKey(surfaceId, 'default');
     const record = UI_APPROVAL_LEDGER.surfaces[surfaceId];
+    const variantRecord = resolveLedgerVariantRecord(record, variantId);
     const reg = registeredUnitsMap[unitKey];
-    const decision = decisionsMap[unitKey] ?? decisionsMap[defaultKey];
-    const resolvedSourceFile =
-      reg?.sourceFile || decision?.sourceFile || auditInfo.sourceFile;
+    const rawDecision =
+      decisionsMap[unitKey] ?? (variantId === 'default' ? decisionsMap[defaultKey] : undefined);
+    const resolvedSourceFile = reg?.sourceFile || rawDecision?.sourceFile || auditInfo.sourceFile;
 
-    const { status, bucket, staleReason, changedSubtreeFiles } = classifySurfaceBucket({
-      surfaceId,
-      variantId,
-      sourceFile: resolvedSourceFile,
-      ledgerRecord: record,
-      runtimeDecision: decision,
-      globalTemplateStaleOverride,
-    });
+    const { status, bucket, staleReason, changedSubtreeFiles, effectiveDecision } =
+      classifySurfaceBucket({
+        surfaceId,
+        variantId,
+        sourceFile: resolvedSourceFile,
+        ledgerRecord: record,
+        runtimeDecision: rawDecision,
+        globalTemplateStaleOverride,
+      });
+
+    const ledgerNote =
+      variantRecord?.note ??
+      (variantId === 'default' || !record?.variants ? record?.note : undefined) ??
+      '';
+    const rawNote = effectiveDecision?.note ?? ledgerNote;
 
     units.push({
+      playlistIndex: i + 1,
       unitKey,
       surfaceId,
       variantId,
-      label: step.label || reg?.label || decision?.label || auditInfo.componentName,
-      referenceCode: reg?.referenceCode || decision?.referenceCode || auditInfo.referenceCode,
-      componentName: reg?.componentName || decision?.componentName || auditInfo.componentName,
+      label: step.label || reg?.label || effectiveDecision?.label || auditInfo.componentName,
+      referenceCode:
+        reg?.referenceCode || effectiveDecision?.referenceCode || auditInfo.referenceCode,
+      componentName:
+        reg?.componentName || effectiveDecision?.componentName || auditInfo.componentName,
       sourceFile: resolvedSourceFile,
-      subViewFile: reg?.subViewFile || decision?.subViewFile,
+      subViewFile: reg?.subViewFile || effectiveDecision?.subViewFile,
       status,
       bucket,
       staleReason,
-      note: decision?.note ?? record?.note ?? '',
-      updatedAt: decision?.updatedAt ?? record?.approvedAt ?? '',
+      note: stripInjectedDiffSuffixFromNote(rawNote),
+      updatedAt:
+        effectiveDecision?.updatedAt ?? variantRecord?.approvedAt ?? record?.approvedAt ?? '',
       changedSubtreeFiles:
-        changedSubtreeFiles.length > 0
-          ? changedSubtreeFiles
-          : reg?.changedSubtreeFiles ?? [],
+        changedSubtreeFiles.length > 0 ? changedSubtreeFiles : (reg?.changedSubtreeFiles ?? []),
       alphaMotherDeps: reg?.alphaMotherDeps ?? extractAlphaMotherDeps(record),
       ledgerRecord: record,
     });
@@ -362,4 +422,3 @@ export function pickRepresentativeTemplateStaleSamples(
 
   return [simplest, median, densest];
 }
-

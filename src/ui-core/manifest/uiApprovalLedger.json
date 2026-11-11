@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-11T08:36:36.388Z",
+  "updatedAt": "2026-11-11T09:34:00.000Z",
   "templateHash": "4cfadd4bb895af87",
   "surfaces": {
     "floating:atmosphere-fx-tuner": {
@@ -90,7 +90,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.292Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "shadows-light": {
           "unitId": "floating:atmosphere-fx-tuner:shadows-light",
@@ -118,7 +118,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.292Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "skybox": {
           "unitId": "floating:atmosphere-fx-tuner:skybox",
@@ -147,7 +147,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.292Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "ball": {
           "unitId": "floating:atmosphere-fx-tuner:ball",
@@ -171,10 +171,10 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.292Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.292Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:ball-trajectory-tuner": {
       "status": "deferred",
@@ -216,7 +216,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.294Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:boost-pad-tuner": {
       "status": "deferred",
@@ -277,7 +277,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.297Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "materials": {
           "unitId": "floating:boost-pad-tuner:materials",
@@ -298,7 +298,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.297Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "rotations": {
           "unitId": "floating:boost-pad-tuner:rotations",
@@ -320,7 +320,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.297Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "refill": {
           "unitId": "floating:boost-pad-tuner:refill",
@@ -342,7 +342,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.297Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "collect-fx": {
           "unitId": "floating:boost-pad-tuner:collect-fx",
@@ -368,10 +368,10 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.297Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.297Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:bots-loadout-tuner": {
       "status": "deferred",
@@ -398,7 +398,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.298Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:camera-determinism": {
       "status": "deferred",
@@ -418,7 +418,7 @@
         "src/ui-core/config/cameraDefaults.ts",
         "src/ui-core/stores/cameraDeterminismStore.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.299Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:clock-pacing-tuner": {
       "status": "deferred",
@@ -456,7 +456,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.300Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:demolish-shockwave-tuner": {
       "status": "deferred",
@@ -488,7 +488,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-10T08:05:44.646Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:diagnostic-dump": {
       "status": "deferred",
@@ -514,7 +514,7 @@
         "src/ui-core/stores/pacingTelemetryExporter.ts",
         "src/ui-core/stores/pacingTelemetryRecorder.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.301Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:driftwoods-tuner": {
       "status": "deferred",
@@ -580,7 +580,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.303Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "surfaces": {
           "unitId": "floating:driftwoods-tuner:surfaces",
@@ -602,7 +602,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.303Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "transparent": {
           "unitId": "floating:driftwoods-tuner:transparent",
@@ -622,7 +622,7 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.303Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "performance": {
           "unitId": "floating:driftwoods-tuner:performance",
@@ -642,10 +642,10 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.303Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.303Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:dual-arena-determinism-harness": {
       "status": "deferred",
@@ -673,7 +673,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.304Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:engine-audio-tuner": {
       "status": "deferred",
@@ -717,7 +717,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.306Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:event-stream-observer": {
       "status": "deferred",
@@ -745,7 +745,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.307Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:experimental-bot-pack": {
       "status": "deferred",
@@ -787,7 +787,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.308Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:experimental-multi-bots": {
       "status": "deferred",
@@ -829,7 +829,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.309Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:goal-volume-tuner": {
       "status": "deferred",
@@ -871,7 +871,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.311Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:keyboard-input-overlay-tuner": {
       "status": "deferred",
@@ -910,7 +910,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-10T08:05:44.659Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:kickoff-training-tuner": {
       "status": "deferred",
@@ -953,7 +953,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.312Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:name-tag-tuner": {
       "status": "deferred",
@@ -1010,7 +1010,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.315Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:network-stress-injection": {
       "status": "deferred",
@@ -1041,7 +1041,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.316Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:reachability-tuner": {
       "status": "deferred",
@@ -1073,7 +1073,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.317Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:replay-director-tuner": {
       "status": "deferred",
@@ -1133,7 +1133,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.319Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:replay-to-rcs-importer": {
       "status": "deferred",
@@ -1190,7 +1190,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.322Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:spatial-audio-tuner": {
       "status": "deferred",
@@ -1234,7 +1234,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.324Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:static-training-ball-cam-tuner": {
       "status": "deferred",
@@ -1265,7 +1265,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.325Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:subsystem-isolation-lab": {
       "status": "deferred",
@@ -1364,7 +1364,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "multi-ghost": {
           "unitId": "floating:subsystem-isolation-lab:multi-ghost",
@@ -1395,7 +1395,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "state-replay": {
           "unitId": "floating:subsystem-isolation-lab:state-replay",
@@ -1426,7 +1426,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "ninety-sec-match": {
           "unitId": "floating:subsystem-isolation-lab:ninety-sec-match",
@@ -1455,7 +1455,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "goal-replay": {
           "unitId": "floating:subsystem-isolation-lab:goal-replay",
@@ -1490,7 +1490,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "kickoff-duel": {
           "unitId": "floating:subsystem-isolation-lab:kickoff-duel",
@@ -1523,7 +1523,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "demolish-respawn": {
           "unitId": "floating:subsystem-isolation-lab:demolish-respawn",
@@ -1555,10 +1555,10 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.329Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.329Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:supersonic-trail-tuner": {
       "status": "deferred",
@@ -1598,7 +1598,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.331Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:vehicle-global-fx-tuner": {
       "status": "deferred",
@@ -1668,7 +1668,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.333Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "lamps": {
           "unitId": "floating:vehicle-global-fx-tuner:lamps",
@@ -1695,7 +1695,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.333Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "boost-fx": {
           "unitId": "floating:vehicle-global-fx-tuner:boost-fx",
@@ -1720,7 +1720,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.333Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "wheels": {
           "unitId": "floating:vehicle-global-fx-tuner:wheels",
@@ -1748,10 +1748,10 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.333Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.333Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:vehicle-model-offset-tuner": {
       "status": "deferred",
@@ -1837,7 +1837,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.335Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "boost-nozzles": {
           "unitId": "floating:vehicle-model-offset-tuner:boost-nozzles",
@@ -1860,7 +1860,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.335Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "wheel-offsets": {
           "unitId": "floating:vehicle-model-offset-tuner:wheel-offsets",
@@ -1880,10 +1880,10 @@
             "src/ui-core/tokens/colors.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.335Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.335Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:floating-window-opacity": {
       "status": "deferred",
@@ -1922,10 +1922,10 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.337Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:goal-barrier-configurator": {
-      "status": "deferred",
+      "status": "pending",
       "surfaceKind": "floating-window",
       "entryFile": "src/ui-core/panels/user/GoalBarrierConfiguratorFloatingWindow.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -1974,8 +1974,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.339Z",
-      "note": "鼠标放在这个绘制区域会抖，整套UI就在疯狂的抖，看看能不能发现这个问题。"
+      "approvedAt": "2026-11-11T09:34:00.000Z"
     },
     "floating:keyboard-input-overlay": {
       "status": "deferred",
@@ -2003,7 +2002,7 @@
         "src/ui-core/stores/floatingStore.ts",
         "src/ui-core/stores/keyboardInputOverlayStore.ts"
       ],
-      "approvedAt": "2026-11-10T08:05:44.686Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:network-monitor": {
       "status": "deferred",
@@ -2047,7 +2046,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.340Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:performance-monitor": {
       "status": "deferred",
@@ -2082,7 +2081,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.341Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:replay-viewer": {
       "status": "deferred",
@@ -2142,10 +2141,10 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.344Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "floating:rewinder-configurator": {
-      "status": "deferred",
+      "status": "pending",
       "surfaceKind": "floating-window",
       "entryFile": "src/ui-core/panels/user/RewinderConfiguratorFloatingWindow.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -2193,11 +2192,10 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.347Z",
-      "note": "Stopped本身怎么还能跑到约束的外边去？不知道能不能复现。然后，就它和整体明显没对齐啊。这种情况，应该说Stopped永远在右上角，然后中间的这个Control Button可以说New和Stop。 他俩应该在同一行，除非挤不下。然后 rewind forward 在同一行，除非挤不下。然后他们四个可能说，如果说拆成两行的话，那就两两等宽，四个人就都是一边大，更好看。"
+      "approvedAt": "2026-11-11T09:34:00.000Z"
     },
     "recipe:Layer1MainMenuRecipe": {
-      "status": "deferred",
+      "status": "rejected",
       "surfaceKind": "menu-recipe",
       "entryFile": "src/ui-core/recipes/Layer1MainMenuRecipe.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -2238,10 +2236,71 @@
         "src/ui-core/stores/storeSnapshotScope.tsx",
         "src/ui-core/tokens/menuLayoutTokens.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.348Z"
+      "approvedAt": "2026-11-11T09:34:00.000Z",
+      "variants": {
+        "user-l1-freeplay": {
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Resume black primary button should not show an orange focus-visible ring when selected/focused via keyboard navigation; keep orange selection styling only on secondary cards (Play/Garage/Settings)."
+        },
+        "user-l1-replay-viewer": {
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Intermittent orange focus ring appears on the black Resume button when switching between Layer 1 context pages."
+        },
+        "user-l1-static-training-edit": {
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Right-edge TAB EdgeInspectorDrawer trigger pill renders while Layer 1 pause menu is open even though Tab hotkey is disabled while menu is open."
+        },
+        "user-l1-exhibition": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-match-lobby-host": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-match-lobby-client": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-online-match-host": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-online-match-client": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-online-warmup-host": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-online-warmup-client": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-kickoff-training": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l1-static-training-play": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "dev-l1-dev-test-lab": {
+          "status": "deferred",
+          "approvedAt": "2026-11-06T00:00:00.000Z"
+        },
+        "dev-l1-exp-multi-bots": {
+          "status": "deferred",
+          "approvedAt": "2026-11-06T00:00:00.000Z"
+        }
+      }
     },
     "recipe:Layer2GarageRecipe": {
-      "status": "deferred",
+      "status": "rejected",
       "surfaceKind": "menu-recipe",
       "entryFile": "src/ui-core/recipes/Layer2GarageRecipe.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -2319,163 +2378,33 @@
       ],
       "variants": {
         "car": {
-          "unitId": "recipe:Layer2GarageRecipe:car",
-          "variantId": "car",
-          "label": "Car",
-          "entryFile": "src/ui-core/recipes/garage/GarageCarTab.tsx",
-          "status": "deferred",
-          "visualAstHash": "bb39478cf3b83fec",
-          "fileVisualHashes": {
-            "src/ui-core/primitives/Badge.tsx": "7332eebed32d732f",
-            "src/ui-core/recipes/garage/GarageCarTab.tsx": "88fa9ef4188c3f4d",
-            "src/ui-core/recipes/garage/garageConstants.ts": "e0717c8192305f83"
-          },
-          "alphaDependencies": [
-            "Alpha:Badge",
-            "src/ui-core/config/vehiclePresets.ts",
-            "src/ui-core/stores/appStore.ts",
-            "src/ui-core/stores/storeSnapshotScope.tsx",
-            "src/ui-core/tokens/radius.ts",
-            "src/ui-core/tokens/spacing.ts"
-          ],
-          "approvedAt": "2026-11-06T12:15:46.352Z"
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Display name for TriOctane4 and TriOctane3 should both be TriOctane; badge below should be Octane and 3 instead of Octane (Three-Wheeler)."
+        },
+        "user-l2-garage-car": {
+          "status": "rejected",
+          "approvedAt": "2026-11-11T09:34:00.000Z",
+          "note": "Display name for TriOctane4 and TriOctane3 should both be TriOctane; badge below should be Octane and 3 instead of Octane (Three-Wheeler)."
         },
         "paint": {
-          "unitId": "recipe:Layer2GarageRecipe:paint",
-          "variantId": "paint",
-          "label": "Paint",
-          "entryFile": "src/ui-core/recipes/garage/GaragePaintTab.tsx",
           "status": "deferred",
-          "visualAstHash": "310b30b0e3ddfde2",
-          "fileVisualHashes": {
-            "src/ui-core/compounds/DropdownMenu.tsx": "06c0041058a3f43d",
-            "src/ui-core/compounds/SettingActionRow.tsx": "75df97b61462cb35",
-            "src/ui-core/compounds/SettingSegmentedRow.tsx": "3b1b6d0abc2ce290",
-            "src/ui-core/compounds/tuner/PriorityQueueList.tsx": "d269259e727e2726",
-            "src/ui-core/primitives/Badge.tsx": "7332eebed32d732f",
-            "src/ui-core/primitives/SegmentedSwitch.tsx": "5e964ae4d1e7ed16",
-            "src/ui-core/primitives/iconLookup.tsx": "6080075f43a3d9fb",
-            "src/ui-core/primitives/packagedSvgIcons.tsx": "0ab03d4b7ce97d84",
-            "src/ui-core/primitives/svg/packagedSvgDefinitions.ts": "6741e6bcb7330141",
-            "src/ui-core/primitives/svg/packagedSvgHudAndDevicePaths.ts": "9ddae8fd6131fe03",
-            "src/ui-core/primitives/svg/packagedSvgVectorPaths.ts": "f96332fb863f49f0",
-            "src/ui-core/recipes/garage/GaragePaintTab.tsx": "dc9dd47810c71ca2",
-            "src/ui-core/recipes/garage/garageConstants.ts": "e0717c8192305f83"
-          },
-          "alphaDependencies": [
-            "Alpha:Badge",
-            "Alpha:DropdownMenu",
-            "Alpha:PriorityQueueList",
-            "Alpha:SegmentedSwitch",
-            "Alpha:SettingActionRow",
-            "Alpha:SettingSegmentedRow",
-            "src/ui-core/config/vehiclePresets.ts",
-            "src/ui-core/stores/appStore.ts",
-            "src/ui-core/stores/experimentalMultiBotsStore.ts",
-            "src/ui-core/stores/settingRowStore.ts",
-            "src/ui-core/stores/storeSnapshotScope.tsx",
-            "src/ui-core/tokens/colors.ts",
-            "src/ui-core/tokens/easing.ts",
-            "src/ui-core/tokens/radius.ts",
-            "src/ui-core/tokens/spacing.ts"
-          ],
-          "approvedAt": "2026-11-06T12:15:46.352Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "loadout": {
-          "unitId": "recipe:Layer2GarageRecipe:loadout",
-          "variantId": "loadout",
-          "label": "Loadout",
-          "entryFile": "src/ui-core/recipes/garage/GarageLoadoutTab.tsx",
           "status": "deferred",
-          "visualAstHash": "98ec164712791b49",
-          "fileVisualHashes": {
-            "src/ui-core/compounds/DropdownMenu.tsx": "06c0041058a3f43d",
-            "src/ui-core/compounds/SettingActionRow.tsx": "75df97b61462cb35",
-            "src/ui-core/compounds/SettingSegmentedRow.tsx": "3b1b6d0abc2ce290",
-            "src/ui-core/primitives/SegmentedSwitch.tsx": "5e964ae4d1e7ed16",
-            "src/ui-core/primitives/iconLookup.tsx": "6080075f43a3d9fb",
-            "src/ui-core/primitives/packagedSvgIcons.tsx": "0ab03d4b7ce97d84",
-            "src/ui-core/primitives/svg/packagedSvgDefinitions.ts": "6741e6bcb7330141",
-            "src/ui-core/primitives/svg/packagedSvgHudAndDevicePaths.ts": "9ddae8fd6131fe03",
-            "src/ui-core/primitives/svg/packagedSvgVectorPaths.ts": "f96332fb863f49f0",
-            "src/ui-core/recipes/garage/GarageLoadoutTab.tsx": "4701ab57cbd6b143"
-          },
-          "alphaDependencies": [
-            "Alpha:DropdownMenu",
-            "Alpha:SegmentedSwitch",
-            "Alpha:SettingActionRow",
-            "Alpha:SettingSegmentedRow",
-            "src/ui-core/stores/appStore.ts",
-            "src/ui-core/stores/settingRowStore.ts",
-            "src/ui-core/stores/storeSnapshotScope.tsx",
-            "src/ui-core/tokens/colors.ts",
-            "src/ui-core/tokens/easing.ts",
-            "src/ui-core/tokens/radius.ts"
-          ],
-          "approvedAt": "2026-11-06T12:15:46.352Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "anthem": {
-          "unitId": "recipe:Layer2GarageRecipe:anthem",
-          "variantId": "anthem",
-          "label": "Anthem",
-          "entryFile": "src/ui-core/recipes/garage/GarageAnthemTab.tsx",
           "status": "deferred",
-          "visualAstHash": "77efeda9d745e9b9",
-          "fileVisualHashes": {
-            "src/ui-core/compounds/DropdownMenu.tsx": "06c0041058a3f43d",
-            "src/ui-core/primitives/Badge.tsx": "7332eebed32d732f",
-            "src/ui-core/primitives/SegmentedSwitch.tsx": "5e964ae4d1e7ed16",
-            "src/ui-core/primitives/UnderConstructionPlaceholder.tsx": "14d8812ccbdf8e48",
-            "src/ui-core/recipes/garage/GarageAnthemTab.tsx": "ffe723d94c48e5b3"
-          },
-          "alphaDependencies": [
-            "Alpha:Badge",
-            "Alpha:DropdownMenu",
-            "Alpha:SegmentedSwitch",
-            "Alpha:UnderConstructionPlaceholder",
-            "src/ui-core/config/anthemCatalogConfig.ts",
-            "src/ui-core/stores/spatialAudioStore.ts",
-            "src/ui-core/stores/storeSnapshotScope.tsx",
-            "src/ui-core/tokens/colors.ts",
-            "src/ui-core/tokens/easing.ts",
-            "src/ui-core/tokens/radius.ts",
-            "src/ui-core/tokens/spacing.ts"
-          ],
-          "approvedAt": "2026-11-06T12:15:46.352Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "sync": {
-          "unitId": "recipe:Layer2GarageRecipe:sync",
-          "variantId": "sync",
-          "label": "Sync",
-          "entryFile": "src/ui-core/recipes/garage/GarageSyncTab.tsx",
           "status": "deferred",
-          "visualAstHash": "6a8fc27746c84e69",
-          "fileVisualHashes": {
-            "src/ui-core/compounds/dialogue/dialogueStore.ts": "e74f6ae9f84fb1dd",
-            "src/ui-core/compounds/dialogue/dialogueTypes.ts": "6632a772213cce6e",
-            "src/ui-core/primitives/Badge.tsx": "7332eebed32d732f",
-            "src/ui-core/primitives/UnderConstructionPlaceholder.tsx": "14d8812ccbdf8e48",
-            "src/ui-core/recipes/garage/CloudProfileConflictDialogue.tsx": "ffcce3c7183eb83b",
-            "src/ui-core/recipes/garage/GarageCloudAccountSyncSection.tsx": "46081a722195ba55",
-            "src/ui-core/recipes/garage/GarageCloudProfileSlotCard.tsx": "141dd74cd9dca4ff",
-            "src/ui-core/recipes/garage/GarageSyncTab.tsx": "d140ff0b43a31f0c"
-          },
-          "alphaDependencies": [
-            "Alpha:Badge",
-            "Alpha:UnderConstructionPlaceholder",
-            "src/ui-core/config/cloudProfileSyncTypes.ts",
-            "src/ui-core/config/vehiclePresets.ts",
-            "src/ui-core/stores/appStore.ts",
-            "src/ui-core/stores/cloudProfileSyncStore.ts",
-            "src/ui-core/stores/storeSnapshotScope.tsx",
-            "src/ui-core/tokens/colors.ts",
-            "src/ui-core/tokens/radius.ts",
-            "src/ui-core/tokens/spacing.ts"
-          ],
-          "approvedAt": "2026-11-06T12:15:46.352Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.352Z"
+      "approvedAt": "2026-11-11T09:34:00.000Z"
     },
     "recipe:Layer2ManageRoomRecipe": {
       "status": "deferred",
@@ -2549,10 +2478,10 @@
         "src/ui-core/tokens/menuLayoutTokens.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.357Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer2PlayRecipe": {
-      "status": "deferred",
+      "status": "approved",
       "surfaceKind": "menu-recipe",
       "entryFile": "src/ui-core/recipes/Layer2PlayRecipe.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -2577,7 +2506,13 @@
         "src/ui-core/stores/signalingProfileStore.ts",
         "src/ui-core/stores/storeSnapshotScope.tsx"
       ],
-      "approvedAt": "2026-11-06T12:15:46.358Z"
+      "approvedAt": "2026-11-11T09:34:00.000Z",
+      "variants": {
+        "user-l2-play": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        }
+      }
     },
     "recipe:Layer2SettingsRecipe": {
       "status": "deferred",
@@ -2726,7 +2661,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.363Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "audio": {
           "unitId": "recipe:Layer2SettingsRecipe:audio",
@@ -2767,7 +2702,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.363Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "display": {
           "unitId": "recipe:Layer2SettingsRecipe:display",
@@ -2810,7 +2745,7 @@
             "src/ui-core/tokens/easing.ts",
             "src/ui-core/tokens/radius.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.363Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "advanced": {
           "unitId": "recipe:Layer2SettingsRecipe:advanced",
@@ -2872,7 +2807,7 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.363Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         },
         "developer": {
           "unitId": "recipe:Layer2SettingsRecipe:developer",
@@ -2920,10 +2855,10 @@
             "src/ui-core/tokens/radius.ts",
             "src/ui-core/tokens/spacing.ts"
           ],
-          "approvedAt": "2026-11-06T12:15:46.363Z"
+          "approvedAt": "2026-11-06T00:00:00.000Z"
         }
       },
-      "approvedAt": "2026-11-06T12:15:46.363Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3AcousticsEqualizerRecipe": {
       "status": "deferred",
@@ -2984,7 +2919,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.367Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3BallTrajectoryRecipe": {
       "status": "deferred",
@@ -3052,7 +2987,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.369Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3CameraRecipe": {
       "status": "deferred",
@@ -3106,7 +3041,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.372Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3CustomPlayRecipe": {
       "status": "deferred",
@@ -3141,7 +3076,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.372Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevActiveTunersRecipe": {
       "status": "deferred",
@@ -3217,7 +3152,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.375Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevCalibratedPresetsRecipe": {
       "status": "deferred",
@@ -3268,7 +3203,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.377Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevQuickActionsRecipe": {
       "status": "deferred",
@@ -3329,7 +3264,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.379Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevRemoteProfileRecipe": {
       "status": "deferred",
@@ -3375,7 +3310,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.380Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevSandboxesRecipe": {
       "status": "deferred",
@@ -3424,7 +3359,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/menuLayoutTokens.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.382Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevSelfTestRecipe": {
       "status": "deferred",
@@ -3477,7 +3412,7 @@
         "src/ui-core/tokens/menuLayoutTokens.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.384Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3DevUnderDevelopmentRecipe": {
       "status": "deferred",
@@ -3530,7 +3465,7 @@
         "src/ui-core/tokens/menuLayoutTokens.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.386Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3ExhibitionRecipe": {
       "status": "deferred",
@@ -3578,7 +3513,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.388Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3ExpBotPackRecipe": {
       "status": "deferred",
@@ -3633,7 +3568,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.390Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3ExpMultiBotsRecipe": {
       "status": "deferred",
@@ -3688,7 +3623,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.391Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3HostMatchRecipe": {
       "status": "deferred",
@@ -3778,7 +3713,7 @@
         "src/ui-core/tokens/menuLayoutTokens.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.395Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3HostTrainingRecipe": {
       "status": "deferred",
@@ -3836,7 +3771,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.397Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3JoinRoomRecipe": {
       "status": "deferred",
@@ -3892,7 +3827,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.400Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3KeybindingsRecipe": {
       "status": "deferred",
@@ -3941,7 +3876,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.402Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3KickoffTrainingRecipe": {
       "status": "deferred",
@@ -4002,7 +3937,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.405Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3SelfTrainingRecipe": {
       "status": "deferred",
@@ -4037,7 +3972,7 @@
         "src/ui-core/stores/rewinderStore.ts",
         "src/ui-core/stores/storeSnapshotScope.tsx"
       ],
-      "approvedAt": "2026-11-06T12:15:46.405Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer3TrainingConfigRecipe": {
       "status": "deferred",
@@ -4100,7 +4035,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.407Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer4AdvancedAudioRecipe": {
       "status": "deferred",
@@ -4150,7 +4085,7 @@
         "src/ui-core/tokens/colors.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.410Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer4ControllerSettingsRecipe": {
       "status": "deferred",
@@ -4218,7 +4153,7 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.413Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer4DevSignalingLabRecipe": {
       "status": "deferred",
@@ -4280,7 +4215,7 @@
         "src/ui-core/tokens/menuLayoutTokens.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.414Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer4EventTriggerRulesRecipe": {
       "status": "deferred",
@@ -4343,7 +4278,7 @@
         "src/ui-core/tokens/easing.ts",
         "src/ui-core/tokens/radius.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.417Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:Layer4StaticTrainingPackBrowseRecipe": {
       "status": "deferred",
@@ -4410,10 +4345,10 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.419Z"
+      "approvedAt": "2026-11-06T00:00:00.000Z"
     },
     "recipe:StaticTrainingShotInspectorDrawer": {
-      "status": "deferred",
+      "status": "approved",
       "surfaceKind": "menu-recipe",
       "entryFile": "src/ui-core/recipes/StaticTrainingShotInspectorDrawer.tsx",
       "templateHash": "4cfadd4bb895af87",
@@ -4455,7 +4390,17 @@
         "src/ui-core/tokens/radius.ts",
         "src/ui-core/tokens/spacing.ts"
       ],
-      "approvedAt": "2026-11-06T12:15:46.421Z"
+      "approvedAt": "2026-11-11T09:34:00.000Z",
+      "variants": {
+        "user-l0": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        },
+        "user-l0-edge-inspector": {
+          "status": "approved",
+          "approvedAt": "2026-11-11T09:34:00.000Z"
+        }
+      }
     }
   }
 }

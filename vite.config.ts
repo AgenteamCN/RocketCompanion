@@ -30,7 +30,13 @@ export function createRcViteConfig(
   };
   const port = portMap[role] || 3001;
 
-  const plugins = [react(), tailwindcss(), rcGitHeadAutoRestartPlugin()];
+  const plugins = [
+    react({
+      exclude: [/\/node_modules\//, /\/\.vite\//, /\/rc-vite-cache\//],
+    }),
+    tailwindcss(),
+    rcGitHeadAutoRestartPlugin(),
+  ];
 
   if (role === 'entry') {
     plugins.unshift(customHtmlEntryPlugin('entry.html', statusResolver));
@@ -81,21 +87,21 @@ export function createRcViteConfig(
     role === 'entry'
       ? ['entry.html', 'src/entry/main.tsx']
       : role === 'tuner'
-      ? ['tuner.html', 'src/ui-tuner/main.tsx']
-      : [
-          'index.html',
-          'src/main.ts',
-          'src/game/GameBootstrap.ts',
-          'src/ui-system/index.tsx',
-          'src/network/server/AuthoritativeServerWorker.ts',
-        ];
+        ? ['tuner.html', 'src/ui-tuner/main.tsx']
+        : [
+            'index.html',
+            'src/main.ts',
+            'src/game/GameBootstrap.ts',
+            'src/ui-system/index.tsx',
+            'src/network/server/AuthoritativeServerWorker.ts',
+          ];
 
   const optimizeInclude =
     role === 'entry' ? baseReactInclude : role === 'tuner' ? uiInclude : gameInclude;
 
   return {
     clearScreen: false,
-    cacheDir: resolve('/tmp/rc-vite-cache', role),
+    cacheDir: resolve(__dirname, 'node_modules/.vite', role),
     worker: {
       format: 'es',
     },
