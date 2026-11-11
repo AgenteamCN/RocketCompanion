@@ -1,19 +1,16 @@
-import {
-  ExperimentalBotAgent,
-  ensureExperimentalEngine,
-} from '../../../ai/experimental/ExperimentalBotAgent.ts';
+import { ExperimentalBotAgent, ensureExperimentalEngine } from '../../../ai/BotWeightLoader.ts';
 import {
   DEFAULT_CAR_CONTROLS,
   type CarControls,
 } from '../../../ai/experimental/experimentalMultiCarObsPipeline.ts';
-import { loadExperimentalPolicySafeTensors } from '../../../ai/experimental/SafeTensorsLoader.ts';
-import { KickoffPPOAgent } from '../../../ai/KickoffPPOAgent.ts';
-import { multiDiscreteToControls } from '../../../ai/kickoffEpisodePrimitives.ts';
-import { preloadKickoffPPOWeights } from '../../../ai/kickoffPPOWeights.ts';
 import {
+  KickoffPPOAgent,
   KickoffV2SafeTensorsAgent,
   formatDiscreteActionKeys,
-} from '../../../ai/KickoffV2SafeTensorsAgent.ts';
+  multiDiscreteToControls,
+  preloadKickoffPPOWeights,
+  preloadKickoffV1BestWeights,
+} from '../../../ai/kickoffEpisodePrimitives.ts';
 import type {
   ArenaBoostPadDescriptor,
   CarControlsInput,
@@ -92,7 +89,7 @@ export async function ensureKickoffDuelModelsLoaded(
   const uniqueIds = Array.from(new Set(modelIds));
   const tasks = uniqueIds.map((id) => {
     if (id === 'ko_v2') {
-      return loadExperimentalPolicySafeTensors('ko_v2').catch((e) =>
+      return preloadKickoffV1BestWeights().catch((e) =>
         console.warn('[KickoffDuelLab] Failed to load ko_v2 SafeTensors:', e)
       );
     }

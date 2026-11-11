@@ -1,4 +1,4 @@
-import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAudioConfig.ts';
+import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import { type AnthemDef } from '../ui-core/config/anthemCatalogConfig.ts';
 import { useSpatialAudioStore } from '../game/runtimeUiPort.ts';
 import { getAudioContext } from './audioContext.ts';

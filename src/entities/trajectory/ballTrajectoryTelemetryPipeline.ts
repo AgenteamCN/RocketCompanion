@@ -6,13 +6,25 @@
  * 3. Windowed catch-up slice state packing and active frame offset derivation.
  */
 
+import {
+  CAR_STATE_OFFSETS,
+  CAR_STATE_STRIDE,
+  SIM_OFFSETS,
+} from '../../physics/RocketSimConstants.ts';
 import type {
   TrajectoryDashCapStyle,
   TrajectoryRenderStyle,
   TrajectoryUpdateMode,
 } from '../../ui-core/config/trainingDefaults.ts';
-import type { TubeRenderParams } from './ballTrajectoryTubeMeshPipeline.ts';
-import type { BallTrajectoryAnomalySummary } from './ballTrajectoryAnomalyPipeline.ts';
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
+import {
+  hasTrajectoryCoordinateDeviation,
+  hasTrajectoryVelocityImpulse,
+  isBallMovingAboveTrajectoryThreshold,
+  type LiveBallPositionLike,
+} from './ballTrajectoryGeometryPipeline.ts';
+import type { TubeRenderParams } from './BallTrajectoryTubeRenderer.ts';
+import type { BallTrajectoryAnomalySummary } from './ballTrajectoryAnomalyTypes.ts';
 
 export type { BallTrajectoryAnomalySummary };
 
@@ -74,6 +86,154 @@ export type LiveTrajectorySamplingDecision =
       deviationCountDelta: number;
       markMovingFast: boolean;
     };
+
+export function computeClosestCarSurfaceGapUu(statePtr: Float32Array): number {
+  const b = SIM_OFFSETS.BALL;
+  const bx = statePtr[b] ?? 0;
+  const by = statePtr[b + 1] ?? 0;
+  const bz = statePtr[b + 2] ?? 0;
+  const numCars = Math.max(0, Math.floor(statePtr[SIM_OFFSETS.NUM_CARS] ?? 0));
+  let closestGap = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < numCars; i++) {
+    const c = SIM_OFFSETS.CARS + i * CAR_STATE_STRIDE;
+    const cx = statePtr[c + CAR_STATE_OFFSETS.POS] ?? 0;
+    const cy = statePtr[c + CAR_STATE_OFFSETS.POS + 1] ?? 0;
+    const cz = statePtr[c + CAR_STATE_OFFSETS.POS + 2] ?? 0;
+    const gap = Math.max(0, Math.hypot(bx - cx, by - cy, bz - cz) - 178.0);
+    if (gap < closestGap) closestGap = gap;
+  }
+  return Number.isFinite(closestGap) ? Math.round(closestGap * 10000) / 10000 : 99999;
+}
+
+function fullPredictDecision(
+  reason: TrajectoryUpdateKind,
+  carHitCountDelta = 0,
+  deviationCountDelta = 0,
+  markMovingFast = false
+): LiveTrajectorySamplingDecision {
+  return {
+    action: 'predict',
+    forceFull: true,
+    deltaTicks: 0,
+    reason,
+    carHitCountDelta,
+    deviationCountDelta,
+    markMovingFast,
+  };
+}
+
+export function resolveLiveTrajectorySamplingDecision(
+  input: LiveSamplingStepInput
+): LiveTrajectorySamplingDecision {
+  const {
+    isActive,
+    lastUpdatedTick,
+    validCachedCount,
+    currentTick,
+    rawPosX,
+    rawPosY,
+    rawPosZ,
+    rawVelX,
+    rawVelY,
+    rawVelZ,
+    lastVelX,
+    lastVelY,
+    lastVelZ,
+    pendingCarBallHit,
+    pendingIntentionalReset = false,
+    isMultiTickCarContact = false,
+    forcePredictAnyMovement,
+    rawPredictedPoints,
+    cfg,
+  } = input;
+
+  const hasImpulse = hasTrajectoryVelocityImpulse(
+    rawVelX,
+    rawVelY,
+    rawVelZ,
+    lastVelX,
+    lastVelY,
+    lastVelZ
+  );
+  const isFastEnough = isBallMovingAboveTrajectoryThreshold(
+    rawVelX,
+    rawVelY,
+    rawVelZ,
+    rawPosZ,
+    forcePredictAnyMovement,
+    cfg.velocityThresholdUu
+  );
+  const carHitTriggered = pendingCarBallHit && cfg.recomputeOnCarHit !== false;
+  const updateMode = cfg.updateMode || 'continuous-incremental';
+  const deviationThreshold = Math.max(0.5, Number(cfg.deviationThresholdUu) || 5.0);
+  const deltaTicks = Math.floor(currentTick - lastUpdatedTick);
+
+  if (!isActive || pendingIntentionalReset) {
+    if (isFastEnough || carHitTriggered || hasImpulse) {
+      return fullPredictDecision(
+        carHitTriggered ? 'full-car-hit' : 'full-initial',
+        carHitTriggered ? 1 : 0,
+        0,
+        true
+      );
+    }
+    return pendingIntentionalReset ? { action: 'sleep' } : { action: 'noop' };
+  }
+
+  const checkDeviation = (ticks: number): LiveTrajectorySamplingDecision | null => {
+    if (
+      ticks >= 0 &&
+      ticks < validCachedCount &&
+      hasTrajectoryCoordinateDeviation(
+        rawPosX,
+        rawPosY,
+        rawPosZ,
+        rawPredictedPoints,
+        ticks,
+        deviationThreshold
+      )
+    ) {
+      return isMultiTickCarContact && cfg.recomputeOnCarHit !== false
+        ? fullPredictDecision('full-car-hit', 1, 0)
+        : fullPredictDecision('full-deviation', 0, 1);
+    }
+    return null;
+  };
+
+  if (updateMode !== 'continuous-incremental' && updateMode !== 'full-every-tick') {
+    if (carHitTriggered || (cfg.recomputeOnWorldBounce && hasImpulse)) {
+      return fullPredictDecision(
+        carHitTriggered ? 'full-car-hit' : 'full-world-bounce',
+        carHitTriggered ? 1 : 0
+      );
+    }
+    return checkDeviation(deltaTicks) ?? { action: 'noop' };
+  }
+
+  if (deltaTicks < 0 || deltaTicks >= validCachedCount) {
+    return fullPredictDecision('full-initial', 0, 0, true);
+  }
+  if (carHitTriggered) return fullPredictDecision('full-car-hit', 1);
+  if (cfg.recomputeOnWorldBounce && hasImpulse) return fullPredictDecision('full-world-bounce');
+
+  if (deltaTicks > 0) {
+    const dev = checkDeviation(deltaTicks);
+    if (dev) return dev;
+    if (!isFastEnough && !forcePredictAnyMovement) return { action: 'sleep' };
+    const forceFull = updateMode === 'full-every-tick';
+    return {
+      action: 'predict',
+      forceFull,
+      deltaTicks,
+      reason: forceFull ? 'full-forced' : 'incremental-tail',
+      carHitCountDelta: 0,
+      deviationCountDelta: 0,
+      markMovingFast: false,
+    };
+  }
+
+  return { action: 'cached-tick' };
+}
 
 export interface BallTrajectoryTelemetrySnapshot {
   computeTimeUs: number;
@@ -265,32 +425,24 @@ export function resolvePatternElapsedTicks(
 export interface TrajectoryTubeRenderTarget {
   readonly preOcclusionMesh: { visible: boolean };
   readonly foregroundMesh: { visible: boolean };
+  readonly lastBounceCount: number;
+  readonly lastMaxHeightUu: number;
   hideAll(): void;
-  updateBounceAndGroundAnchors(
-    predictedPoints: Float32Array,
-    predictionCount: number,
-    startIndex: number,
-    bounceMarkersBuffer: Float32Array,
-    bounceCount: number,
-    params: TubeRenderParams
-  ): void;
-  updateTubeGeometry(
-    predictedPoints: Float32Array,
-    predictionCount: number,
+  buildAndBindFromWasm(
+    wasmModule: RocketSimWasmModule | null | undefined,
     startIndex: number,
     solidTicks: number,
     transparentTicks: number,
-    phaseOffset: number,
-    liveBallPosition: { x: number; y: number; z: number } | Float32Array | null | undefined,
+    phaseOffsetTicks: number,
+    liveBallPosition: LiveBallPositionLike | null | undefined,
     params: TubeRenderParams
   ): number;
 }
 
 export interface TrajectorySamplerPointsView {
-  readonly predictedPoints: Float32Array;
   readonly predictionCount: number;
-  readonly bounceMarkersBuffer: Float32Array;
-  readonly bounceCount: number;
+  bounceCount: number;
+  maxHeightUu: number;
 }
 
 export function isTubeRendererVisible(tubeRenderer: TrajectoryTubeRenderTarget | null): boolean {
@@ -306,32 +458,23 @@ export function hideTubeRenderer(tubeRenderer: TrajectoryTubeRenderTarget | null
 
 export function renderTrajectoryTubeFrame(
   tubeRenderer: TrajectoryTubeRenderTarget | null,
+  wasmModule: RocketSimWasmModule | null | undefined,
   sampler: TrajectorySamplerPointsView,
   ballRadius: number,
   settings: TrajectorySettingsConfig,
   elapsedTicks: number,
   patternElapsedTicks: number,
   dynamicMode: boolean,
-  liveBallPosition: { x: number; y: number; z: number } | Float32Array | null | undefined
+  liveBallPosition: LiveBallPositionLike | null | undefined
 ): number {
   if (!tubeRenderer) return 0;
 
   const tubeParams = buildTubeRenderParams(ballRadius, settings);
   const startIndex = Math.max(0, elapsedTicks);
-
-  tubeRenderer.updateBounceAndGroundAnchors(
-    sampler.predictedPoints,
-    sampler.predictionCount,
-    startIndex,
-    sampler.bounceMarkersBuffer,
-    sampler.bounceCount,
-    tubeParams
-  );
-
   const phaseOffset = dynamicMode ? 0 : patternElapsedTicks;
-  return tubeRenderer.updateTubeGeometry(
-    sampler.predictedPoints,
-    sampler.predictionCount,
+
+  const activeTris = tubeRenderer.buildAndBindFromWasm(
+    wasmModule,
     startIndex,
     settings.solidTicks,
     settings.transparentTicks,
@@ -339,4 +482,7 @@ export function renderTrajectoryTubeFrame(
     liveBallPosition,
     tubeParams
   );
+  sampler.bounceCount = tubeRenderer.lastBounceCount;
+  sampler.maxHeightUu = tubeRenderer.lastMaxHeightUu;
+  return activeTris;
 }

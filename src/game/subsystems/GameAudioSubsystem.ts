@@ -1,12 +1,13 @@
 import {
   RemoteEngineAudioLodController,
   type EngineSynthSlotEntry,
-} from '../../audio/RemoteEngineAudioLodController.ts';
-import { loadEngineAudioPackAssets } from '../../audio/EngineAudioLoopConditioner.ts';
+} from '../../audio/TurtleModemEngineSynth.ts';
+import { loadEngineAudioPackAssets } from '../../audio/turtleModemSynthAcousticPipeline.ts';
 import { getAudioContext, subsystemState, registerAudioRuntime } from '../../audio/audioContext.ts';
-import { gameAudio } from '../../audio/GameAudioEngineFacade.ts';
+import { gameAudio, type GameAudioEngineFacade } from '../../audio/GameAudioEngineFacade.ts';
 import { isSignalAudioMutedInGoalReplay } from '../../audio/SignalAudioEngine.ts';
 import { updateAudioListener } from '../../audio/SpatialAudioSource.ts';
+import { type WasmAudioPhysicsModule } from '../../audio/WasmAudioDirectorBridge.ts';
 import { yieldIdleSlice } from '../../loader/frameBudgetScheduler.ts';
 import { CarStateView } from '../../physics/RocketSimStateViews.ts';
 import {
@@ -21,11 +22,14 @@ export type { EngineSynthSlotEntry };
 
 /**
  * GameAudioSubsystem.ts
- * Encapsulates multi-car Turtle Modem granular powertrain synthesis (via RemoteEngineAudioLodController),
- * spatial audio bus tracking, vehicle listeners, ball acoustics, and lifecycle game sound effects.
+ * Coordinates the WASM `rc_audio_director` per-frame step (`_physics_stepAudioDirector`),
+ * multi-car Turtle Modem granular powertrain synthesis, vehicle continuous loops,
+ * and match clock / kickoff signal cues.
  */
 export class GameAudioSubsystem {
   public runtime: any;
+  public readonly gameAudio: GameAudioEngineFacade = gameAudio;
+  public readonly audio: GameAudioEngineFacade = gameAudio;
   public readonly engineLodController: RemoteEngineAudioLodController;
   public lastRemainingSec = -1;
   public last10sCountdown = -1;
@@ -38,6 +42,7 @@ export class GameAudioSubsystem {
   private readonly _prevTestCarBoosting: Record<number, boolean> = { 6: false, 7: false };
   private _scratchVehiclePos: { posX: number; posY: number; posZ: number } | null = null;
   private _scratchVehicleUpdateOpts: any = null;
+  private _lastFrameNowMs = 0;
 
   constructor(runtime: any) {
     this.runtime = runtime;
@@ -84,6 +89,9 @@ export class GameAudioSubsystem {
     const r = this.runtime;
     const activeIdx = typeof r?.playerCarIndex === 'number' ? r.playerCarIndex : 0;
     this.engineLodController.resetAll(activeIdx);
+    const wasmMod = r?.physics?.module as WasmAudioPhysicsModule | null | undefined;
+    gameAudio?.resetWasmAudioDirector?.(wasmMod, activeIdx);
+    gameAudio?.resetIncidentDebounceState?.();
     gameAudio?.silenceAll?.();
     this.lastGoalScored = false;
     this.lastCountdown = -1;
@@ -226,20 +234,44 @@ export class GameAudioSubsystem {
 
     const isAudibleActive =
       !hasBlockingOverlay && Boolean(isMatchActive) && (!isHidden || Boolean(continueOnBlur));
+    const testCarAudioEnabled = Boolean(r.networkManager?.diagnosticsProbe?.testCarAudioEnabled);
+    const isLobbyDualWorld = Boolean(r.networkReconciler?.lobbyDualWorldMode);
+    const lobbyState = isLobbyDualWorld ? r.networkReconciler.lobbyCurrAuthoritativeState : null;
+    const lobbyNumCars = lobbyState ? Math.min(8, Math.max(0, Math.round(lobbyState[1] || 0))) : 0;
+    const effectiveNumCars = Math.max(numCarsInArena, testCarAudioEnabled ? lobbyNumCars : 0);
 
-    if (gameAudio && typeof gameAudio.updateBallAudio === 'function' && r.arena?.ball) {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const dtSec =
+      this._lastFrameNowMs > 0
+        ? Math.min(0.1, Math.max(1 / 240, (nowMs - this._lastFrameNowMs) / 1000))
+        : 1 / 120;
+    this._lastFrameNowMs = nowMs;
+
+    // 1. Single WASM `_physics_stepAudioDirector` pass per frame (ball loops + discrete one-shots)
+    const wasmMod = r.physics?.module as WasmAudioPhysicsModule | null | undefined;
+    const cueWordBase = gameAudio
+      ? gameAudio.stepWasmAudioDirector(wasmMod, dtSec, {
+          camera: r.camera.camera,
+          activeCarIndex: activeCar,
+          effectiveNumCars,
+          isAudibleActive,
+          isLobbyDualWorld,
+          testCarAudioEnabled,
+        })
+      : 0;
+
+    if (
+      !cueWordBase &&
+      gameAudio &&
+      typeof gameAudio.updateBallAudio === 'function' &&
+      r.arena?.ball
+    ) {
       if (isAudibleActive) {
         gameAudio.updateBallAudio(r.arena.ball, r.camera, r.physics);
       } else {
         gameAudio.ballEngine?.silenceAll?.();
       }
     }
-
-    const testCarAudioEnabled = Boolean(r.networkManager?.diagnosticsProbe?.testCarAudioEnabled);
-    const isLobbyDualWorld = Boolean(r.networkReconciler?.lobbyDualWorldMode);
-    const lobbyState = isLobbyDualWorld ? r.networkReconciler.lobbyCurrAuthoritativeState : null;
-    const lobbyNumCars = lobbyState ? Math.min(8, Math.max(0, Math.round(lobbyState[1] || 0))) : 0;
-    const effectiveNumCars = Math.max(numCarsInArena, testCarAudioEnabled ? lobbyNumCars : 0);
 
     const resolveCarView = (i: number): CarStateView | null => {
       if (isDiagnosticProbeSlot(i) && !testCarAudioEnabled) {
@@ -312,7 +344,7 @@ export class GameAudioSubsystem {
       const audioCtx = getAudioContext();
       const activeSynths = this.engineLodController.countActiveAwakeSynths();
       const t = subsystemState.lastTelemetry as Record<string, any>;
-      t.updatedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      t.updatedAt = nowMs;
       t.contextCurrentTime = audioCtx ? audioCtx.currentTime : 0;
       t.isMatchActive = Boolean(isMatchActive);
       t.hasBlockingOverlay = Boolean(hasBlockingOverlay);

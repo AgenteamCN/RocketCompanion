@@ -165,13 +165,9 @@ pub struct AudioDirectorConfigPod {
 
 impl Default for AudioDirectorConfigPod {
     fn default() -> Self {
-        let mut slice_rpms = [0.0; MAX_ENGINE_GRANULAR_SLICES];
-        let mut slice_freqs_hz = [0.0; MAX_ENGINE_GRANULAR_SLICES];
-        for i in 0..MAX_ENGINE_GRANULAR_SLICES {
-            let t = (i as f32) / ((MAX_ENGINE_GRANULAR_SLICES - 1) as f32);
-            slice_rpms[i] = 900.0 + t * 5100.0;
-            slice_freqs_hz[i] = 37.65 + t * (74.65 - 37.65);
-        }
+        use crate::granular_lookup::{
+            TURTLE_MODEM_SLICE_AUTO_NORM_DB, TURTLE_MODEM_SLICE_FREQS_HZ, TURTLE_MODEM_SLICE_RPMS,
+        };
         Self {
             master_volume: 1.0,
             engine_volume: 1.0,
@@ -212,9 +208,9 @@ impl Default for AudioDirectorConfigPod {
             engine_tuning: EngineTuningConfigPod::default(),
             attenuation_profiles: [AttenuationProfilePod::default();
                 AUDIO_ATTENUATION_CATEGORY_COUNT],
-            slice_rpms,
-            slice_freqs_hz,
-            slice_auto_norm_db: [0.0; MAX_ENGINE_GRANULAR_SLICES],
+            slice_rpms: TURTLE_MODEM_SLICE_RPMS,
+            slice_freqs_hz: TURTLE_MODEM_SLICE_FREQS_HZ,
+            slice_auto_norm_db: TURTLE_MODEM_SLICE_AUTO_NORM_DB,
         }
     }
 }

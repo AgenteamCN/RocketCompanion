@@ -1,22 +1,55 @@
 /**
  * ReachabilityVisualizer.ts
- * High-performance, decoupled Three.js 3D orchestrator for:
+ * High-performance, decoupled Three.js 3D orchestrator for WASM `rc_trajectory_mesh`:
  * 1. Ground/Surface Reachability Isochrones (GroundReachabilityRenderer)
  * 2. Aerial 3D Spacetime Funnel / Horn & Discrete Isochrone Bubbles (AerialReachabilityRenderer)
  * 3. Real-time Optimal Intercept Point 3D Orthogonal Cross (InterceptCrossRenderer)
  */
 
 import * as THREE from 'three';
-import { preloadGroundReachabilityLut } from './reachability/groundReachabilityLut.ts';
+import type { RocketSimWasmModule } from '../physics/RocketSimWasm.ts';
+import {
+  preloadGroundReachabilityLut,
+  ensureWasmGroundReachabilityLutLoaded,
+} from './reachability/groundReachabilityLut.ts';
 import { GroundReachabilityRenderer } from './reachability/GroundReachabilityRenderer.ts';
 import { AerialReachabilityRenderer } from './reachability/AerialReachabilityRenderer.ts';
 import { InterceptCrossRenderer } from './reachability/InterceptCrossRenderer.ts';
 
 import type { BallTrajectoryPredictor } from './BallTrajectoryPredictor.ts';
 
+const REACH_FLAG_SHOW_GROUND = 1 << 0;
+const REACH_FLAG_GROUND_ANALYTICAL = 1 << 1;
+const REACH_FLAG_SHOW_AERIAL = 1 << 2;
+const REACH_FLAG_AERIAL_BUBBLES = 1 << 3;
+const REACH_FLAG_AERIAL_SHOW_RINGS = 1 << 4;
+const REACH_FLAG_AERIAL_SHOW_RAILS = 1 << 5;
+const REACH_FLAG_INCLUDE_JUMP_IMPULSE = 1 << 6;
+const REACH_FLAG_SHOW_INTERCEPT = 1 << 7;
+const REACH_FLAG_CROSS_TRAJECTORY_ORIENT = 1 << 8;
+const REACH_FLAG_SHOW_CLOSEST_FALLBACK = 1 << 9;
+
 export interface ReachabilityVisualizerConfig {
   enabled?: boolean;
   targetCarIndex?: number;
+  showGround?: boolean;
+  groundMode?: string;
+  groundFillOpacity?: number;
+  showAerial?: boolean;
+  aerialMode?: string;
+  aerialOpacity?: number;
+  aerialShowRings?: boolean;
+  aerialShowRails?: boolean;
+  includeJumpImpulse?: boolean;
+  showIntercept?: boolean;
+  crossArmLength?: number;
+  crossThickness?: number;
+  crossOrientation?: string;
+  showClosestWhenUnreachable?: boolean;
+  edgeCrossColor?: string;
+  midCrossColor?: string;
+  centerCrossColor?: string;
+  unreachableCrossColor?: string;
   [key: string]: unknown;
 }
 
@@ -51,7 +84,11 @@ export interface ReachabilityCarStateView {
 }
 
 export interface ReachabilityPhysicsPort {
+  module?: RocketSimWasmModule | null;
   getCarStateView?: (carIdx: number) => ReachabilityCarStateView | null | undefined;
+  getBallStateView?: () => { velX: number; velY: number; velZ: number } | null | undefined;
+  updateBallPrediction?: (seconds?: number) => number;
+  updateBallPredictionIncremental?: (seconds?: number) => number;
 }
 
 export interface ReachabilityFrameSource {
@@ -104,16 +141,6 @@ function resolveCarStateView(
   return null;
 }
 
-function resolveCarVisualGroup(
-  frameSource: ReachabilityFrameSource | null | undefined,
-  targetIdx: number
-): THREE.Object3D | null {
-  if (frameSource && frameSource.arena && Array.isArray(frameSource.arena.cars)) {
-    return frameSource.arena.cars[targetIdx] || null;
-  }
-  return null;
-}
-
 function disposeSceneNodeResources(scene: THREE.Scene | null, rootGroup: THREE.Group): void {
   if (scene) {
     scene.remove(rootGroup);
@@ -136,6 +163,21 @@ function disposeSceneNodeResources(scene: THREE.Scene | null, rootGroup: THREE.G
       }
     }
   });
+}
+
+function packReachabilityFlags(config: ReachabilityVisualizerConfig): number {
+  let flags = 0;
+  if (config.showGround) flags |= REACH_FLAG_SHOW_GROUND;
+  if (config.groundMode === 'analytical') flags |= REACH_FLAG_GROUND_ANALYTICAL;
+  if (config.showAerial) flags |= REACH_FLAG_SHOW_AERIAL;
+  if (config.aerialMode === 'bubbles') flags |= REACH_FLAG_AERIAL_BUBBLES;
+  if (config.aerialShowRings !== false) flags |= REACH_FLAG_AERIAL_SHOW_RINGS;
+  if (config.aerialShowRails !== false) flags |= REACH_FLAG_AERIAL_SHOW_RAILS;
+  if (config.includeJumpImpulse !== false) flags |= REACH_FLAG_INCLUDE_JUMP_IMPULSE;
+  if (config.showIntercept) flags |= REACH_FLAG_SHOW_INTERCEPT;
+  if (config.crossOrientation === 'trajectory') flags |= REACH_FLAG_CROSS_TRAJECTORY_ORIENT;
+  if (config.showClosestWhenUnreachable) flags |= REACH_FLAG_SHOW_CLOSEST_FALLBACK;
+  return flags >>> 0;
 }
 
 export class ReachabilityVisualizer {
@@ -180,6 +222,63 @@ export class ReachabilityVisualizer {
     preloadGroundReachabilityLut();
   }
 
+  private _syncBallPredictionForIntercept(
+    wasmModule: RocketSimWasmModule,
+    phys: ReachabilityPhysicsPort,
+    currentTick: number
+  ): number {
+    const btp = this.ballTrajectoryPredictor;
+    if (btp?.isTemporarilySuppressed?.()) {
+      return 0;
+    }
+
+    const meshHeaderWord = wasmModule._physics_getTrajectoryMeshHeaderPtr() >> 2;
+    const rawPtsWord = wasmModule._physics_getTrajectoryRawPointsPtr() >> 2;
+    const heapU32 = wasmModule.HEAPU32;
+    const heapF32 = wasmModule.HEAPF32;
+
+    if (btp && btp.isActive && btp.predictionCount > 1) {
+      const count = Math.min(600, btp.predictionCount);
+      heapF32.set(btp.rawPredictedPoints.subarray(0, count * 3), rawPtsWord);
+      heapU32[meshHeaderWord + 5] = count;
+      return Math.max(0, Math.floor(currentTick - btp.impactTick));
+    }
+
+    const bv = phys.getBallStateView?.();
+    if (bv) {
+      const bSpd = Math.hypot(bv.velX, bv.velY, bv.velZ);
+      if (bSpd > 15.0 && typeof phys.updateBallPrediction === 'function') {
+        const cnt =
+          typeof phys.updateBallPredictionIncremental === 'function'
+            ? phys.updateBallPredictionIncremental(3.0)
+            : phys.updateBallPrediction(3.0);
+        if (cnt > 1) {
+          wasmModule._physics_buildTrajectoryMesh(
+            0,
+            50,
+            20,
+            0,
+            18.25,
+            0.35,
+            6,
+            1,
+            0,
+            104,
+            0,
+            0,
+            0,
+            0,
+            0
+          );
+          return 0;
+        }
+      }
+    }
+
+    heapU32[meshHeaderWord + 5] = 0;
+    return 0;
+  }
+
   /**
    * Per-frame update called from GameRenderSubsystem.
    */
@@ -198,7 +297,8 @@ export class ReachabilityVisualizer {
     }
 
     const phys = (frameSource && frameSource.physics) || this.physics;
-    if (!phys) return;
+    const wasmModule = phys?.module;
+    if (!phys || !wasmModule) return;
 
     const configuredIdx = config.targetCarIndex !== undefined ? config.targetCarIndex : -1;
     const fallbackPlayerIdx =
@@ -212,70 +312,61 @@ export class ReachabilityVisualizer {
     }
 
     this.rootGroup.visible = true;
+    ensureWasmGroundReachabilityLutLoaded(wasmModule);
 
-    const carGroup = resolveCarVisualGroup(frameSource, targetIdx);
-    const posX = carGroup ? carGroup.position.x : carView.posX;
-    const posY = carGroup ? carGroup.position.z : carView.posY; // Three.js Z -> RocketSim Y
-    const posZ = carGroup ? carGroup.position.y : carView.posZ; // Three.js Y -> RocketSim Z
-
-    const carState = {
-      posX,
-      posY,
-      posZ,
-      velX: carView.velX,
-      velY: carView.velY,
-      velZ: carView.velZ,
-      fwdX: carView.fwdX,
-      fwdY: carView.fwdY,
-      fwdZ: carView.fwdZ,
-      rightX: carView.rightX,
-      rightY: carView.rightY,
-      rightZ: carView.rightZ,
-      upX: carView.upX,
-      upY: carView.upY,
-      upZ: carView.upZ,
-      angVelX: carView.angVelX,
-      angVelY: carView.angVelY,
-      angVelZ: carView.angVelZ,
-      boost: carView.boost,
-      isOnGround: Boolean(carView.isOnGround),
-    };
+    const elapsedTicks = config.showIntercept
+      ? this._syncBallPredictionForIntercept(wasmModule, phys, currentTick)
+      : 0;
+    const flags = packReachabilityFlags(config);
+    const armLen = Math.max(15.0, Math.min(500.0, Number(config.crossArmLength) || 50.0));
 
     const t0 = performance.now();
-    this.groundRenderer.update(carState, config);
+    wasmModule._physics_updateReachabilityAndIntercept(targetIdx, elapsedTicks, flags, armLen);
+    const tWasmDone = performance.now();
+
+    const headerBaseWord = wasmModule._physics_getReachabilityHeaderPtr() >> 2;
+    const heapU32 = wasmModule.HEAPU32;
+    const heapF32 = wasmModule.HEAPF32;
+
+    const groundVisible = heapU32[headerBaseWord + 0] !== 0;
+    const aerialVisible = heapU32[headerBaseWord + 1] !== 0;
+    const aerialMode = heapU32[headerBaseWord + 2];
+    const carForwardSpeed = heapF32[headerBaseWord + 4];
+    const carBoostAmount = heapF32[headerBaseWord + 5];
+
+    this.groundRenderer.updateFromWasm(wasmModule, groundVisible, config);
     const t1 = performance.now();
-    this.aerialRenderer.update(carState, config);
+    this.aerialRenderer.updateFromWasm(wasmModule, aerialVisible, aerialMode, config);
     const t2 = performance.now();
-    const interceptRes = this.interceptRenderer.update(
-      carState,
+    const interceptRes = this.interceptRenderer.updateFromWasm(
+      wasmModule,
+      headerBaseWord,
       config,
-      currentTick,
       renderWidth,
-      renderHeight,
-      phys
+      renderHeight
     );
     const t3 = performance.now();
 
     if (this.onTelemetry && t3 - this._lastTelemetryPublishMs > 65.0) {
       this._lastTelemetryPublishMs = t3;
-      const groundUs = (t1 - t0) * 1000.0;
+      const wasmUs = (tWasmDone - t0) * 1000.0;
+      const groundUs = (t1 - tWasmDone) * 1000.0;
       const aerialUs = (t2 - t1) * 1000.0;
       const interceptUs = (t3 - t2) * 1000.0;
       this.onTelemetry({
-        computeTimeUs: groundUs + aerialUs + interceptUs,
-        groundComputeUs: groundUs,
-        aerialComputeUs: aerialUs,
-        interceptComputeUs: interceptUs,
-        isOnGround: carState.isOnGround,
-        boostAmount: carState.boost,
-        forwardSpeed: carView.forwardSpeed !== undefined ? carView.forwardSpeed : 0,
+        computeTimeUs: wasmUs + groundUs + aerialUs + interceptUs,
+        groundComputeUs: groundUs + wasmUs * 0.25,
+        aerialComputeUs: aerialUs + wasmUs * 0.45,
+        interceptComputeUs: interceptUs + wasmUs * 0.3,
+        isOnGround: Boolean(carView.isOnGround),
+        boostAmount: carBoostAmount,
+        forwardSpeed: carView.forwardSpeed !== undefined ? carView.forwardSpeed : carForwardSpeed,
         interceptStatus: interceptRes.status,
         interceptTimeSec: interceptRes.timeSec,
         interceptDistance: interceptRes.distance,
         interceptMargin: interceptRes.margin,
-        interceptCentrality: interceptRes.centrality !== undefined ? interceptRes.centrality : 0,
-        interceptPaceStatus:
-          interceptRes.paceStatus !== undefined ? interceptRes.paceStatus : 'none',
+        interceptCentrality: interceptRes.centrality,
+        interceptPaceStatus: interceptRes.paceStatus,
         interceptMinBoost: interceptRes.minBoost,
         interceptPos: [
           Math.round(interceptRes.rx),

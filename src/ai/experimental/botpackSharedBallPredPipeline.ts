@@ -1,7 +1,7 @@
 /**
  * botpackSharedBallPredPipeline.ts
- * Shared 600-tick (5.0s @ 120Hz) ball prediction trajectory cache, physics coordinate
- * transformations, and active car roster sorting for Botpack#9700488 observation pipelines.
+ * Shared 600-tick (5.0s @ 120Hz) ball prediction trajectory cache, policy metadata registry,
+ * canonical boost pad coordinates, and Ripple action lookup table.
  */
 
 import {
@@ -10,7 +10,7 @@ import {
   BallStateView,
   BoostPadStateView,
 } from '../../physics/RocketSimStateViews.ts';
-import { resolveActiveCars } from './experimentalMultiCarObsPipeline.ts';
+import { decodeCarControls, type CarControls } from './experimentalMultiCarObsPipeline.ts';
 
 export interface ActiveCarSlot {
   carIndex: number;
@@ -24,67 +24,244 @@ export interface BallPredictionEnginePort {
   getBallPredictionStride?: () => number;
 }
 
-export interface CarPhysSnapshot {
-  posX: number;
-  posY: number;
-  posZ: number;
-  velX: number;
-  velY: number;
-  velZ: number;
-  angVelX: number;
-  angVelY: number;
-  angVelZ: number;
-  fwdX: number;
-  fwdY: number;
-  fwdZ: number;
-  rightX: number;
-  rightY: number;
-  rightZ: number;
-  upX: number;
-  upY: number;
-  upZ: number;
-  boost: number;
-  isOnGround: boolean;
-  hasFlipOrJump: boolean;
-  hasFlipReset: boolean;
-  isDemoed: boolean;
-  hasJumped: boolean;
-  isSupersonic: boolean;
-  demoRespawnTimer: number;
-  airTimeSinceJump: number;
+export interface SafeTensorEntry {
+  shape: number[];
+  dtype: string;
+  data: Float32Array | Int32Array;
 }
 
-export interface BallPhysSnapshot {
-  posX: number;
-  posY: number;
-  posZ: number;
-  velX: number;
-  velY: number;
-  velZ: number;
-  angVelX: number;
-  angVelY: number;
-  angVelZ: number;
+export interface ParsedSafeTensorsModel {
+  metadata: Record<string, unknown>;
+  tensors: Record<string, SafeTensorEntry>;
 }
 
-export interface BuiltBotpackObs {
-  obs: Float32Array;
-  mirrorX?: boolean;
-  selfCarView: CarStateView;
+export interface MlpBotpackSpec {
+  readonly obsDim: number;
+  readonly sharedDims: readonly number[];
+  readonly policyDims: readonly number[];
+  readonly outDim: number;
+  readonly leakyAlpha: number;
 }
 
-export interface SortedCarCandidate {
-  carIndex: number;
-  team: number;
-  distSq: number;
-  cv: CarStateView;
+export interface RippleBotpackSpec {
+  readonly dim: number;
+  readonly numLayers: number;
+  readonly boostDim: number;
 }
+
+export interface ExperimentalBotPolicyMeta {
+  id: string;
+  name: string;
+  shortName: string;
+  rank: string;
+  modelUrl: string | null;
+  tickSkip: number;
+  maxPlayers: number;
+  showcaseFormat: string;
+  category: string;
+  scriptedKickoff: boolean;
+}
+
+export const EXPERIMENTAL_MODEL_URLS: Readonly<Record<string, string>> = Object.freeze({
+  necto: '/assets/models/experimental/necto_policy.safetensors',
+  nexto: '/assets/models/experimental/nexto_policy.safetensors',
+  ko_v2: '/assets/models/experimental/kickoff_v2_policy.safetensors',
+  ko_v1: '/assets/models/experimental/kickoff_v1_policy.safetensors',
+  chronos: '/assets/models/experimental/botpack_9700488/chronos_policy.safetensors',
+  dice: '/assets/models/experimental/botpack_9700488/dice_policy.safetensors',
+  ducky: '/assets/models/experimental/botpack_9700488/ducky_policy.safetensors',
+  fury: '/assets/models/experimental/botpack_9700488/fury_policy.safetensors',
+  galactus: '/assets/models/experimental/botpack_9700488/galactus_policy.safetensors',
+  kira: '/assets/models/experimental/botpack_9700488/kira_policy.safetensors',
+  rain: '/assets/models/experimental/botpack_9700488/rain_3v3_policy.safetensors',
+  ripple_v1_1: '/assets/models/experimental/botpack_9700488/ripple_v1_1_policy.safetensors',
+});
+
+export const BOT_POLICY_ID_MAP: Readonly<Record<string, number>> = Object.freeze({
+  heuristic: 0,
+  nexto: 1,
+  necto: 2,
+  ko_v1: 3,
+  ko_v2: 4,
+  chronos: 5,
+  dice: 6,
+  ducky: 7,
+  fury: 8,
+  galactus: 9,
+  kira: 10,
+  rain: 11,
+  ripple_v1_1: 12,
+});
+
+const mkPolicy = (
+  id: string,
+  name: string,
+  shortName: string,
+  rank: string,
+  tickSkip: number,
+  maxPlayers: number,
+  showcaseFormat: string,
+  category = 'botpack_9700488',
+  scriptedKickoff = false
+): Readonly<ExperimentalBotPolicyMeta> =>
+  Object.freeze({
+    id,
+    name,
+    shortName,
+    rank,
+    modelUrl: EXPERIMENTAL_MODEL_URLS[id] || null,
+    tickSkip,
+    maxPlayers,
+    showcaseFormat,
+    category,
+    scriptedKickoff,
+  });
+
+export const EXPERIMENTAL_BOT_POLICIES: ReadonlyArray<Readonly<ExperimentalBotPolicyMeta>> =
+  Object.freeze([
+    mkPolicy(
+      'nexto',
+      'Nexto (Native SafeTensors)',
+      'Nexto',
+      'Grand Champion',
+      8,
+      3,
+      '3v3',
+      'legacy',
+      true
+    ),
+    mkPolicy('necto', 'Necto (Native SafeTensors)', 'Necto', 'Diamond', 8, 3, '3v3', 'legacy'),
+    mkPolicy(
+      'heuristic',
+      'Tactical Heuristic (Multi-Role)',
+      'Heuristic',
+      'All-Star',
+      4,
+      3,
+      '3v3',
+      'legacy'
+    ),
+    mkPolicy(
+      'chronos',
+      'Chronos v2.1 (Botpack #9700488)',
+      'Chronos v2.1',
+      'SSL (3v3)',
+      8,
+      3,
+      '3v3'
+    ),
+    mkPolicy('dice', 'Dice (Botpack #9700488)', 'Dice', 'GC (2v2)', 8, 2, '2v2'),
+    mkPolicy('ducky', 'Ducky (Botpack #9700488)', 'Ducky', 'GC (3v3)', 8, 3, '3v3'),
+    mkPolicy('fury', 'Fury (Botpack #9700488)', 'Fury', 'SSL (3v3)', 8, 3, '3v3'),
+    mkPolicy('galactus', 'Galactus v2 (Botpack #9700488)', 'Galactus v2', 'GC (3v3)', 8, 3, '3v3'),
+    mkPolicy('kira', 'Kira (Botpack #9700488)', 'Kira', 'SSL Duel (1v1)', 8, 1, '1v1'),
+    mkPolicy('rain', 'Rain (Botpack #9700488)', 'Rain', 'SSL (3v3)', 6, 3, '3v3'),
+    mkPolicy(
+      'ripple_v1_1',
+      'Ripple v1.1 (Botpack #9700488)',
+      'Ripple v1.1',
+      'SSL Human-Pretrained (3v3)',
+      4,
+      3,
+      '3v3'
+    ),
+  ]);
+
+export const BOTPACK_9700488_POLICIES: ReadonlyArray<Readonly<ExperimentalBotPolicyMeta>> =
+  Object.freeze(EXPERIMENTAL_BOT_POLICIES.filter((p) => p.category === 'botpack_9700488'));
+
+export function getExperimentalBotPolicyMeta(
+  botType: string
+): Readonly<ExperimentalBotPolicyMeta> | null {
+  return EXPERIMENTAL_BOT_POLICIES.find((p) => p.id === botType) || null;
+}
+
+export const RIPPLE_BOTPACK_SPECS: Readonly<Record<string, RippleBotpackSpec>> = Object.freeze({
+  ripple_v1_1: { dim: 320, numLayers: 2, boostDim: 16 },
+});
+
+export const CANONICAL_BOOST_LOCATIONS: ReadonlyArray<readonly [number, number, number]> =
+  Object.freeze([
+    [0.0, -4240.0, 70.0],
+    [-1792.0, -4184.0, 70.0],
+    [1792.0, -4184.0, 70.0],
+    [-3072.0, -4096.0, 73.0],
+    [3072.0, -4096.0, 73.0],
+    [-940.0, -3308.0, 70.0],
+    [940.0, -3308.0, 70.0],
+    [0.0, -2816.0, 70.0],
+    [-3584.0, -2484.0, 70.0],
+    [3584.0, -2484.0, 70.0],
+    [-1788.0, -2300.0, 70.0],
+    [1788.0, -2300.0, 70.0],
+    [-2048.0, -1036.0, 70.0],
+    [0.0, -1024.0, 70.0],
+    [2048.0, -1036.0, 70.0],
+    [-3584.0, 0.0, 73.0],
+    [-1024.0, 0.0, 70.0],
+    [1024.0, 0.0, 70.0],
+    [3584.0, 0.0, 73.0],
+    [-2048.0, 1036.0, 70.0],
+    [0.0, 1024.0, 70.0],
+    [2048.0, 1036.0, 70.0],
+    [-1788.0, 2300.0, 70.0],
+    [1788.0, 2300.0, 70.0],
+    [-3584.0, 2484.0, 70.0],
+    [3584.0, 2484.0, 70.0],
+    [0.0, 2816.0, 70.0],
+    [-940.0, 3310.0, 70.0],
+    [940.0, 3308.0, 70.0],
+    [-3072.0, 4096.0, 73.0],
+    [3072.0, 4096.0, 73.0],
+    [-1792.0, 4184.0, 70.0],
+    [1792.0, 4184.0, 70.0],
+    [0.0, 4240.0, 70.0],
+  ]);
+
+export const CANONICAL_TO_WASM_PAD_INDEX: readonly number[] = Object.freeze([
+  6, 7, 8, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 19, 20, 1, 21, 22, 23, 24, 25, 26, 27,
+  28, 29, 30, 2, 3, 31, 32, 33,
+]);
+
+export const RIPPLE_276_ACTIONS: ReadonlyArray<Readonly<CarControls>> = (() => {
+  const actions: CarControls[] = [];
+  for (const thr of [-1, 0, 1]) {
+    for (const str of [-1, -0.5, 0, 0.5, 1]) {
+      for (const boost of [0, 1]) {
+        for (const hb of [0, 1]) {
+          if (boost === 1 && thr !== 1) continue;
+          actions.push(decodeCarControls([thr || boost, str, 0, str, 0, 0, boost, hb]));
+        }
+      }
+    }
+  }
+  for (const pitch of [-1, 0, 1]) {
+    for (const yaw of [-1, 0, 1]) {
+      for (const roll of [-1, 0, 1]) {
+        for (const jump of [0, 1]) {
+          for (const boost of [0, 1]) {
+            for (const hb of [0, 1]) {
+              if (jump === 1 && hb === 1) continue;
+              if (pitch === 0 && yaw === 0 && roll === 0 && jump === 0 && hb === 1) continue;
+              if (jump === 0 && boost === 0 && hb === 0) continue;
+              const actualHb = jump === 1 && (pitch !== 0 || yaw !== 0 || roll !== 0) ? 1 : hb;
+              actions.push(
+                decodeCarControls([boost, yaw, pitch, yaw, roll, jump, boost, actualHb])
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+  return Object.freeze(actions.map((a) => Object.freeze(a)));
+})();
 
 export const sHeaderView = new ArenaHeaderView();
 export const sBallView = new BallStateView();
 export const sPadView = new BoostPadStateView();
 export const sCarViews: CarStateView[] = Array.from({ length: 8 }, () => new CarStateView());
 
-// Shared ball trajectory cache (up to 600 ticks @ 120Hz = 5.0s, 6 floats per tick)
 let sBallPredCacheTick = -1;
 let sBallPredCachePx = 0;
 let sBallPredCacheTicks = 0;
@@ -109,9 +286,6 @@ export function getActiveBotBallPredictionHorizonSeconds(currentTick: number): n
   return 0;
 }
 
-/**
- * Computes or retrieves a ball prediction trajectory up to `horizonSeconds` (max 5.0s / 600 ticks @ 120Hz).
- */
 export function ensureSharedBallPrediction(
   simState: Float32Array,
   physicsEngine: BallPredictionEnginePort | null = null,
@@ -151,10 +325,10 @@ export function ensureSharedBallPrediction(
     const stride = Math.max(6, physicsEngine.getBallPredictionStride?.() ?? 9);
     const availableSlices = raw ? Math.min(count, Math.floor(raw.length / stride)) : 0;
     if (raw && availableSlices > 0) {
-      const copyCount = Math.min(reqTicks, availableSlices);
+      const copyCount = Math.min(reqTicks + 1, availableSlices);
       for (let i = 0; i < copyCount; i++) {
         const src = i * stride;
-        const dst = (i + 1) * 6;
+        const dst = i * 6;
         sBallPredBuffer[dst + 0] = raw[src + 0];
         sBallPredBuffer[dst + 1] = raw[src + 1];
         sBallPredBuffer[dst + 2] = raw[src + 2];
@@ -162,8 +336,8 @@ export function ensureSharedBallPrediction(
         sBallPredBuffer[dst + 4] = raw[src + 4];
         sBallPredBuffer[dst + 5] = raw[src + 5];
       }
-      const lastOff = copyCount * 6;
-      for (let t = copyCount + 1; t <= reqTicks; t++) {
+      const lastOff = Math.max(0, copyCount - 1) * 6;
+      for (let t = copyCount; t <= reqTicks; t++) {
         const dst = t * 6;
         for (let k = 0; k < 6; k++) {
           sBallPredBuffer[dst + k] = sBallPredBuffer[lastOff + k];
@@ -200,7 +374,6 @@ export function ensureSharedBallPrediction(
     x += vx * dt;
     y += vy * dt;
     z += vz * dt;
-
     if (x < minX) {
       x = minX;
       vx = -vx * 0.6;
@@ -224,7 +397,6 @@ export function ensureSharedBallPrediction(
       z = maxZ;
       vz = -vz * 0.6;
     }
-
     const dst = t * 6;
     sBallPredBuffer[dst + 0] = x;
     sBallPredBuffer[dst + 1] = y;
@@ -235,134 +407,4 @@ export function ensureSharedBallPrediction(
   }
 
   return sBallPredBuffer;
-}
-
-export function getCarPhys(cv: CarStateView, inv: boolean, mirrorX = false): CarPhysSnapshot {
-  const s = inv ? -1.0 : 1.0;
-  const mx = mirrorX ? -1.0 : 1.0;
-
-  const isOnGround = cv.isOnGround;
-  const hasFlipOrJump = cv.hasFlipOrJump;
-  const isDemoed = cv.isDemoed;
-  const isJumping = cv.isJumping;
-  const isFlipping = cv.isFlipping;
-  const airTimeSinceJump = cv.airTimeSinceJump;
-  const hasJumped =
-    !isOnGround && (isJumping || isFlipping || airTimeSinceJump > 0.0001 || !hasFlipOrJump);
-  const hasFlipReset = !isOnGround && hasFlipOrJump && !hasJumped;
-
-  return {
-    posX: cv.posX * s * mx,
-    posY: cv.posY * s,
-    posZ: cv.posZ,
-    velX: cv.velX * s * mx,
-    velY: cv.velY * s,
-    velZ: cv.velZ,
-    angVelX: cv.angVelX * s,
-    angVelY: cv.angVelY * s * mx,
-    angVelZ: cv.angVelZ * mx,
-    fwdX: cv.fwdX * s * mx,
-    fwdY: cv.fwdY * s,
-    fwdZ: cv.fwdZ,
-    rightX: cv.rightX * s,
-    rightY: cv.rightY * s * mx,
-    rightZ: cv.rightZ * mx,
-    upX: cv.upX * s * mx,
-    upY: cv.upY * s,
-    upZ: cv.upZ,
-    boost: cv.boost,
-    isOnGround,
-    hasFlipOrJump,
-    hasFlipReset,
-    isDemoed,
-    hasJumped,
-    isSupersonic: cv.isSupersonic,
-    demoRespawnTimer: cv.demoRespawnTimer,
-    airTimeSinceJump,
-  };
-}
-
-export function getBallPhys(bv: BallStateView, inv: boolean, mirrorX = false): BallPhysSnapshot {
-  const s = inv ? -1.0 : 1.0;
-  const mx = mirrorX ? -1.0 : 1.0;
-  return {
-    posX: bv.posX * s * mx,
-    posY: bv.posY * s,
-    posZ: bv.posZ,
-    velX: bv.velX * s * mx,
-    velY: bv.velY * s,
-    velZ: bv.velZ,
-    angVelX: bv.angVelX * s,
-    angVelY: bv.angVelY * s * mx,
-    angVelZ: bv.angVelZ * mx,
-  };
-}
-
-export function rotDot(
-  phys: CarPhysSnapshot,
-  vx: number,
-  vy: number,
-  vz: number
-): [number, number, number] {
-  return [
-    phys.fwdX * vx + phys.fwdY * vy + phys.fwdZ * vz,
-    phys.rightX * vx + phys.rightY * vy + phys.rightZ * vz,
-    phys.upX * vx + phys.upY * vy + phys.upZ * vz,
-  ];
-}
-
-export function collectTeammatesAndOpponents(
-  simState: Float32Array,
-  selfCarIndex: number,
-  normSelfTeam: number,
-  activeCars: ActiveCarSlot[] | null,
-  maxTeammates: number,
-  maxOpponents: number
-): {
-  teammates: SortedCarCandidate[];
-  opponents: SortedCarCandidate[];
-  roster: ActiveCarSlot[];
-} {
-  const roster = resolveActiveCars(simState, activeCars ?? undefined) as ActiveCarSlot[];
-  sBallView.attach(simState);
-  const bx = sBallView.posX;
-  const by = sBallView.posY;
-  const bz = sBallView.posZ;
-
-  const teammates: SortedCarCandidate[] = [];
-  const opponents: SortedCarCandidate[] = [];
-
-  for (let i = 0; i < roster.length; i++) {
-    const entry = roster[i];
-    if (entry.carIndex === selfCarIndex) continue;
-    const cv = (sCarViews[entry.carIndex] || new CarStateView()).attachCar(
-      simState,
-      entry.carIndex
-    );
-    const dx = cv.posX - bx;
-    const dy = cv.posY - by;
-    const dz = cv.posZ - bz;
-    const distSq = dx * dx + dy * dy + dz * dz;
-    const item: SortedCarCandidate = {
-      carIndex: entry.carIndex,
-      team: entry.team === 1 ? 1 : 0,
-      distSq,
-      cv,
-    };
-    if (item.team === normSelfTeam) {
-      teammates.push(item);
-    } else {
-      opponents.push(item);
-    }
-  }
-
-  const cmp = (a: SortedCarCandidate, b: SortedCarCandidate) =>
-    a.distSq !== b.distSq ? a.distSq - b.distSq : a.carIndex - b.carIndex;
-  teammates.sort(cmp);
-  opponents.sort(cmp);
-
-  if (teammates.length > maxTeammates) teammates.length = maxTeammates;
-  if (opponents.length > maxOpponents) opponents.length = maxOpponents;
-
-  return { teammates, opponents, roster };
 }

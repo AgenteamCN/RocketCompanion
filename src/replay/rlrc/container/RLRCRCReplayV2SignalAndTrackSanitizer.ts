@@ -239,8 +239,7 @@ export function sanitizeRLRCTrack0AndSynthesizeSignals(
   }
 
   const rlrcNativeEvents = packet.bookmarks.filter(
-    (b) =>
-      b.kind === 'goal' || b.kind === 'save' || b.kind === 'demolish' || b.kind === 'user-mark'
+    (b) => b.kind === 'goal' || b.kind === 'save' || b.kind === 'demolish' || b.kind === 'user-mark'
   );
   const rlrcKeyframes = packet.bookmarks.filter(
     (b) => b.kind === 'ue-keyframe' || b.kind === 'kickoff'

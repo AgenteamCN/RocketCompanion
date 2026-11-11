@@ -221,3 +221,104 @@ export function getSpatialAttenuationProfile(
 ): SpatialAttenuationProfile {
   return spatialAttenuationProfiles.getProfile(category);
 }
+
+export type SpatialAudioOverrideMode = 'auto' | 'normal' | 'spatial' | 'manual';
+
+export interface SpatialAudioTunerConfig {
+  transitionDurationSec: number;
+  bgmFadeDurationSec: number;
+  hpfMaxFreq: number;
+  lpfMinFreq: number;
+  wetMaxPct: number;
+  decaySec: number;
+  wetBoost: number;
+  bzX1: number;
+  bzY1: number;
+  bzX2: number;
+  bzY2: number;
+  overrideMode: SpatialAudioOverrideMode;
+  manualBlend: number;
+  muteSignalAudioInGoalReplay: boolean;
+}
+
+export const DEFAULT_SPATIAL_AUDIO_TUNER_CONFIG: SpatialAudioTunerConfig = Object.freeze({
+  transitionDurationSec: 2.0,
+  bgmFadeDurationSec: 2.0,
+  hpfMaxFreq: 425,
+  lpfMinFreq: 3500,
+  wetMaxPct: 69,
+  decaySec: 3.0,
+  wetBoost: 1.35,
+  bzX1: 0.22,
+  bzY1: 1.0,
+  bzX2: 1.0,
+  bzY2: 1.0,
+  overrideMode: 'auto',
+  manualBlend: 0,
+  muteSignalAudioInGoalReplay: true,
+});
+
+export interface BgmSceneConfig {
+  freePlay: boolean;
+  singlePlayerTraining: boolean;
+  multiplayerTraining: boolean;
+  match: boolean;
+}
+
+export const DEFAULT_BGM_SCENE_CONFIG: BgmSceneConfig = Object.freeze({
+  freePlay: true,
+  singlePlayerTraining: true,
+  multiplayerTraining: false,
+  match: false,
+});
+
+/**
+ * Solves a 1D Cubic-Bezier curve y(x) for x in [0, 1] with control points P1=(x1,y1), P2=(x2,y2).
+ */
+export function solveCubicBezier(
+  x: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+
+  const cx = 3.0 * x1;
+  const bx = 3.0 * (x2 - x1) - cx;
+  const ax = 1.0 - cx - bx;
+
+  const cy = 3.0 * y1;
+  const by = 3.0 * (y2 - y1) - cy;
+  const ay = 1.0 - cy - by;
+
+  const sampleCurveX = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const sampleCurveY = (t: number) => ((ay * t + by) * t + cy) * t;
+  const sampleCurveDerivativeX = (t: number) => (3.0 * ax * t + 2.0 * bx) * t + cx;
+
+  let t2 = x;
+  for (let i = 0; i < 8; i++) {
+    const xEst = sampleCurveX(t2) - x;
+    if (Math.abs(xEst) < 1e-6) break;
+    const d2 = sampleCurveDerivativeX(t2);
+    if (Math.abs(d2) < 1e-6) break;
+    t2 = t2 - xEst / d2;
+  }
+
+  if (t2 < 0 || t2 > 1 || Number.isNaN(t2)) {
+    let t0 = 0.0;
+    let t1 = 1.0;
+    t2 = x;
+    for (let i = 0; i < 12; i++) {
+      const xEst = sampleCurveX(t2);
+      if (Math.abs(xEst - x) < 1e-6) break;
+      if (x > xEst) t0 = t2;
+      else t1 = t2;
+      t2 = 0.5 * (t1 - t0) + t0;
+    }
+  }
+
+  return Math.max(0, Math.min(1, sampleCurveY(t2)));
+}
+

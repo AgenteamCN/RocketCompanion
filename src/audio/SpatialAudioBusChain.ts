@@ -7,7 +7,7 @@ import {
   DEFAULT_SPATIAL_AUDIO_TUNER_CONFIG,
   solveCubicBezier,
   type SpatialAudioTunerConfig,
-} from '../ui-core/config/spatialAudioConfig.ts';
+} from '../ui-core/config/spatialAttenuationProfiles.ts';
 
 export interface SampleOutputPeakResult {
   peak: number;
@@ -63,6 +63,12 @@ export function stepSpatialBezierTransition(
 }
 
 const impulseBufferCache = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
+const EARLY_REFLECTION_TAPS: ReadonlyArray<readonly [number, number]> = [
+  [0.035, 0.7],
+  [0.065, 0.5],
+  [0.11, 0.35],
+  [0.16, 0.25],
+];
 
 export function buildStadiumImpulseBuffer(ctx: AudioContext, durationSec = 3.0): AudioBuffer {
   const sampleRate = ctx.sampleRate;
@@ -88,10 +94,8 @@ export function buildStadiumImpulseBuffer(ctx: AudioContext, durationSec = 3.0):
   const fadeOutSamples = Math.max(1, Math.floor(0.01 * sampleRate));
   const invFadeIn = 1.0 / fadeInSamples;
   const invFadeOut = 1.0 / fadeOutSamples;
-  const d0 = Math.floor(0.035 * sampleRate);
-  const d1 = Math.floor(0.065 * sampleRate);
-  const d2 = Math.floor(0.11 * sampleRate);
-  const d3 = Math.floor(0.16 * sampleRate);
+  const taps = EARLY_REFLECTION_TAPS.map(([sec, gain]) => [Math.floor(sec * sampleRate), gain] as const);
+  const maxTapIdx = taps[3][0] + 4;
 
   let lpL = 0;
   let lpR = 0;
@@ -103,74 +107,35 @@ export function buildStadiumImpulseBuffer(ctx: AudioContext, durationSec = 3.0):
   const activeLen = Math.max(1, length - preDelaySamples);
   const invActiveLen = 1.0 / activeLen;
 
-  // Fast deterministic xorshift32 PRNG (avoids 300k+ Math.random() & Math.pow() calls on main thread)
   let rngState = 0x9e3779b9 ^ length;
   const INV_INT32 = 1.0 / 2147483648.0;
+  const nextRng = (): number => {
+    rngState ^= rngState << 13;
+    rngState ^= rngState >> 17;
+    rngState ^= rngState << 5;
+    return rngState | 0;
+  };
 
   for (let i = preDelaySamples; i < length; i++) {
     let sampleL = 0;
     let sampleR = 0;
-    if (i <= d3 + 4) {
-      if (i >= d0 - 4 && i <= d0 + 4) {
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleL += (rngState | 0) * INV_INT32 * 0.7;
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleR += (rngState | 0) * INV_INT32 * 0.7;
-      }
-      if (i >= d1 - 4 && i <= d1 + 4) {
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleL += (rngState | 0) * INV_INT32 * 0.5;
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleR += (rngState | 0) * INV_INT32 * 0.5;
-      }
-      if (i >= d2 - 4 && i <= d2 + 4) {
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleL += (rngState | 0) * INV_INT32 * 0.35;
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleR += (rngState | 0) * INV_INT32 * 0.35;
-      }
-      if (i >= d3 - 4 && i <= d3 + 4) {
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleL += (rngState | 0) * INV_INT32 * 0.25;
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 17;
-        rngState ^= rngState << 5;
-        sampleR += (rngState | 0) * INV_INT32 * 0.25;
+    if (i <= maxTapIdx) {
+      for (let t = 0; t < 4; t++) {
+        const tapCenter = taps[t][0];
+        if (i >= tapCenter - 4 && i <= tapCenter + 4) {
+          const tapGain = taps[t][1] * INV_INT32;
+          sampleL += nextRng() * tapGain;
+          sampleR += nextRng() * tapGain;
+        }
       }
     }
 
     const activeIdx = i - preDelaySamples;
     const rem = 1.0 - activeIdx * invActiveLen;
-    const rem2 = rem * rem;
-    // Fast polynomial approximation of rem^3.2 ~ rem^3 * (1 - 0.2 * (1 - rem))
-    const env = rem2 * rem * (0.8 + 0.2 * rem) * 0.5 * INV_INT32;
+    const env = rem * rem * rem * (0.8 + 0.2 * rem) * 0.5 * INV_INT32;
 
-    rngState ^= rngState << 13;
-    rngState ^= rngState >> 17;
-    rngState ^= rngState << 5;
-    const noiseL = (rngState | 0) * env;
-
-    rngState ^= rngState << 13;
-    rngState ^= rngState >> 17;
-    rngState ^= rngState << 5;
-    const noiseR = (rngState | 0) * env;
-
-    lpL += alpha * (noiseL - lpL);
-    lpR += alpha * (noiseR - lpR);
+    lpL += alpha * (nextRng() * env - lpL);
+    lpR += alpha * (nextRng() * env - lpR);
 
     let boundaryEnv = 1.0;
     if (activeIdx < fadeInSamples) {
@@ -187,7 +152,6 @@ export function buildStadiumImpulseBuffer(ctx: AudioContext, durationSec = 3.0):
     sumR += outR;
   }
 
-  // Remove any residual DC offset in the active portion of the impulse response
   const meanL = sumL * invActiveLen;
   const meanR = sumR * invActiveLen;
   for (let i = preDelaySamples; i < length; i++) {
@@ -242,7 +206,6 @@ export class SpatialAudioBusChain {
     this.input = ctx.createGain();
     this.hpf = ctx.createBiquadFilter();
     this.hpf.type = 'highpass';
-    // Use 20Hz subsonic floor instead of 0Hz to avoid degenerate biquad pole on unit circle
     this.hpf.frequency.value = 20;
     this.hpf.Q.value = 0.707;
 
@@ -252,18 +215,13 @@ export class SpatialAudioBusChain {
     this.lpf.Q.value = 0.707;
 
     this.convolver = ctx.createConvolver();
-    if (impulseBuffer) {
-      this.convolver.buffer = impulseBuffer;
-    }
+    if (impulseBuffer) this.convolver.buffer = impulseBuffer;
 
     this.dryGain = ctx.createGain();
     this.dryGain.gain.value = 1.0;
-
     this.wetGain = ctx.createGain();
     this.wetGain.gain.value = 0.0;
-
     this.output = ctx.createGain();
-    // Start silent (0.0) so newly initialized chains never emit transient pops
     this.output.gain.value = 0.0;
 
     let analyser: AnalyserNode | null = null;
@@ -276,13 +234,11 @@ export class SpatialAudioBusChain {
         analyserBuffer = new Float32Array(new ArrayBuffer(analyser.fftSize * 4));
       } catch {
         analyser = null;
-        analyserBuffer = null;
       }
     }
     this.analyser = analyser;
     this._analyserBuffer = analyserBuffer;
 
-    // Signal routing: input -> HPF -> LPF -> [dryGain, convolver -> wetGain] -> output -> destination
     this.input.connect(this.hpf);
     this.hpf.connect(this.lpf);
     this.lpf.connect(this.dryGain);
@@ -290,9 +246,7 @@ export class SpatialAudioBusChain {
     this.lpf.connect(this.convolver);
     this.convolver.connect(this.wetGain);
     this.wetGain.connect(this.output);
-    if (this.analyser) {
-      this.output.connect(this.analyser);
-    }
+    if (this.analyser) this.output.connect(this.analyser);
     this.output.connect(destination);
   }
 
@@ -304,13 +258,9 @@ export class SpatialAudioBusChain {
       this.analyser.getFloatTimeDomainData(this._analyserBuffer);
       let peak = 0;
       const buf = this._analyserBuffer;
-      const len = buf.length;
-      for (let i = 0; i < len; i++) {
-        const v = buf[i];
-        if (Number.isFinite(v)) {
-          const abs = Math.abs(v);
-          if (abs > peak) peak = abs;
-        }
+      for (let i = 0; i < buf.length; i++) {
+        const abs = Math.abs(buf[i]);
+        if (abs > peak) peak = abs;
       }
       return { peak, valid: true };
     } catch {
@@ -330,9 +280,7 @@ export class SpatialAudioBusChain {
     if (!param || !this.ctx) return [smoothed, lastWritten];
     const isSnap = immediate || this.ctx.state !== 'running';
     let nextSmoothed = isSnap ? target : smoothed + (target - smoothed) * alpha;
-    if (Math.abs(target - nextSmoothed) <= deadband) {
-      nextSmoothed = target;
-    }
+    if (Math.abs(target - nextSmoothed) <= deadband) nextSmoothed = target;
 
     let nextWritten = lastWritten;
     if (
@@ -343,9 +291,7 @@ export class SpatialAudioBusChain {
     ) {
       nextWritten = nextSmoothed;
       try {
-        if (immediate) {
-          param.cancelScheduledValues(this.ctx.currentTime);
-        }
+        if (immediate) param.cancelScheduledValues(this.ctx.currentTime);
         param.value = nextSmoothed;
       } catch {
         param.value = nextSmoothed;
@@ -354,10 +300,6 @@ export class SpatialAudioBusChain {
     return [nextSmoothed, nextWritten];
   }
 
-  /**
-   * Web Audio ConvolverNode.buffer cannot be mutated in-place once active;
-   * create a fresh ConvolverNode and swap connections cleanly.
-   */
   setImpulseBuffer(impulseBuffer: AudioBuffer | null): void {
     if (!impulseBuffer || !this.ctx) return;
     this.impulseBuffer = impulseBuffer;
@@ -369,13 +311,9 @@ export class SpatialAudioBusChain {
       if (this.convolver) {
         try {
           this.lpf.disconnect(this.convolver);
-        } catch {
-          // ignore
-        }
-        try {
           this.convolver.disconnect();
         } catch {
-          // ignore
+          /* ignore */
         }
       }
       this.convolver = nextConvolver;
@@ -384,10 +322,6 @@ export class SpatialAudioBusChain {
     }
   }
 
-  /**
-   * Immediately zeroes wet/output gains and swaps the ConvolverNode so any
-   * accumulated stadium reverb tail is purged with zero echo bleed.
-   */
   resetAndSilence(
     cfg: Partial<SpatialAudioTunerConfig> = DEFAULT_SPATIAL_AUDIO_TUNER_CONFIG
   ): void {
@@ -397,9 +331,49 @@ export class SpatialAudioBusChain {
     this._lastDry = -1;
     this._lastOut = -1;
     this.applyBlend(0.0, cfg, 0.0, true);
-    if (this.impulseBuffer) {
-      this.setImpulseBuffer(this.impulseBuffer);
-    }
+    if (this.impulseBuffer) this.setImpulseBuffer(this.impulseBuffer);
+  }
+
+  applyPodBlend(
+    spatialBlend: number,
+    hpfFreqHz: number,
+    lpfFreqHz: number,
+    wetGain: number,
+    outputGain = 1.0,
+    immediate = false,
+    dryDuckFactor = 0.414
+  ): void {
+    const b = Math.max(0, Math.min(1, Number.isFinite(spatialBlend) ? spatialBlend : 0));
+    const currentHpf = Math.max(20, Math.min(5000, Number.isFinite(hpfFreqHz) ? hpfFreqHz : 20));
+    const currentLpf = Math.max(100, Math.min(20000, Number.isFinite(lpfFreqHz) ? lpfFreqHz : 20000));
+    const currentWet = Math.max(0, Number.isFinite(wetGain) ? wetGain : 0);
+    const currentDry = Math.max(0, 1.0 - b * dryDuckFactor);
+    const currentOut = Math.max(
+      0,
+      Math.min(2, Number.isFinite(Number(outputGain)) ? Number(outputGain) : 1.0)
+    );
+
+    const now = this.ctx ? this.ctx.currentTime : 0;
+    const rawDt = this._lastStepTime > 0 ? now - this._lastStepTime : 1 / 60;
+    const dt = rawDt > 0.0005 && rawDt < 0.25 ? rawDt : 1 / 60;
+    this._lastStepTime = now;
+    const alpha = 1 - Math.exp(-dt / 0.015);
+
+    [this._smoothedLpf, this._lastLpf] = this._stepSmoothedParam(
+      this.lpf.frequency, currentLpf, this._smoothedLpf, this._lastLpf, alpha, 0.05, immediate
+    );
+    [this._smoothedHpf, this._lastHpf] = this._stepSmoothedParam(
+      this.hpf.frequency, currentHpf, this._smoothedHpf, this._lastHpf, alpha, 0.05, immediate
+    );
+    [this._smoothedWet, this._lastWet] = this._stepSmoothedParam(
+      this.wetGain.gain, currentWet, this._smoothedWet, this._lastWet, alpha, 1e-4, immediate
+    );
+    [this._smoothedDry, this._lastDry] = this._stepSmoothedParam(
+      this.dryGain.gain, currentDry, this._smoothedDry, this._lastDry, alpha, 1e-4, immediate
+    );
+    [this._smoothedOut, this._lastOut] = this._stepSmoothedParam(
+      this.output.gain, currentOut, this._smoothedOut, this._lastOut, alpha, 1e-4, immediate
+    );
   }
 
   applyBlend(
@@ -419,65 +393,14 @@ export class SpatialAudioBusChain {
     const rawWetBoost = Number(cfg.wetBoost);
     const wetBoost = Math.max(0.1, Number.isFinite(rawWetBoost) ? rawWetBoost : 1.35);
 
-    const currentLpf = maxFreq * Math.pow(minLpf / maxFreq, b);
-    const currentHpf = 20 + b * Math.max(0, maxHpf - 20);
-    const currentWet = b * targetWet * wetBoost;
-    const currentDry = Math.max(0, 1.0 - b * (targetWet * 0.6));
-    const currentOut = Math.max(
-      0,
-      Math.min(2, Number.isFinite(Number(outputGain)) ? Number(outputGain) : 1.0)
-    );
-
-    const now = this.ctx ? this.ctx.currentTime : 0;
-    const rawDt = this._lastStepTime > 0 ? now - this._lastStepTime : 1 / 60;
-    const dt = rawDt > 0.0005 && rawDt < 0.25 ? rawDt : 1 / 60;
-    this._lastStepTime = now;
-    const alpha = 1 - Math.exp(-dt / 0.015);
-
-    [this._smoothedLpf, this._lastLpf] = this._stepSmoothedParam(
-      this.lpf.frequency,
-      currentLpf,
-      this._smoothedLpf,
-      this._lastLpf,
-      alpha,
-      0.05,
-      immediate
-    );
-    [this._smoothedHpf, this._lastHpf] = this._stepSmoothedParam(
-      this.hpf.frequency,
-      currentHpf,
-      this._smoothedHpf,
-      this._lastHpf,
-      alpha,
-      0.05,
-      immediate
-    );
-    [this._smoothedWet, this._lastWet] = this._stepSmoothedParam(
-      this.wetGain.gain,
-      currentWet,
-      this._smoothedWet,
-      this._lastWet,
-      alpha,
-      1e-4,
-      immediate
-    );
-    [this._smoothedDry, this._lastDry] = this._stepSmoothedParam(
-      this.dryGain.gain,
-      currentDry,
-      this._smoothedDry,
-      this._lastDry,
-      alpha,
-      1e-4,
-      immediate
-    );
-    [this._smoothedOut, this._lastOut] = this._stepSmoothedParam(
-      this.output.gain,
-      currentOut,
-      this._smoothedOut,
-      this._lastOut,
-      alpha,
-      1e-4,
-      immediate
+    this.applyPodBlend(
+      b,
+      20 + b * Math.max(0, maxHpf - 20),
+      maxFreq * Math.pow(minLpf / maxFreq, b),
+      b * targetWet * wetBoost,
+      outputGain,
+      immediate,
+      targetWet * 0.6
     );
   }
 }

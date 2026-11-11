@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { SliderControl } from '../../primitives/SliderControl';
-import { useSpatialAudioStore } from '../../stores/spatialAudioStore';
 import {
-  solveCubicBezier,
+  useSpatialAudioStore,
   type SpatialAudioTunerConfig,
-} from '../../config/spatialAudioConfig';
+} from '../../stores/spatialAudioStore';
+import { solveCubicBezier } from '../../config/spatialAttenuationProfiles';
 
 export interface SpatialAudioCurveCardProps {
   isLight: boolean;

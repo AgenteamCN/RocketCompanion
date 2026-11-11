@@ -178,3 +178,52 @@ pub fn select_masked_argmax(logits: &[f32], mask: Option<&[u8]>) -> usize {
     }
     best_idx
 }
+
+/// Batched linear layer over `num_tokens` contiguous vectors with optional exact GELU activation.
+#[inline]
+pub fn linear_batch_gelu(
+    x: &[f32],
+    num_tokens: usize,
+    in_dim: usize,
+    out_dim: usize,
+    weight: &[f32],
+    bias: Option<&[f32]>,
+    out: &mut [f32],
+    apply_gelu: bool,
+) {
+    for n in 0..num_tokens {
+        let in_base = n * in_dim;
+        let out_base = n * out_dim;
+        let x_tok = &x[in_base..in_base + in_dim];
+        let out_tok = &mut out[out_base..out_base + out_dim];
+        mat_vec_bias(x_tok, in_dim, out_dim, weight, bias, out_tok);
+        if apply_gelu {
+            for v in out_tok.iter_mut() {
+                *v = gelu_exact(*v);
+            }
+        }
+    }
+}
+
+/// Applies LayerNorm over `dim` for `num_tokens` contiguous vectors.
+#[inline]
+pub fn layer_norm_tokens(
+    x: &[f32],
+    num_tokens: usize,
+    dim: usize,
+    ln_w: &[f32],
+    ln_b: &[f32],
+    out: &mut [f32],
+) {
+    for n in 0..num_tokens {
+        let base = n * dim;
+        layer_norm_1d(
+            &x[base..base + dim],
+            dim,
+            ln_w,
+            ln_b,
+            &mut out[base..base + dim],
+        );
+    }
+}
+

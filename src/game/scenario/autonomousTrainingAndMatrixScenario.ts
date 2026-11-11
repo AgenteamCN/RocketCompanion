@@ -12,7 +12,7 @@
  *    spawn slot uniqueness, and finite physics state.
  */
 
-import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
+import { ensureExperimentalEngine } from '../../ai/BotWeightLoader.ts';
 import { SYSTEM_CONTROL_SIGNALS } from '../../physics/RocketSimConstants.ts';
 import { REPLAY_BUFFER_MODES } from '../../replay/ReplayRingBuffer.ts';
 import type {

@@ -2,7 +2,7 @@ import {
   ExperimentalBotAgent,
   ensureExperimentalEngine,
   isExperimentalEngineReady,
-} from '../../../ai/experimental/ExperimentalBotAgent.ts';
+} from '../../../ai/BotWeightLoader.ts';
 import { DEFAULT_CAR_CONTROLS } from '../../../ai/experimental/experimentalMultiCarObsPipeline.ts';
 import { resetSharedBallPredictionCache } from '../../../ai/experimental/botpackSharedBallPredPipeline.ts';
 import {

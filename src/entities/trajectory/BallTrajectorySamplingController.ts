@@ -1,27 +1,25 @@
 /**
  * BallTrajectorySamplingController.ts
  * Stateful narrow-waist SubController for WASM ball trajectory prediction sampling,
- * O(1) incremental tail shifting, and progressive catch-up ramp after car-ball hits
- * or coordinate deviations.
+ * O(1) incremental tail shifting, progressive catch-up ramp, and lightweight Alpha/Bravo
+ * anomaly summary & snapshot latching directly from WASM-resident `pred_buffer`.
  */
 
+import { getActiveBotBallPredictionHorizonSeconds } from '../../ai/experimental/botpackSharedBallPredPipeline.ts';
+import type { BallStateObjectInput } from '../../physics/RocketSimSnapshotSerializer.ts';
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
 import {
-  BOUNCE_MARKER_STRIDE,
-  MAX_BOUNCE_MARKERS,
   copyWasmPredictionToTrajectoryBuffers,
-  detectTrajectoryBounces,
   shouldRefreshTailSeamContact,
   tryIncrementalShiftTrajectoryBuffers,
 } from './ballTrajectoryGeometryPipeline.ts';
+import { ResidentTrajectoryAnomalyLatch } from './ballTrajectoryAnomalyUiBridge.ts';
 import {
+  computeClosestCarSurfaceGapUu,
   resolveLiveTrajectorySamplingDecision,
   type TrajectorySamplingConfig,
   type TrajectoryUpdateKind,
-} from './ballTrajectoryPolicy.ts';
-import { computeClosestCarSurfaceGapUu } from './ballTrajectoryAnomalyPipeline.ts';
-import { BallTrajectoryAnomalyDetector } from './BallTrajectoryAnomalyDetector.ts';
-import { getActiveBotBallPredictionHorizonSeconds } from '../../ai/experimental/botpackSharedBallPredPipeline.ts';
-import type { BallStateObjectInput } from '../../physics/RocketSimSnapshotSerializer.ts';
+} from './ballTrajectoryTelemetryPipeline.ts';
 
 export type { TrajectorySamplingConfig, TrajectoryUpdateKind };
 
@@ -30,6 +28,7 @@ export interface TrajectoryBallLaunchState extends BallStateObjectInput {
 }
 
 export interface TrajectoryPhysicsPort {
+  readonly module?: RocketSimWasmModule | null;
   readonly ballRadius?: number;
   readonly state?: Float32Array | null;
   ballStateWriteRevision?: number;
@@ -52,8 +51,7 @@ export class BallTrajectorySamplingController {
   public readonly predictedPoints: Float32Array;
   public readonly rawPredictedPoints: Float32Array;
   public readonly rawSlicesBuffer: Float32Array;
-  public readonly bounceMarkersBuffer: Float32Array;
-  public readonly anomalyRecorder = new BallTrajectoryAnomalyDetector();
+  public readonly anomalyRecorder = new ResidentTrajectoryAnomalyLatch();
 
   public predictionCount = 0;
   public validCachedCount = 0;
@@ -88,7 +86,6 @@ export class BallTrajectorySamplingController {
     this.predictedPoints = new Float32Array(maxTicks * 3);
     this.rawPredictedPoints = new Float32Array(maxTicks * 3);
     this.rawSlicesBuffer = new Float32Array(maxTicks * 9);
-    this.bounceMarkersBuffer = new Float32Array(MAX_BOUNCE_MARKERS * BOUNCE_MARKER_STRIDE);
   }
 
   public clear(): void {
@@ -99,6 +96,7 @@ export class BallTrajectorySamplingController {
     this.wasmWindowTicks = 0;
     this.wasmFullHorizonActive = false;
     this.bounceCount = 0;
+    this.maxHeightUu = 0;
     this.impactTick = -1;
     this.patternAnchorTick = -1;
     this.lastUpdatedTick = -1;
@@ -124,18 +122,6 @@ export class BallTrajectorySamplingController {
     this.pendingCarBallHit = false;
     this.lastUpdateKind = 'sleeping';
     this.lastWasmUpdateUs = 0;
-  }
-
-  private _updateBounceMetrics(rawSource: Float32Array | null, visibleSlices: number): void {
-    const bounceRes = detectTrajectoryBounces(
-      rawSource,
-      this.predictedPoints,
-      visibleSlices,
-      0,
-      this.bounceMarkersBuffer
-    );
-    this.bounceCount = bounceRes.bounceCount;
-    this.maxHeightUu = bounceRes.maxHeightUu;
   }
 
   public setStaticPreviewTrajectory(
@@ -197,7 +183,6 @@ export class BallTrajectorySamplingController {
         this.rawPredictedPoints,
         this.rawSlicesBuffer
       );
-      this._updateBounceMetrics(this.rawSlicesBuffer, actualCount);
 
       this.isActive = true;
       this.staticPreviewActive = true;
@@ -222,6 +207,7 @@ export class BallTrajectorySamplingController {
       reason?: TrajectoryUpdateKind;
       carBallHitEvent?: boolean;
       intentionalReset?: boolean;
+      closestSurfaceGapUu?: number;
     } = {}
   ): number {
     const distanceTicks = Math.min(600, Math.max(60, cfg.predictionTicks || 600));
@@ -238,14 +224,9 @@ export class BallTrajectorySamplingController {
 
     const deltaTicks = options.deltaTicks ?? 0;
     if (phys.state && !this.staticPreviewActive) {
-      this.anomalyRecorder.snapshotPreviousTickSlices(
-        this.lastUpdatedTick,
-        this.lastUpdateKind,
-        phys.state,
+      this.anomalyRecorder.snapshotExpectedFromPredBuffer(
         this.rawSlicesBuffer,
         this.validCachedCount,
-        this.predictedPoints,
-        this.predictionCount,
         deltaTicks
       );
     }
@@ -365,33 +346,25 @@ export class BallTrajectorySamplingController {
     }
 
     if (phys.state && !this.staticPreviewActive) {
-      this.anomalyRecorder.recordTick({
-        phys,
+      this.anomalyRecorder.evaluateTick({
         statePtr: phys.state,
         currentTick: resolvedTick,
-        deltaTicks: Math.max(1, deltaTicks),
         lastCarBallHitTick: this.lastCarBallHitTick,
         updateKind: this.lastUpdateKind,
         needFull,
         wasIncrementalShift,
         carBallHitEvent: Boolean(options.carBallHitEvent || this.lastUpdateKind === 'full-car-hit'),
-        worldBounceEvent: this.lastUpdateKind === 'full-world-bounce',
         intentionalReset: Boolean(options.intentionalReset),
         deviationThresholdUu: Math.max(0.5, Number(cfg.deviationThresholdUu) || 5.0),
-        rawSlices: this.rawSlicesBuffer,
         actualSliceCount: actualCount,
+        closestSurfaceGapUu: options.closestSurfaceGapUu ?? 99999,
       });
     }
 
-    this._updateBounceMetrics(this.rawSlicesBuffer, this.predictionCount);
     this.isActive = true;
     return this.predictionCount;
   }
 
-  /**
-   * Steps the live trajectory state machine for the current tick.
-   * Returns `false` if the ball went to sleep or stopped below threshold.
-   */
   public stepLivePrediction(
     phys: TrajectoryPhysicsPort,
     stateBuf: Float32Array,
@@ -475,6 +448,7 @@ export class BallTrajectorySamplingController {
         reason: decision.reason,
         carBallHitEvent: carBallHitEvent || isMultiTickCarContact,
         intentionalReset,
+        closestSurfaceGapUu,
       });
       if (decision.markMovingFast) {
         this.wasMovingFast = true;

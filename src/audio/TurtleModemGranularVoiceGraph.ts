@@ -2,8 +2,7 @@ import type { EngineAudioTuningConfig } from '../ui-core/config/engineAudioConfi
 import type {
   LoadedEngineAudioPackAssets,
   ConditionedEngineSliceBuffers,
-} from './EngineAudioLoopConditioner.ts';
-import { EngineAudioEqualizer, evaluateSliceLoudnessCompensation } from './EngineAudioEqualizer.ts';
+} from './turtleModemSynthAcousticPipeline.ts';
 import {
   applySmoothedAudioParamValue,
   clampSmoothingDtSec,
@@ -12,7 +11,6 @@ import {
 } from './audioParamSmoothingPipeline.ts';
 
 export type EngineSynthLodMode = 'primary-full' | 'remote-lod';
-
 export const REMOTE_ENGINE_LOD_ANCHOR_COUNT = 10;
 
 const FILTER_CUTOFF_DEADBAND_HZ = 5;
@@ -63,10 +61,6 @@ export interface GranularGraphUpdateResult {
   filterCutoffHz: number;
 }
 
-/**
- * Selects a decimated set of RPM anchor slices for remote/non-primary vehicles,
- * always preserving the lowest (idle) and highest (redline) harmonic slices.
- */
 export function selectRemoteLodAnchorSlices(
   slices: readonly ConditionedEngineSliceBuffers[],
   targetCount: number = REMOTE_ENGINE_LOD_ANCHOR_COUNT
@@ -74,10 +68,7 @@ export function selectRemoteLodAnchorSlices(
   const total = slices.length;
   if (total === 0) return [];
   const count = Math.max(2, Math.min(total, targetCount));
-  if (count >= total) {
-    return slices.map((slice, idx) => ({ slice, sourceIndex: idx }));
-  }
-
+  if (count >= total) return slices.map((slice, idx) => ({ slice, sourceIndex: idx }));
   const selected: Array<{ slice: ConditionedEngineSliceBuffers; sourceIndex: number }> = [];
   let lastIdx = -1;
   for (let k = 0; k < count; k++) {
@@ -90,42 +81,76 @@ export function selectRemoteLodAnchorSlices(
   return selected;
 }
 
-/**
- * Manages the Web Audio granular harmonic oscillator bank for TurtleModemEngineSynth.
- * Supports two LOD tiers:
- * - 'primary-full': 40 dual-buffer (on + reversed-off) slices + 40 phase-decorrelation delays + 3-band EQ
- * - 'remote-lod': 10 single-buffer RPM anchor slices + 1 idle loop routed directly into the lowpass filter,
- *   reducing active AudioBufferSourceNodes per remote car from 81 to 11 (and 0 when hibernated).
- */
+function evalSliceComp(
+  cfg: EngineAudioTuningConfig,
+  freqHz: number,
+  autoNormDb: number,
+  minFreq: number,
+  maxFreq: number
+): { totalDb: number; linearGain: number } {
+  const normStrength = Math.max(0, Math.min(1, cfg.sliceRmsAutoNormStrength ?? 0.85));
+  const normDb = cfg.engineEqEnabled ? (autoNormDb || 0) * normStrength : 0;
+  let tiltDb = 0;
+  if (cfg.engineEqEnabled) {
+    const t = Math.max(0, Math.min(1, (freqHz - minFreq) / Math.max(1, maxFreq - minFreq)));
+    const s = t * 4;
+    const i = Math.min(3, Math.floor(s));
+    const f = s - i;
+    const bands = cfg.eqBandGainsDb;
+    const pts = [
+      bands?.[0] ?? 0,
+      bands?.[1] ?? 0,
+      bands?.[2] ?? 0,
+      bands?.[3] ?? 0,
+      bands?.[4] ?? 0,
+    ];
+    tiltDb = pts[i] * (1 - f) + pts[i + 1] * f + (t - 0.5) * (cfg.freqTiltDb ?? 0);
+  }
+  const totalDb = Math.max(-18, Math.min(18, normDb + tiltDb));
+  return { totalDb, linearGain: Math.pow(10, totalDb / 20) };
+}
+
 export class TurtleModemGranularVoiceGraph {
   readonly ctx: AudioContext;
   readonly lowpassNode: BiquadFilterNode;
-  readonly equalizer: EngineAudioEqualizer;
+  readonly eqLow: BiquadFilterNode;
+  readonly eqMid: BiquadFilterNode;
+  readonly eqHigh: BiquadFilterNode;
 
   lodMode: EngineSynthLodMode;
-  graphBuilt: boolean = false;
+  graphBuilt = false;
   sliceChannels: GranularSliceChannel[] = [];
-
   idleSource: AudioBufferSourceNode | null = null;
   idleGain: GainNode | null = null;
-  smoothedIdleGain: number = 0;
-  smoothedIdleRate: number = 1;
-  smoothedFilterCutoff: number = NaN;
-  lastIdleGain: number = -1;
-  lastIdleRate: number = -1;
-  lastFilterCutoff: number = -1;
-  private _lastUpdateSec: number = -1;
+  smoothedIdleGain = 0;
+  smoothedIdleRate = 1;
+  smoothedFilterCutoff = NaN;
+  lastIdleGain = -1;
+  lastIdleRate = -1;
+  lastFilterCutoff = -1;
+  private _lastUpdateSec = -1;
 
   constructor(
     ctx: AudioContext,
     lowpassNode: BiquadFilterNode,
-    equalizer: EngineAudioEqualizer,
     lodMode: EngineSynthLodMode = 'primary-full'
   ) {
     this.ctx = ctx;
     this.lowpassNode = lowpassNode;
-    this.equalizer = equalizer;
     this.lodMode = lodMode;
+    this.eqLow = ctx.createBiquadFilter();
+    this.eqLow.type = 'lowshelf';
+    this.eqLow.frequency.value = 130;
+    this.eqMid = ctx.createBiquadFilter();
+    this.eqMid.type = 'peaking';
+    this.eqMid.frequency.value = 520;
+    this.eqMid.Q.value = 0.85;
+    this.eqHigh = ctx.createBiquadFilter();
+    this.eqHigh.type = 'highshelf';
+    this.eqHigh.frequency.value = 2400;
+    this.eqLow.connect(this.eqMid);
+    this.eqMid.connect(this.eqHigh);
+    this.eqHigh.connect(lowpassNode);
   }
 
   setLodMode(mode: EngineSynthLodMode, assets: LoadedEngineAudioPackAssets | null): void {
@@ -133,19 +158,16 @@ export class TurtleModemGranularVoiceGraph {
     const wasBuilt = this.graphBuilt;
     this.teardown();
     this.lodMode = mode;
-    if (wasBuilt && assets) {
-      this.build(assets);
-    }
+    if (wasBuilt && assets) this.build(assets);
   }
 
   build(assets: LoadedEngineAudioPackAssets | null): boolean {
     if (this.graphBuilt || !assets) return this.graphBuilt;
     this.teardown();
-
     try {
       const now = this.ctx.currentTime;
       const isFull = this.lodMode === 'primary-full';
-      const sliceTargetNode: AudioNode = isFull ? this.equalizer.input : this.lowpassNode;
+      const sliceTargetNode: AudioNode = isFull ? this.eqLow : this.lowpassNode;
 
       const idleSrc = this.ctx.createBufferSource();
       idleSrc.buffer = assets.idleBuffer;
@@ -173,11 +195,9 @@ export class TurtleModemGranularVoiceGraph {
         const onSource = this.ctx.createBufferSource();
         onSource.buffer = slice.onBuffer;
         onSource.loop = true;
-
         const onGain = this.ctx.createGain();
         onGain.gain.value = 0;
         onSource.connect(onGain);
-
         const onOffset =
           slice.onBuffer.duration > 0.05 ? Math.random() * (slice.onBuffer.duration * 0.8) : 0;
         onSource.start(now, onOffset);
@@ -190,23 +210,18 @@ export class TurtleModemGranularVoiceGraph {
           offSource = this.ctx.createBufferSource();
           offSource.buffer = slice.offBuffer;
           offSource.loop = true;
-
           offGain = this.ctx.createGain();
           offGain.gain.value = 0;
           offSource.connect(offGain);
-
           delayNode = this.ctx.createDelay(0.1);
           delayNode.delayTime.value = 0;
-
           onGain.connect(delayNode);
           offGain.connect(delayNode);
           delayNode.connect(sliceTargetNode);
-
           const offOffset =
             slice.offBuffer.duration > 0.05 ? Math.random() * (slice.offBuffer.duration * 0.8) : 0;
           offSource.start(now, offOffset);
         } else {
-          // Remote LOD: connect onGain directly to lowpassNode (0 offSource, 0 DelayNode, 0 3-band EQ overhead)
           onGain.connect(sliceTargetNode);
         }
 
@@ -230,11 +245,9 @@ export class TurtleModemGranularVoiceGraph {
           lastDelay: 0,
         };
       });
-
       this.graphBuilt = true;
       return true;
-    } catch (err) {
-      console.warn('[TurtleModemGranularVoiceGraph] Failed building granular graph:', err);
+    } catch {
       return false;
     }
   }
@@ -269,16 +282,8 @@ export class TurtleModemGranularVoiceGraph {
       try {
         ch.onSource.stop();
         ch.onSource.disconnect();
-      } catch {
-        /* ignore */
-      }
-      try {
         ch.offSource?.stop();
         ch.offSource?.disconnect();
-      } catch {
-        /* ignore */
-      }
-      try {
         ch.onGain.disconnect();
         ch.offGain?.disconnect();
         ch.delayNode?.disconnect();
@@ -290,9 +295,18 @@ export class TurtleModemGranularVoiceGraph {
     this.graphBuilt = false;
   }
 
+  disposeEq(): void {
+    try {
+      this.eqLow.disconnect();
+      this.eqMid.disconnect();
+      this.eqHigh.disconnect();
+    } catch {
+      /* ignore */
+    }
+  }
+
   update(input: GranularGraphUpdateInput): GranularGraphUpdateResult | null {
     if (!this.graphBuilt || this.sliceChannels.length === 0) return null;
-
     const { cfg, now, dtSec, tau, currentRPM, smoothThrottle, isUnderStrain, isStationaryNeutral } =
       input;
     const resolvedDt =
@@ -302,18 +316,19 @@ export class TurtleModemGranularVoiceGraph {
           ? clampSmoothingDtSec(now - this._lastUpdateSec)
           : clampSmoothingDtSec(undefined);
     this._lastUpdateSec = now;
-
     const isFull = this.lodMode === 'primary-full';
 
     if (isFull) {
-      this.equalizer.update(cfg, now, tau, resolvedDt);
+      this.eqLow.gain.value = Math.max(-18, Math.min(18, cfg.timbreLowShelfDb || 0));
+      this.eqMid.gain.value = Math.max(-18, Math.min(18, cfg.timbreMidPeakDb || 0));
+      this.eqHigh.gain.value = Math.max(-18, Math.min(18, cfg.timbreHighShelfDb || 0));
     }
 
-    const strainCutoffOffset = isUnderStrain ? -1800 : 0;
+    const strainOffset = isUnderStrain ? -1800 : 0;
     const rawCutoff =
       cfg.decelMode === 'reverse-filter'
-        ? 900 + smoothThrottle * 17100 + (currentRPM / cfg.redlineRPM) * 2000 + strainCutoffOffset
-        : 2200 + smoothThrottle * 15800 + strainCutoffOffset;
+        ? 900 + smoothThrottle * 17100 + (currentRPM / cfg.redlineRPM) * 2000 + strainOffset
+        : 2200 + smoothThrottle * 15800 + strainOffset;
     const filterCutoff = Math.max(800, Math.min(20000, rawCutoff));
     const cutoffStep = applySmoothedAudioParamValue(
       this.lowpassNode.frequency,
@@ -329,8 +344,7 @@ export class TurtleModemGranularVoiceGraph {
 
     const idleWeight =
       currentRPM < 1450 ? Math.max(0, Math.min(1, 1.0 - (currentRPM - cfg.idleRPM) / 550)) : 0;
-    const idleVolMult = Math.max(0, Math.min(2.0, cfg.idleVolume ?? 1.0));
-    const effectiveIdleGain = idleWeight * idleVolMult;
+    const effectiveIdleGain = idleWeight * Math.max(0, Math.min(2.0, cfg.idleVolume ?? 1.0));
     const idleRate = Math.max(0.5, Math.min(2.0, currentRPM / cfg.idleRPM));
 
     if (this.idleSource) {
@@ -369,7 +383,6 @@ export class TurtleModemGranularVoiceGraph {
     const upperIdx = Math.min(count - 1, lowerIdx + 1);
     const lowerMeta = this.sliceChannels[lowerIdx].meta;
     const upperMeta = this.sliceChannels[upperIdx].meta;
-
     const rpmSpan = upperMeta.rpm - lowerMeta.rpm;
     const mixAlpha =
       upperIdx !== lowerIdx && rpmSpan > 1e-3
@@ -406,29 +419,19 @@ export class TurtleModemGranularVoiceGraph {
 
       let eqGain = 1.0;
       if (sliceWeight > 1e-4) {
-        const comp = evaluateSliceLoudnessCompensation(
-          cfg,
-          ch.meta.freq,
-          ch.autoNormDb,
-          minFreq,
-          maxFreq
-        );
+        const comp = evalSliceComp(cfg, ch.meta.freq, ch.autoNormDb, minFreq, maxFreq);
         eqGain = comp.linearGain;
-        if (i === lowerIdx) {
-          activeEqCompensationDb += comp.totalDb * (1 - mixAlpha);
-        } else if (i === upperIdx && upperIdx !== lowerIdx) {
+        if (i === lowerIdx) activeEqCompensationDb += comp.totalDb * (1 - mixAlpha);
+        else if (i === upperIdx && upperIdx !== lowerIdx) {
           activeEqCompensationDb += comp.totalDb * mixAlpha;
         }
       }
       const compensatedWeight = sliceWeight * eqGain;
-
       const useDualReverseOff = isFull && ch.offGain !== null && cfg.decelMode === 'reverse-filter';
       const targetOnGain = useDualReverseOff
         ? compensatedWeight * smoothThrottle
         : compensatedWeight * (0.42 + 0.58 * smoothThrottle);
-      const targetOffGain = useDualReverseOff
-        ? compensatedWeight * (1.0 - smoothThrottle) * 0.72
-        : 0;
+      const targetOffGain = useDualReverseOff ? compensatedWeight * (1.0 - smoothThrottle) * 0.72 : 0;
 
       if (
         compensatedWeight <= 1e-4 &&
@@ -454,15 +457,13 @@ export class TurtleModemGranularVoiceGraph {
           PLAYBACK_RATE_DEADBAND * 0.25
         );
         ch.smoothedRate = nextSmoothedRate;
-        const rateDelta = Math.abs(nextSmoothedRate - ch.lastRate);
-        const snappedRate =
-          nextSmoothedRate === clampedRate &&
-          Math.abs(ch.lastRate - clampedRate) > PLAYBACK_RATE_DEADBAND * 0.1;
-        if (rateDelta > PLAYBACK_RATE_DEADBAND || snappedRate) {
+        if (
+          Math.abs(nextSmoothedRate - ch.lastRate) > PLAYBACK_RATE_DEADBAND ||
+          (nextSmoothedRate === clampedRate &&
+            Math.abs(ch.lastRate - clampedRate) > PLAYBACK_RATE_DEADBAND * 0.1)
+        ) {
           ch.onSource.playbackRate.value = nextSmoothedRate;
-          if (ch.offSource) {
-            ch.offSource.playbackRate.value = nextSmoothedRate;
-          }
+          if (ch.offSource) ch.offSource.playbackRate.value = nextSmoothedRate;
           ch.lastRate = nextSmoothedRate;
         }
       }
@@ -521,3 +522,4 @@ export class TurtleModemGranularVoiceGraph {
     };
   }
 }
+

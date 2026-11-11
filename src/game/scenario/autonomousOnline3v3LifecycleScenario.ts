@@ -8,7 +8,7 @@
  * -> Streamed Director Replay -> V2 .rcreplay Round-Trip -> Podium -> Viewer -> Clean FreePlay.
  */
 
-import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
+import { ensureExperimentalEngine } from '../../ai/BotWeightLoader.ts';
 import {
   buildPodiumAndViewerTakeoverSteps,
   buildRegulationCombatAndReplaySkipSteps,

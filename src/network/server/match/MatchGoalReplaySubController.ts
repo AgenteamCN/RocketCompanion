@@ -14,10 +14,7 @@ import {
   type ReplaySessionState,
   type ReplayTimelineFrameEntry,
 } from '../../../replay/replayDirectorStateTypes.ts';
-import {
-  ExperimentalBotAgent,
-  ensureExperimentalEngine,
-} from '../../../ai/experimental/ExperimentalBotAgent.ts';
+import { ExperimentalBotAgent, ensureExperimentalEngine } from '../../../ai/BotWeightLoader.ts';
 import { DEFAULT_CAR_CONTROLS } from '../../../ai/experimental/experimentalMultiCarObsPipeline.ts';
 import {
   MATCH_STATES,

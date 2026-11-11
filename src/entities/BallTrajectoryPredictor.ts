@@ -9,11 +9,6 @@ import {
   loadSavedTrajectorySettings,
   saveTrajectorySettings,
 } from '../ui-core/config/trainingDefaults.ts';
-import {
-  resolveBallTrajectoryActivation,
-  type BallTrajectoryOverride,
-  type ResolvedBallTrajectoryActivation,
-} from './trajectory/ballTrajectoryPolicy.ts';
 import type { LiveBallPositionLike } from './trajectory/ballTrajectoryGeometryPipeline.ts';
 import {
   DEFAULT_TRAJECTORY_SETTINGS,
@@ -34,6 +29,24 @@ import {
   type TrajectoryBallLaunchState,
   type TrajectoryPhysicsPort,
 } from './trajectory/BallTrajectorySamplingController.ts';
+
+export type TrajectorySceneContext = 'matchPlaying' | 'goalReplay' | 'podium' | 'staticPreview';
+
+export interface TrajectorySceneFlags {
+  matchPlaying?: boolean;
+  goalReplay?: boolean;
+  podium?: boolean;
+  staticPreview?: boolean;
+  enabled?: boolean;
+}
+
+export type BallTrajectoryOverride = boolean | TrajectorySceneFlags | null;
+
+export interface ResolvedBallTrajectoryActivation {
+  allowed: boolean;
+  sceneContext: TrajectorySceneContext;
+  suppressedByOverride: boolean;
+}
 
 function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : 0;
@@ -141,16 +154,45 @@ export class BallTrajectoryPredictor {
   }
 
   public isPredictionAllowed(): ResolvedBallTrajectoryActivation {
-    return resolveBallTrajectoryActivation({
-      enabled: Boolean(this.settings.enabled),
-      forcePredictAnyMovement: Boolean(this.forcePredictAnyMovement),
-      staticPreviewActive: Boolean(this.sampler.staticPreviewActive),
-      isGoalReplayActive: this._isGoalReplayActive,
-      isPodiumActive: this._isPodiumActive,
-      suppressionSourcesCount: this._suppressionSources.size,
-      systemOverride: this.trajectoryOverride,
-      runtimeOverride: this.runtimeOverride,
-    });
+    const sceneContext: TrajectorySceneContext = this._isGoalReplayActive
+      ? 'goalReplay'
+      : this._isPodiumActive
+        ? 'podium'
+        : this.sampler.staticPreviewActive
+          ? 'staticPreview'
+          : 'matchPlaying';
+
+    if (this._suppressionSources.size > 0) {
+      return { allowed: false, sceneContext, suppressedByOverride: true };
+    }
+
+    const activeOverride = this.trajectoryOverride ?? this.runtimeOverride;
+    if (activeOverride !== null) {
+      if (typeof activeOverride === 'boolean') {
+        return {
+          allowed: activeOverride,
+          sceneContext,
+          suppressedByOverride: !activeOverride,
+        };
+      }
+      const rule = activeOverride[sceneContext] ?? activeOverride.enabled;
+      if (typeof rule === 'boolean') {
+        return {
+          allowed: rule,
+          sceneContext,
+          suppressedByOverride: !rule,
+        };
+      }
+    }
+
+    if (sceneContext === 'goalReplay' || sceneContext === 'podium') {
+      return { allowed: false, sceneContext, suppressedByOverride: true };
+    }
+
+    const allowed = Boolean(
+      this.settings.enabled || this.sampler.staticPreviewActive || this.forcePredictAnyMovement
+    );
+    return { allowed, sceneContext, suppressedByOverride: false };
   }
 
   public isTemporarilySuppressed(): boolean {
@@ -257,6 +299,7 @@ export class BallTrajectoryPredictor {
       const tGeom0 = nowMs();
       const prims = renderTrajectoryTubeFrame(
         this.tubeRenderer,
+        phys?.module,
         this.sampler,
         this.ballRadius,
         this.settings,
@@ -315,6 +358,7 @@ export class BallTrajectoryPredictor {
     const tGeom0 = nowMs();
     const prims = renderTrajectoryTubeFrame(
       this.tubeRenderer,
+      phys.module,
       this.sampler,
       this.ballRadius,
       this.settings,

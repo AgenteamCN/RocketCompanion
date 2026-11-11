@@ -3,11 +3,8 @@
  * Pure bot policy decision port and control normalizer for non-POV vehicles during RLRC replay intervention.
  */
 
-import {
-  ExperimentalBotAgent,
-  ensureExperimentalEngine,
-} from '../../../ai/experimental/ExperimentalBotAgent.ts';
-import type { BallPredictionEnginePort } from '../../../ai/experimental/botpack9700488ObsExtendedPipeline.ts';
+import { ExperimentalBotAgent, ensureExperimentalEngine } from '../../../ai/BotWeightLoader.ts';
+import type { BallPredictionEnginePort } from '../../../ai/experimental/botpackSharedBallPredPipeline.ts';
 import type { BoostPadDescriptor } from '../../../ai/experimental/experimentalMultiCarObsPipeline.ts';
 import { useReplayToRcsImporterStore } from '../../../game/runtimeUiPort.ts';
 import type { ReplayScoreboardRuntimePort } from '../../ReplayScoreboardSynchronizer.ts';

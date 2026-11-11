@@ -1,41 +1,105 @@
 /**
  * BallTrajectoryTubeRenderer.ts
- * High-performance, zero-GC 3D volumetric tube & spatial depth anchor renderer
- * for BallTrajectoryPredictor.
- *
- * Solves two core visual & performance problems of flat 1-tick LineSegments2:
- * 1. Eliminates 600-segment round-cap alpha overdraw ("overlapping flat dots") by generating
- *    a single indexed 3D tubular mesh with tapered capsule tips and configurable tick stride.
- * 2. Restores 3D spatial depth perception via:
- *    - 3D Hemisphere + View-Space Core/Rim Normal Shading (bright top, shaded underbelly)
- *    - Near-to-Far Horizon Radius Taper & Opacity Attenuation
- *    - 3D Surface-Normal-Aligned Bounce Contact Rings (floor, wall, corner, backboard)
- *    - Optional Vertical Ground Altitude Drop Lines & Floor Shadow Trace
+ * High-performance, zero-copy WASM `HEAPF32` / `HEAPU16` -> `THREE.BufferAttribute` binder
+ * for 3D volumetric ball trajectory tubes, surface bounce rings, and ground drop lines.
  */
 
 import * as THREE from 'three';
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
+import type { TrajectoryDashCapStyle } from '../../ui-core/config/trainingDefaults.ts';
 import {
   BOUNCE_MARKER_STRIDE,
   MAX_BOUNCE_MARKERS,
-  buildTrajectoryDashRanges,
   type LiveBallPositionLike,
-  type TrajectoryDashRange,
 } from './ballTrajectoryGeometryPipeline.ts';
-import {
-  MAX_GROUND_DROP_FLOATS,
-  MAX_RADIAL_SEGMENTS,
-  MAX_TUBE_INDICES,
-  MAX_TUBE_VERTICES,
-  TUBE_FRAGMENT_SHADER,
-  TUBE_VERTEX_SHADER,
-  buildGroundDropLineSegments,
-  extrudeTrajectoryTubeDashRanges,
-  populateRadialTrigTable,
-  type TubeExtrusionBuffers,
-  type TubeRenderParams,
-} from './ballTrajectoryTubeMeshPipeline.ts';
 
-export type { TubeRenderParams };
+export interface TubeRenderParams {
+  color: string;
+  opacity: number;
+  worldRadius: number;
+  dashCapStyle: TrajectoryDashCapStyle;
+  sampleStride: number;
+  radialSegments: number;
+  shadingStrength: number;
+  radiusTaper: number;
+  horizonFade: number;
+  showBounceMarkers: boolean;
+  showGroundProjection: boolean;
+  dropLineIntervalTicks: number;
+}
+
+export const MAX_TUBE_RINGS = 800;
+export const MAX_RADIAL_SEGMENTS = 8;
+export const MAX_TUBE_VERTICES = MAX_TUBE_RINGS * MAX_RADIAL_SEGMENTS;
+export const MAX_TUBE_INDICES = MAX_TUBE_RINGS * MAX_RADIAL_SEGMENTS * 6;
+export const MAX_GROUND_DROP_FLOATS = 400 * 6;
+
+const FLAG_SHOW_BOUNCE_MARKERS = 0x01;
+const FLAG_SHOW_GROUND_PROJECTION = 0x02;
+
+export const TUBE_VERTEX_SHADER = /* glsl */ `
+  varying vec3 vWorldNormal;
+  varying vec3 vViewNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    vViewNormal = normalize(normalMatrix * normal);
+    vViewDir = normalize(-mvPosition.xyz);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+export const TUBE_FRAGMENT_SHADER = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  uniform float uShadingStrength;
+  uniform float uHorizonFade;
+
+  varying vec3 vWorldNormal;
+  varying vec3 vViewNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+
+  void main() {
+    float progress = clamp(vUv.x, 0.0, 1.0);
+    float tipFactor = clamp(vUv.y, 0.0, 1.0);
+    float s = clamp(uShadingStrength, 0.0, 1.0);
+
+    vec3 wNorm = normalize(vWorldNormal);
+    vec3 vNorm = normalize(vViewNormal);
+    vec3 vDir = normalize(vViewDir);
+
+    float hemi = wNorm.y * 0.5 + 0.5;
+    float viewKey = dot(vNorm, normalize(vec3(-0.28, 0.80, 0.53))) * 0.5 + 0.5;
+    float coreFacing = abs(dot(vNorm, vDir));
+
+    float diffuseTerm = clamp(0.42 * hemi + 0.33 * viewKey + 0.25 * pow(coreFacing, 0.6), 0.0, 1.0);
+    float rimShadow = smoothstep(0.0, 0.55, coreFacing);
+    float specSpine = pow(max(0.0, 0.45 * hemi + 0.35 * viewKey + 0.20 * coreFacing), 7.0);
+
+    vec3 shadowColor = uColor * vec3(0.18, 0.22, 0.30);
+    vec3 litCylinder = mix(shadowColor, uColor, diffuseTerm * (0.35 + 0.65 * rimShadow));
+    litCylinder = mix(litCylinder, vec3(1.0), specSpine * 0.35);
+
+    vec3 shadedColor = mix(uColor, litCylinder, s);
+
+    float shadeAlphaMod = mix(
+      1.0,
+      clamp(0.88 + 0.34 * (1.0 - diffuseTerm) + 0.18 * specSpine, 0.82, 1.32),
+      s
+    );
+
+    float horizonAlpha = 1.0 - clamp(uHorizonFade, 0.0, 0.95) * pow(progress, 1.15);
+    float finalAlpha = clamp(uOpacity * shadeAlphaMod * horizonAlpha * tipFactor, 0.0, 1.0);
+    if (finalAlpha <= 0.01) discard;
+
+    gl_FragColor = vec4(shadedColor, finalAlpha);
+  }
+`;
 
 export class BallTrajectoryTubeRenderer {
   public readonly group: THREE.Group;
@@ -51,19 +115,18 @@ export class BallTrajectoryTubeRenderer {
   public readonly groundDropMaterial: THREE.LineBasicMaterial;
   public readonly groundDropLines: THREE.LineSegments;
 
-  private readonly _positions: Float32Array;
-  private readonly _normals: Float32Array;
-  private readonly _uvs: Float32Array;
-  private readonly _indices: Uint16Array;
+  private readonly _positions = new Float32Array(MAX_TUBE_VERTICES * 3);
+  private readonly _normals = new Float32Array(MAX_TUBE_VERTICES * 3);
+  private readonly _uvs = new Float32Array(MAX_TUBE_VERTICES * 2);
+  private readonly _indices = new Uint16Array(MAX_TUBE_INDICES);
+  private readonly _groundDropPositions = new Float32Array(MAX_GROUND_DROP_FLOATS);
+
   private readonly _posAttr: THREE.BufferAttribute;
   private readonly _normAttr: THREE.BufferAttribute;
   private readonly _uvAttr: THREE.BufferAttribute;
   private readonly _indexAttr: THREE.BufferAttribute;
-  private readonly _extrusionBuffers: TubeExtrusionBuffers;
-
-  private readonly _dashRanges: TrajectoryDashRange[] = [];
-  private readonly _groundDropPositions: Float32Array;
   private readonly _groundDropAttr: THREE.BufferAttribute;
+
   private readonly _dummyMatrix = new THREE.Matrix4();
   private readonly _dummyPos = new THREE.Vector3();
   private readonly _dummyQuat = new THREE.Quaternion();
@@ -71,28 +134,23 @@ export class BallTrajectoryTubeRenderer {
   private readonly _upVec = new THREE.Vector3(0, 0, 1);
   private readonly _normVec = new THREE.Vector3();
 
-  private readonly _cosTable = new Float32Array(MAX_RADIAL_SEGMENTS);
-  private readonly _sinTable = new Float32Array(MAX_RADIAL_SEGMENTS);
-  private _lastRadialSegments = 0;
+  private _boundHeapBuffer: ArrayBufferLike | null = null;
+  private _wasmHeaderU32: Uint32Array | null = null;
+  private _wasmHeaderF32: Float32Array | null = null;
+  private _wasmPositions: Float32Array | null = null;
+  private _wasmNormals: Float32Array | null = null;
+  private _wasmUvs: Float32Array | null = null;
+  private _wasmIndices: Uint16Array | null = null;
+  private _wasmBounces: Float32Array | null = null;
+  private _wasmGroundDrops: Float32Array | null = null;
 
   public activeTriangleCount = 0;
+  public lastBounceCount = 0;
+  public lastMaxHeightUu = 0;
 
   constructor(scene: THREE.Scene | null | undefined) {
     this.group = new THREE.Group();
     this.group.name = 'ball-trajectory-3d-tube-group';
-
-    this._positions = new Float32Array(MAX_TUBE_VERTICES * 3);
-    this._normals = new Float32Array(MAX_TUBE_VERTICES * 3);
-    this._uvs = new Float32Array(MAX_TUBE_VERTICES * 2);
-    this._indices = new Uint16Array(MAX_TUBE_INDICES);
-    this._extrusionBuffers = {
-      positions: this._positions,
-      normals: this._normals,
-      uvs: this._uvs,
-      indices: this._indices,
-      cosTable: this._cosTable,
-      sinTable: this._sinTable,
-    };
 
     this.tubeGeometry = new THREE.BufferGeometry();
     this._posAttr = new THREE.BufferAttribute(this._positions, 3);
@@ -117,7 +175,6 @@ export class BallTrajectoryTubeRenderer {
       uHorizonFade: { value: 0.0 },
     };
 
-    // Pass A (renderOrder 0.05): renders before semi-transparent goalpost overlays
     this.preOcclusionMaterial = new THREE.ShaderMaterial({
       vertexShader: TUBE_VERTEX_SHADER,
       fragmentShader: TUBE_FRAGMENT_SHADER,
@@ -135,7 +192,6 @@ export class BallTrajectoryTubeRenderer {
     this.preOcclusionMesh.visible = false;
     this.preOcclusionMesh.userData = { bloomOccluder: false };
 
-    // Pass B (renderOrder 14): stencil-gated foreground pass over semi-transparent goalpost overlays
     this.foregroundMaterial = new THREE.ShaderMaterial({
       vertexShader: TUBE_VERTEX_SHADER,
       fragmentShader: TUBE_FRAGMENT_SHADER,
@@ -161,7 +217,6 @@ export class BallTrajectoryTubeRenderer {
     this.foregroundMesh.visible = false;
     this.foregroundMesh.userData = { bloomOccluder: false };
 
-    // 3D Surface Bounce Ring Markers (Torus aligned in XY plane so +Z is ring normal)
     const ringGeo = new THREE.RingGeometry(42, 64, 24);
     this.bounceMaterial = new THREE.MeshBasicMaterial({
       color: new THREE.Color('#fbbf24'),
@@ -183,8 +238,6 @@ export class BallTrajectoryTubeRenderer {
     this.bounceInstancedMesh.count = 0;
     this.bounceInstancedMesh.userData = { bloomOccluder: false };
 
-    // Optional Vertical Ground Drop Lines + Floor Shadow Anchor
-    this._groundDropPositions = new Float32Array(MAX_GROUND_DROP_FLOATS);
     this.groundDropGeometry = new THREE.BufferGeometry();
     this._groundDropAttr = new THREE.BufferAttribute(this._groundDropPositions, 3);
     this._groundDropAttr.setUsage(THREE.DynamicDrawUsage);
@@ -215,10 +268,34 @@ export class BallTrajectoryTubeRenderer {
     }
   }
 
-  private _ensureTrigTable(radialSegments: number): void {
-    if (this._lastRadialSegments === radialSegments) return;
-    this._lastRadialSegments = radialSegments;
-    populateRadialTrigTable(radialSegments, this._cosTable, this._sinTable);
+  private _ensureWasmViews(wasmModule: RocketSimWasmModule): boolean {
+    const buf = wasmModule.HEAPF32?.buffer;
+    if (!buf) return false;
+    if (this._boundHeapBuffer === buf && this._wasmHeaderU32) {
+      return true;
+    }
+
+    const headerPtr = wasmModule._physics_getTrajectoryMeshHeaderPtr();
+    const posPtr = wasmModule._physics_getTrajectoryPositionsPtr();
+    const normPtr = wasmModule._physics_getTrajectoryNormalsPtr();
+    const uvPtr = wasmModule._physics_getTrajectoryUvsPtr();
+    const idxPtr = wasmModule._physics_getTrajectoryIndicesPtr();
+    const bouncePtr = wasmModule._physics_getTrajectoryBounceMarkersPtr();
+    const dropsPtr = wasmModule._physics_getTrajectoryGroundDropsPtr();
+    if (!headerPtr || !posPtr || !normPtr || !uvPtr || !idxPtr || !bouncePtr || !dropsPtr) {
+      return false;
+    }
+
+    this._boundHeapBuffer = buf;
+    this._wasmHeaderU32 = new Uint32Array(buf, headerPtr, 8);
+    this._wasmHeaderF32 = new Float32Array(buf, headerPtr, 8);
+    this._wasmPositions = new Float32Array(buf, posPtr, MAX_TUBE_VERTICES * 3);
+    this._wasmNormals = new Float32Array(buf, normPtr, MAX_TUBE_VERTICES * 3);
+    this._wasmUvs = new Float32Array(buf, uvPtr, MAX_TUBE_VERTICES * 2);
+    this._wasmIndices = new Uint16Array(buf, idxPtr, MAX_TUBE_INDICES);
+    this._wasmBounces = new Float32Array(buf, bouncePtr, MAX_BOUNCE_MARKERS * BOUNCE_MARKER_STRIDE);
+    this._wasmGroundDrops = new Float32Array(buf, dropsPtr, MAX_GROUND_DROP_FLOATS);
+    return true;
   }
 
   public syncUniforms(params: TubeRenderParams): void {
@@ -248,28 +325,78 @@ export class BallTrajectoryTubeRenderer {
     this.activeTriangleCount = 0;
   }
 
-  public updateBounceAndGroundAnchors(
-    predictedPoints: Float32Array,
-    predictionCount: number,
+  /**
+   * Invokes `_physics_buildTrajectoryMesh` in Rust/WASM and binds the resulting
+   * vertex/index/bounce/ground-drop buffers directly into Three.js attributes.
+   */
+  public buildAndBindFromWasm(
+    wasmModule: RocketSimWasmModule | null | undefined,
     startIndex: number,
-    bounceBuffer: Float32Array,
-    bounceCount: number,
+    solidTicks: number,
+    transparentTicks: number,
+    phaseOffsetTicks: number,
+    liveBallPosition: LiveBallPositionLike | null | undefined,
     params: TubeRenderParams
-  ): void {
-    // 1. Update 3D Bounce Contact Rings
+  ): number {
+    if (!wasmModule || typeof wasmModule._physics_buildTrajectoryMesh !== 'function') {
+      this.hideAll();
+      return 0;
+    }
+
+    const flags =
+      (params.showBounceMarkers ? FLAG_SHOW_BOUNCE_MARKERS : 0) |
+      (params.showGroundProjection ? FLAG_SHOW_GROUND_PROJECTION : 0);
+    const capStyle = params.dashCapStyle === 'chamfer' ? 1 : 0;
+    const hasLivePos = Boolean(liveBallPosition);
+    const lx = hasLivePos ? liveBallPosition!.x : 0;
+    const ly = hasLivePos ? liveBallPosition!.y : 0;
+    const lz = hasLivePos ? liveBallPosition!.z : 0;
+
+    const indexCount = wasmModule._physics_buildTrajectoryMesh(
+      startIndex,
+      solidTicks,
+      transparentTicks,
+      phaseOffsetTicks,
+      params.worldRadius,
+      params.radiusTaper,
+      params.radialSegments,
+      params.sampleStride,
+      capStyle,
+      params.dropLineIntervalTicks,
+      flags,
+      hasLivePos ? 1 : 0,
+      lx,
+      ly,
+      lz
+    );
+
+    if (!this._ensureWasmViews(wasmModule)) {
+      this.hideAll();
+      return 0;
+    }
+
+    const headerU32 = this._wasmHeaderU32!;
+    const headerF32 = this._wasmHeaderF32!;
+    const vertexCount = headerU32[0];
+    const bounceCount = headerU32[2];
+    const groundDropFloatCount = headerU32[3];
+    this.lastBounceCount = bounceCount;
+    this.lastMaxHeightUu = headerF32[4];
+
+    // 1. Bind 3D Bounce Contact Rings
     if (params.showBounceMarkers && bounceCount > 0) {
+      const bounceBuf = this._wasmBounces!;
       const count = Math.min(bounceCount, MAX_BOUNCE_MARKERS);
       for (let i = 0; i < count; i++) {
         const bOff = i * BOUNCE_MARKER_STRIDE;
-        const bx = bounceBuffer[bOff + 0];
-        const by = bounceBuffer[bOff + 1];
-        const bz = bounceBuffer[bOff + 2];
-        const nx = bounceBuffer[bOff + 3];
-        const ny = bounceBuffer[bOff + 4];
-        const nz = bounceBuffer[bOff + 5];
-        const progress = bounceBuffer[bOff + 6];
+        const bx = bounceBuf[bOff + 0];
+        const by = bounceBuf[bOff + 1];
+        const bz = bounceBuf[bOff + 2];
+        const nx = bounceBuf[bOff + 3];
+        const ny = bounceBuf[bOff + 4];
+        const nz = bounceBuf[bOff + 5];
+        const progress = bounceBuf[bOff + 6];
 
-        // Offset slightly along surface normal (2.5 UU) to avoid Z-fighting with stadium floor/wall
         this._dummyPos.set(bx + nx * 2.5, by + ny * 2.5, bz + nz * 2.5);
         this._normVec.set(nx, ny, nz).normalize();
         this._dummyQuat.setFromUnitVectors(this._upVec, this._normVec);
@@ -287,87 +414,36 @@ export class BallTrajectoryTubeRenderer {
       this.bounceInstancedMesh.count = 0;
     }
 
-    // 2. Update Vertical Ground Altitude Drop Lines & Floor Shadow Trace
-    if (params.showGroundProjection && predictionCount - startIndex > 2) {
-      const floatCount = buildGroundDropLineSegments(
-        predictedPoints,
-        predictionCount,
-        startIndex,
-        params.dropLineIntervalTicks,
-        this._groundDropPositions
-      );
-      const vertCount = floatCount / 3;
-      if (vertCount > 0) {
-        this._groundDropAttr.needsUpdate = true;
-        this.groundDropGeometry.setDrawRange(0, vertCount);
-        this.groundDropLines.visible = true;
-      } else {
-        this.groundDropLines.visible = false;
-      }
+    // 2. Bind Vertical Ground Altitude Drop Lines & Floor Shadow Trace
+    if (params.showGroundProjection && groundDropFloatCount > 0) {
+      const clampedFloats = Math.min(groundDropFloatCount, MAX_GROUND_DROP_FLOATS);
+      this._groundDropPositions.set(this._wasmGroundDrops!.subarray(0, clampedFloats), 0);
+      this._groundDropAttr.needsUpdate = true;
+      this.groundDropGeometry.setDrawRange(0, clampedFloats / 3);
+      this.groundDropLines.visible = true;
     } else if (this.groundDropLines.visible) {
       this.groundDropLines.visible = false;
     }
-  }
 
-  /**
-   * Builds the 3D volumetric tube geometry across all solid dashes for the current frame.
-   */
-  public updateTubeGeometry(
-    predictedPoints: Float32Array,
-    predictionCount: number,
-    startIndex: number,
-    solidTicks: number,
-    transparentTicks: number,
-    phaseOffsetTicks: number,
-    liveBallPosition: LiveBallPositionLike | null | undefined,
-    params: TubeRenderParams
-  ): number {
-    const radialSegments = Math.max(
-      4,
-      Math.min(MAX_RADIAL_SEGMENTS, Math.round(params.radialSegments || 6))
-    );
-    this._ensureTrigTable(radialSegments);
+    // 3. Bind 3D Tube Extrusion Buffers
+    if (indexCount > 0 && vertexCount > 0) {
+      const v3 = Math.min(vertexCount * 3, MAX_TUBE_VERTICES * 3);
+      const v2 = Math.min(vertexCount * 2, MAX_TUBE_VERTICES * 2);
+      const ic = Math.min(indexCount, MAX_TUBE_INDICES);
 
-    const rangeCount = buildTrajectoryDashRanges(
-      predictionCount,
-      startIndex,
-      solidTicks,
-      transparentTicks,
-      phaseOffsetTicks,
-      this._dashRanges
-    );
+      this._positions.set(this._wasmPositions!.subarray(0, v3), 0);
+      this._normals.set(this._wasmNormals!.subarray(0, v3), 0);
+      this._uvs.set(this._wasmUvs!.subarray(0, v2), 0);
+      this._indices.set(this._wasmIndices!.subarray(0, ic), 0);
 
-    if (rangeCount <= 0) {
-      this.hideTubeOnly();
-      return 0;
-    }
-
-    const indexCount = extrudeTrajectoryTubeDashRanges(
-      {
-        predictedPoints,
-        predictionCount,
-        startIndex,
-        dashRanges: this._dashRanges,
-        rangeCount,
-        liveBallPosition,
-        radialSegments,
-        sampleStride: params.sampleStride,
-        worldRadius: params.worldRadius,
-        radiusTaper: params.radiusTaper,
-        dashCapStyle: params.dashCapStyle,
-      },
-      this._extrusionBuffers
-    );
-
-    if (indexCount > 0) {
       this._posAttr.needsUpdate = true;
       this._normAttr.needsUpdate = true;
       this._uvAttr.needsUpdate = true;
       this._indexAttr.needsUpdate = true;
-      this.tubeGeometry.setDrawRange(0, indexCount);
+      this.tubeGeometry.setDrawRange(0, ic);
       this.preOcclusionMesh.visible = true;
       this.foregroundMesh.visible = true;
-      this.activeTriangleCount = indexCount / 3;
+      this.activeTriangleCount = ic / 3;
     } else {
       this.hideTubeOnly();
     }

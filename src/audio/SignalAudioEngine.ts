@@ -64,6 +64,43 @@ const SIGNAL_KEY_VOLUME_CONFIG_MAP: Readonly<Record<string, string>> = Object.fr
   boost_collect: 'boostCollectVolume',
 });
 
+const SIGNAL_SUBTYPE_KEYS: ReadonlyArray<string | null> = Object.freeze([
+  null,
+  'match_countdown_321',
+  'training_countdown',
+  'match_start_go',
+  'match_60_seconds_left',
+  'match_30_seconds_left',
+  'match_countdown_10s',
+  'match_entering_overtime',
+  'endgame',
+  'training_ball_expire',
+]);
+
+const SIGNAL_ROUTE_MAP = new Map<string | number, readonly [string, number]>([
+  [SIGNAL_EVENT_TYPES.COUNTDOWN_TICK, ['match_countdown_321', 250]],
+  [SIGNAL_EVENT_TYPES.KICKOFF_WILL_START, ['match_countdown_321', 250]],
+  [SIGNAL_EVENT_TYPES.MATCH_WILL_RESUME, ['match_countdown_321', 250]],
+  ['training_countdown', ['training_countdown', 250]],
+  [SIGNAL_EVENT_TYPES.KICKOFF_GO, ['match_start_go', 300]],
+  [SIGNAL_EVENT_TYPES.KICKOFF_START, ['match_start_go', 300]],
+  [SIGNAL_EVENT_TYPES.MATCH_START, ['match_start_go', 300]],
+  [SIGNAL_EVENT_TYPES.MATCH_STARTED, ['match_start_go', 300]],
+  [SIGNAL_EVENT_TYPES.MATCH_RESUMED, ['match_start_go', 300]],
+  [SIGNAL_EVENT_TYPES.TIME_ALERT_60S, ['match_60_seconds_left', 5000]],
+  [SIGNAL_EVENT_TYPES.TIME_ALERT_30S, ['match_30_seconds_left', 5000]],
+  [SIGNAL_EVENT_TYPES.COUNTDOWN_10S, ['match_countdown_10s', 200]],
+  ['match_countdown_10s', ['match_countdown_10s', 200]],
+  ['countdown_10s', ['match_countdown_10s', 200]],
+  [SIGNAL_EVENT_TYPES.OVERTIME_START, ['match_entering_overtime', 1000]],
+  ['match_entering_overtime', ['match_entering_overtime', 1000]],
+  [SIGNAL_EVENT_TYPES.MATCH_ENDED, ['endgame', 5000]],
+  [SIGNAL_EVENT_TYPES.PODIUM_START, ['endgame', 5000]],
+  ['endgame', ['endgame', 5000]],
+  ['match_ended', ['endgame', 5000]],
+  ['training_ball_expire', ['training_ball_expire', 300]],
+]);
+
 export class SignalAudioEngine {
   lastPlayTime: Map<string, number>;
   signalBuffers: Map<string, AudioBuffer | null>;
@@ -79,62 +116,16 @@ export class SignalAudioEngine {
 
   handleSignal(signalType: string | number): void {
     if (isSignalAudioMutedInGoalReplay()) return;
-    let key: string | null = null;
-    let minInterval = 0;
-    switch (signalType) {
-      case SIGNAL_EVENT_TYPES.COUNTDOWN_TICK:
-      case SIGNAL_EVENT_TYPES.KICKOFF_WILL_START:
-      case SIGNAL_EVENT_TYPES.MATCH_WILL_RESUME:
-        key = 'match_countdown_321';
-        minInterval = 250;
-        break;
-      case 'training_countdown':
-        key = 'training_countdown';
-        minInterval = 250;
-        break;
-      case SIGNAL_EVENT_TYPES.KICKOFF_GO:
-      case SIGNAL_EVENT_TYPES.KICKOFF_START:
-      case SIGNAL_EVENT_TYPES.MATCH_START:
-      case SIGNAL_EVENT_TYPES.MATCH_STARTED:
-      case SIGNAL_EVENT_TYPES.MATCH_RESUMED:
-        key = 'match_start_go';
-        minInterval = 300;
-        break;
-      case SIGNAL_EVENT_TYPES.TIME_ALERT_60S:
-        key = 'match_60_seconds_left';
-        minInterval = 5000;
-        break;
-      case SIGNAL_EVENT_TYPES.TIME_ALERT_30S:
-        key = 'match_30_seconds_left';
-        minInterval = 5000;
-        break;
-      case SIGNAL_EVENT_TYPES.COUNTDOWN_10S:
-      case 'match_countdown_10s':
-      case 'countdown_10s':
-        key = 'match_countdown_10s';
-        minInterval = 200;
-        break;
-      case SIGNAL_EVENT_TYPES.OVERTIME_START:
-      case 'match_entering_overtime':
-        key = 'match_entering_overtime';
-        minInterval = 1000;
-        break;
-      case SIGNAL_EVENT_TYPES.MATCH_ENDED:
-      case SIGNAL_EVENT_TYPES.PODIUM_START:
-      case 'endgame':
-      case 'match_ended':
-        key = 'endgame';
-        minInterval = 5000;
-        break;
-      case 'training_ball_expire':
-        key = 'training_ball_expire';
-        minInterval = 300;
-        break;
-      default:
-        break;
+    const route = SIGNAL_ROUTE_MAP.get(signalType);
+    if (route) {
+      this.play(route[0], 1.0, route[1]);
     }
+  }
+
+  playSignalSlotPod(subtype: number, gain = 1.0): void {
+    const key = SIGNAL_SUBTYPE_KEYS[subtype | 0];
     if (key) {
-      this.play(key, 1.0, minInterval);
+      this.play(key, gain, 0);
     }
   }
 
@@ -156,8 +147,7 @@ export class SignalAudioEngine {
     const sigVol = audioConfig.get('signalVolume') ?? 1.0;
     const detailConfigKey = SIGNAL_KEY_VOLUME_CONFIG_MAP[key];
     const detailVol = detailConfigKey ? (audioConfig.get(detailConfigKey) ?? 1.0) : 1.0;
-    const effectiveMult = volMult * detailVol;
-    const volume = Math.max(0, Math.min(5.0, effectiveMult * sigVol * master));
+    const volume = Math.max(0, Math.min(5.0, volMult * detailVol * sigVol * master));
 
     pool.playBuffer(buf, {
       volume,

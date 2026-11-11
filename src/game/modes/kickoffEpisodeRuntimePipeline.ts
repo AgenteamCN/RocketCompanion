@@ -10,13 +10,11 @@
 import { KICKOFF_SPAWNS } from '../../ui-core/config/trainingDefaults.ts';
 import {
   TICKS_PER_DECISION,
+  KICKOFF_V1_SETTLE_TICKS,
+  KickoffV2SafeTensorsAgent,
   multiDiscreteToOverlayKeys,
   multiDiscreteToKeyString,
 } from '../../ai/kickoffEpisodePrimitives.ts';
-import {
-  KickoffV2SafeTensorsAgent,
-  KICKOFF_V1_SETTLE_TICKS,
-} from '../../ai/KickoffV2SafeTensorsAgent.ts';
 import {
   clampKickoffSettledPlayerAndPartnerCars,
   evaluateKickoffPreTickInput,

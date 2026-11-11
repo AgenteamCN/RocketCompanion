@@ -3,12 +3,12 @@ import { getAudioContext, getMasterAudioInput, subsystemState } from './audioCon
 import { TurtleModemEngineSynth } from './TurtleModemEngineSynth.ts';
 import {
   AudioPreviewBufferCatalog,
+  type IncidentAudioBuffers,
   type PreviewAudioBufferOptions,
 } from './audioMenuPreviewCatalog.ts';
 import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
-import type { IncidentAudioBuffers } from './IncidentAudioEngine.ts';
 
-export type { PreviewAudioBufferOptions };
+export type { IncidentAudioBuffers, PreviewAudioBufferOptions };
 
 export interface AudioMenuPreviewOptions {
   readonly preload?: () => Promise<void>;

@@ -4,9 +4,8 @@
  * 3D In-Arena Spatial Audio Attenuation Visualizer & Distance Tuner.
  */
 
-import { solveCubicBezier } from './spatialAudioConfig';
 import { AUDIO_ATTENUATION_CATEGORIES } from './spatialAttenuationPresets';
-import { getSpatialAttenuationProfile, type AudioAttenuationCategory, type SpatialAttenuationProfile } from './spatialAttenuationProfiles';
+import { getSpatialAttenuationProfile, solveCubicBezier, type AudioAttenuationCategory, type SpatialAttenuationProfile } from './spatialAttenuationProfiles';
 import {
   booleanOrDefault,
   clampNumberOrDefault,
@@ -152,32 +151,96 @@ export function evaluateAttenuationCurveAtNormalizedT(
   }
 }
 
+let _arenaAcousticScale = 1.0;
+
+export function setArenaAcousticScale(scale: number): void {
+  if (Number.isFinite(scale) && scale > 0) {
+    _arenaAcousticScale = Math.max(0.25, Math.min(4.0, scale));
+  }
+}
+
+export function getArenaAcousticScale(): number {
+  return _arenaAcousticScale;
+}
+
 export function evaluateAttenuationProfileGain(
   distanceUU: number,
-  profile: SpatialAttenuationProfile
+  profile: SpatialAttenuationProfile,
+  distanceRadiusScale = 1.0
 ): number {
-  if (!Number.isFinite(distanceUU) || distanceUU <= profile.minDistanceUU) {
+  const minDist = profile.minDistanceUU * _arenaAcousticScale;
+  const maxDist = profile.maxDistanceUU * _arenaAcousticScale;
+  const scale =
+    Number.isFinite(distanceRadiusScale) && distanceRadiusScale > 0
+      ? Math.max(0.25, Math.min(3.0, distanceRadiusScale))
+      : 1.0;
+  const effectiveDistanceUU = distanceUU / scale;
+  if (!Number.isFinite(effectiveDistanceUU) || effectiveDistanceUU <= minDist) {
     return 1.0;
   }
   const minFloor = Math.max(0, Math.min(1, profile.minGainFloor));
-  if (distanceUU >= profile.maxDistanceUU) {
+  if (effectiveDistanceUU >= maxDist) {
     return profile.cullBeyondMax && minFloor <= 1e-5 ? 0.0 : minFloor;
   }
-  const span = Math.max(1e-3, profile.maxDistanceUU - profile.minDistanceUU);
-  const t = Math.max(0, Math.min(1, (distanceUU - profile.minDistanceUU) / span));
+  const span = Math.max(1e-3, maxDist - minDist);
+  const t = Math.max(0, Math.min(1, (effectiveDistanceUU - minDist) / span));
   const curveFactor = evaluateAttenuationCurveAtNormalizedT(t, profile);
   return minFloor + (1.0 - minFloor) * curveFactor;
+}
+
+export function evaluateCategoryDistanceGain(
+  distanceUU: number,
+  categoryOrProfile:
+    | AudioAttenuationCategory
+    | SpatialAttenuationProfile
+    | string
+    | null
+    | undefined,
+  distanceRadiusScale = 1.0
+): number {
+  if (!Number.isFinite(distanceUU)) return 1.0;
+  const profile =
+    typeof categoryOrProfile === 'object' && categoryOrProfile !== null
+      ? categoryOrProfile
+      : getSpatialAttenuationProfile(categoryOrProfile);
+  return evaluateAttenuationProfileGain(distanceUU, profile, distanceRadiusScale);
+}
+
+export function isAttenuationDistanceCulled(
+  distanceUU: number,
+  categoryOrProfile:
+    | AudioAttenuationCategory
+    | SpatialAttenuationProfile
+    | string
+    | null
+    | undefined,
+  distanceRadiusScale = 1.0
+): boolean {
+  if (!Number.isFinite(distanceUU)) return false;
+  const scale =
+    Number.isFinite(distanceRadiusScale) && distanceRadiusScale > 0
+      ? Math.max(0.25, Math.min(3.0, distanceRadiusScale))
+      : 1.0;
+  const effectiveDistanceUU = distanceUU / scale;
+  const profile =
+    typeof categoryOrProfile === 'object' && categoryOrProfile !== null
+      ? categoryOrProfile
+      : getSpatialAttenuationProfile(categoryOrProfile);
+  const maxDist = profile.maxDistanceUU * _arenaAcousticScale;
+  return profile.cullBeyondMax && profile.minGainFloor <= 1e-5 && effectiveDistanceUU >= maxDist;
 }
 
 export function solveAttenuationIsoRadiusUU(
   profile: SpatialAttenuationProfile,
   targetGain = 0.5
 ): number {
-  if (targetGain >= 1.0) return profile.minDistanceUU;
-  if (targetGain <= profile.minGainFloor) return profile.maxDistanceUU;
+  const minDist = profile.minDistanceUU * _arenaAcousticScale;
+  const maxDist = profile.maxDistanceUU * _arenaAcousticScale;
+  if (targetGain >= 1.0) return minDist;
+  if (targetGain <= profile.minGainFloor) return maxDist;
 
-  let low = profile.minDistanceUU;
-  let high = profile.maxDistanceUU;
+  let low = minDist;
+  let high = maxDist;
   for (let i = 0; i < 16; i++) {
     const mid = 0.5 * (low + high);
     const g = evaluateAttenuationProfileGain(mid, profile);

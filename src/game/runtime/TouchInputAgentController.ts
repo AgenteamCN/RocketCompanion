@@ -1,8 +1,5 @@
 import { useAppStore } from '../runtimeUiPort.ts';
-import {
-  ExperimentalBotAgent,
-  ensureExperimentalEngine,
-} from '../../ai/experimental/ExperimentalBotAgent.ts';
+import { ExperimentalBotAgent, ensureExperimentalEngine } from '../../ai/BotWeightLoader.ts';
 import { NEUTRAL_CAR_CONTROLS } from '../../network/client/PredictionHistoryBuffer.ts';
 import type { RocketSimPhysicsEngine } from '../../physics/RocketSimPhysicsEngine.ts';
 import type { CarControlsInput } from '../../network/protocol/GlobalPayloadCodec.ts';

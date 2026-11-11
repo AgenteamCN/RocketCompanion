@@ -1,7 +1,7 @@
 import { DEFAULT_CAR_CONTROLS } from '../../../ai/experimental/experimentalMultiCarObsPipeline.ts';
 import { RocketSimPhysicsEngine } from '../../../physics/RocketSimPhysicsEngine.ts';
 import { useSubsystemIsolationLabStore } from '../../runtimeUiPort.ts';
-import { classifyBallOutcome } from '../../../ai/KickoffV2SafeTensorsAgent.ts';
+import { classifyBallOutcome } from '../../../ai/kickoffEpisodePrimitives.ts';
 import {
   KICKOFF_DUEL_MODELS,
   KICKOFF_DUEL_PAIRINGS,

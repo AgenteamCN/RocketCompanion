@@ -1,34 +1,25 @@
 /**
  * AerialReachabilityRenderer.ts
- * Three.js visual renderer for Aerial 3D Spacetime Funnel / Horn and Discrete Isochrone Bubbles.
+ * Zero-copy WASM HEAPF32 -> THREE.BufferAttribute view binder for Aerial 3D Spacetime Funnel / Horn
+ * and Discrete Isochrone Bubbles computed by `rc_trajectory_mesh`.
  */
 
 import * as THREE from 'three';
-import {
-  FUNNEL_RINGS,
-  FUNNEL_SECTORS,
-  FUNNEL_TIMES,
-  FUNNEL_COS,
-  FUNNEL_SIN,
-  FUNNEL_IDX_1S,
-  FUNNEL_IDX_2S,
-  FUNNEL_IDX_3S,
-  BUBBLE_LAT,
-  BUBBLE_LON,
-  BUBBLE_VERTS_COUNT,
-  BUBBLE_UNIT_DIRS,
-  HORIZON_COLORS_HEX,
-  HORIZON_RGB,
-  clipArenaRocketSimXYZ,
-} from './ReachabilityConstants.ts';
-import {
-  computeAerialTurnLatency,
-  computeBallisticCenter,
-  computeDirectionalBoostReach,
-} from './AerialReachabilityMath.ts';
+import type { RocketSimWasmModule } from '../../physics/RocketSimWasm.ts';
+import { HORIZON_COLORS_HEX } from './groundReachabilityLut.ts';
+
+const FUNNEL_RINGS = 16;
+const FUNNEL_SECTORS = 24;
+const FUNNEL_VERTS_COUNT = FUNNEL_RINGS * FUNNEL_SECTORS;
+const FUNNEL_RING_LINE_VERTS = FUNNEL_SECTORS + 1;
+const FUNNEL_RAIL_SEGMENTS_VERTS = 4 * (FUNNEL_RINGS - 1) * 2;
+
+const BUBBLE_LAT = 12;
+const BUBBLE_LON = 20;
+const BUBBLE_VERTS_COUNT = (BUBBLE_LAT + 1) * BUBBLE_LON;
+const BUBBLE_RIB_VERTS_COUNT = 3 * BUBBLE_LON * 2 + 4 * BUBBLE_LAT * 2;
 
 export class AerialReachabilityRenderer {
-  public _bubbleRibIdx: Uint16Array;
   public bubbleMeshes: Array<THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>>;
   public bubbleRibLines: Array<THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>>;
   public bubblesSubGroup: THREE.Group;
@@ -57,14 +48,13 @@ export class AerialReachabilityRenderer {
     this.funnelRingLines = [];
     this.bubbleMeshes = [];
     this.bubbleRibLines = [];
-    this._bubbleRibIdx = new Uint16Array(0);
 
     this._initFunnelMeshes();
     this._initBubblesMeshes();
   }
 
-  _initFunnelMeshes() {
-    const numVerts = FUNNEL_RINGS * FUNNEL_SECTORS;
+  _initFunnelMeshes(): void {
+    const numVerts = FUNNEL_VERTS_COUNT;
     const numTris = (FUNNEL_RINGS - 1) * FUNNEL_SECTORS * 2;
 
     const funnelGeom = new THREE.BufferGeometry();
@@ -110,7 +100,7 @@ export class AerialReachabilityRenderer {
     this.funnelRingLines = [];
     for (let h = 0; h < 3; h++) {
       const rGeom = new THREE.BufferGeometry();
-      const rPos = new Float32Array((FUNNEL_SECTORS + 1) * 3);
+      const rPos = new Float32Array(FUNNEL_RING_LINE_VERTS * 3);
       rGeom.setAttribute('position', new THREE.BufferAttribute(rPos, 3));
       const rMat = new THREE.LineBasicMaterial({
         color: HORIZON_COLORS_HEX[h],
@@ -127,11 +117,10 @@ export class AerialReachabilityRenderer {
     }
 
     // 4 Longitudinal Guide Rails
-    const railSegmentsCount = 4 * (FUNNEL_RINGS - 1) * 2;
     const railGeom = new THREE.BufferGeometry();
     railGeom.setAttribute(
       'position',
-      new THREE.BufferAttribute(new Float32Array(railSegmentsCount * 3), 3)
+      new THREE.BufferAttribute(new Float32Array(FUNNEL_RAIL_SEGMENTS_VERTS * 3), 3)
     );
     const railMat = new THREE.LineBasicMaterial({
       color: 0xdceeff,
@@ -146,11 +135,10 @@ export class AerialReachabilityRenderer {
     this.funnelSubGroup.add(this.funnelRailsLine);
   }
 
-  _initBubblesMeshes() {
+  _initBubblesMeshes(): void {
     this.bubbleMeshes = [];
     this.bubbleRibLines = [];
 
-    // Precompute sphere triangle indices and rib segment vertex pairs
     const triList: number[] = [];
     for (let i = 0; i < BUBBLE_LAT; i++) {
       for (let j = 0; j < BUBBLE_LON; j++) {
@@ -164,19 +152,6 @@ export class AerialReachabilityRenderer {
       }
     }
     const sharedBubbleIndices = new Uint16Array(triList);
-
-    const ribPairs: number[] = [];
-    for (const i of [3, 6, 9]) {
-      for (let j = 0; j < BUBBLE_LON; j++) {
-        ribPairs.push(i * BUBBLE_LON + j, i * BUBBLE_LON + ((j + 1) % BUBBLE_LON));
-      }
-    }
-    for (let j = 0; j < BUBBLE_LON; j += 5) {
-      for (let i = 0; i < BUBBLE_LAT; i++) {
-        ribPairs.push(i * BUBBLE_LON + j, (i + 1) * BUBBLE_LON + j);
-      }
-    }
-    this._bubbleRibIdx = new Uint16Array(ribPairs);
 
     for (let h = 0; h < 3; h++) {
       const bGeom = new THREE.BufferGeometry();
@@ -207,7 +182,7 @@ export class AerialReachabilityRenderer {
       const ribGeom = new THREE.BufferGeometry();
       ribGeom.setAttribute(
         'position',
-        new THREE.BufferAttribute(new Float32Array(this._bubbleRibIdx.length * 3), 3)
+        new THREE.BufferAttribute(new Float32Array(BUBBLE_RIB_VERTS_COUNT * 3), 3)
       );
       const ribMat = new THREE.LineBasicMaterial({
         color: HORIZON_COLORS_HEX[h],
@@ -224,256 +199,91 @@ export class AerialReachabilityRenderer {
     }
   }
 
-  update(carState, config) {
-    if (!config.showAerial) {
+  updateFromWasm(
+    wasmModule: RocketSimWasmModule,
+    aerialVisible: boolean,
+    aerialMode: number,
+    config: {
+      aerialOpacity?: unknown;
+      aerialShowRings?: unknown;
+      aerialShowRails?: unknown;
+    }
+  ): void {
+    if (!aerialVisible) {
       this.group.visible = false;
       return;
     }
     this.group.visible = true;
 
-    const {
-      posX,
-      posY,
-      posZ,
-      velX,
-      velY,
-      velZ,
-      fwdX,
-      fwdY,
-      fwdZ,
-      rightX,
-      rightY,
-      rightZ,
-      upX,
-      upY,
-      upZ,
-      angVelX,
-      angVelY,
-      angVelZ,
-      boost,
-      isOnGround,
-    } = carState;
-
-    const includeJump = Boolean(config.includeJumpImpulse);
+    const heapF32 = wasmModule.HEAPF32;
     const baseOpacity = Math.max(0.04, Math.min(0.75, Number(config.aerialOpacity) || 0.22));
+    const showRings = Boolean(config.aerialShowRings);
+    const showRails = Boolean(config.aerialShowRails);
 
-    if (config.aerialMode === 'bubbles') {
+    if (aerialMode === 1) {
       this.funnelSubGroup.visible = false;
       this.bubblesSubGroup.visible = true;
 
-      const horizons = [1.0, 2.0, 3.0];
-      for (let h = 0; h < 3; h++) {
-        const T = horizons[h];
-        const c = computeBallisticCenter(
-          posX,
-          posY,
-          posZ,
-          velX,
-          velY,
-          velZ,
-          upX,
-          upY,
-          upZ,
-          T,
-          includeJump,
-          isOnGround
-        );
+      const bubbleFloats = BUBBLE_VERTS_COUNT * 3;
+      const ribFloats = BUBBLE_RIB_VERTS_COUNT * 3;
 
+      for (let h = 0; h < 3; h++) {
         const bMesh = this.bubbleMeshes[h];
         bMesh.material.opacity = Math.max(0.03, baseOpacity * (1.0 - h * 0.22));
-        const posAttr = bMesh.geometry.attributes.position;
-        const colAttr = bMesh.geometry.attributes.color;
-        const posArr = posAttr.array;
-        const colArr = colAttr.array;
-        const rgb = HORIZON_RGB[h];
 
-        for (let v = 0; v < BUBBLE_VERTS_COUNT; v++) {
-          const v3 = v * 3;
-          const dx = BUBBLE_UNIT_DIRS[v3 + 0];
-          const dy = BUBBLE_UNIT_DIRS[v3 + 1];
-          const dz = BUBBLE_UNIT_DIRS[v3 + 2];
-
-          const tTurn = computeAerialTurnLatency(
-            fwdX,
-            fwdY,
-            fwdZ,
-            dx,
-            dy,
-            dz,
-            angVelX,
-            angVelY,
-            angVelZ
-          );
-          const velAlongD = c.ivx * dx + c.ivy * dy + c.ivz * dz;
-          const sThrust = computeDirectionalBoostReach(T, boost, tTurn, velAlongD);
-          const rTotal = sThrust + 65.0 + 30.0 * T;
-
-          const wx = c.x + dx * rTotal;
-          const wy = c.y + dy * rTotal;
-          const wzCoord = c.z + dz * rTotal;
-          const clipped = clipArenaRocketSimXYZ(wx, wy, wzCoord, 36.0);
-
-          // RocketSim -> Three.js (x, z, y)
-          posArr[v3 + 0] = clipped.x;
-          posArr[v3 + 1] = clipped.z;
-          posArr[v3 + 2] = clipped.y;
-
-          // Directional + hemisphere shading
-          const shade =
-            0.45 + 0.35 * Math.max(0, 0.45 * dx - 0.5 * dy + 0.74 * dz) + 0.2 * (0.5 * (dz + 1.0));
-          colArr[v3 + 0] = rgb[0] * shade;
-          colArr[v3 + 1] = rgb[1] * shade;
-          colArr[v3 + 2] = rgb[2] * shade;
-        }
+        const posPtr = wasmModule._physics_getAerialBubblePositionsPtr(h) >> 2;
+        const colPtr = wasmModule._physics_getAerialBubbleColorsPtr(h) >> 2;
+        const posAttr = bMesh.geometry.attributes.position as THREE.BufferAttribute;
+        const colAttr = bMesh.geometry.attributes.color as THREE.BufferAttribute;
+        (posAttr.array as Float32Array).set(heapF32.subarray(posPtr, posPtr + bubbleFloats));
+        (colAttr.array as Float32Array).set(heapF32.subarray(colPtr, colPtr + bubbleFloats));
         posAttr.needsUpdate = true;
         colAttr.needsUpdate = true;
 
-        // Update rib lines
         const ribLine = this.bubbleRibLines[h];
-        ribLine.visible = Boolean(config.aerialShowRings);
-        if (ribLine.visible) {
-          const ribAttr = ribLine.geometry.attributes.position;
-          const ribArr = ribAttr.array;
-          const ribIdx = this._bubbleRibIdx;
-          for (let r = 0; r < ribIdx.length; r++) {
-            const vIdx3 = ribIdx[r] * 3;
-            const dst3 = r * 3;
-            ribArr[dst3 + 0] = posArr[vIdx3 + 0];
-            ribArr[dst3 + 1] = posArr[vIdx3 + 1];
-            ribArr[dst3 + 2] = posArr[vIdx3 + 2];
-          }
+        ribLine.visible = showRings;
+        if (showRings) {
+          const ribPtr = wasmModule._physics_getAerialBubbleRibsPtr(h) >> 2;
+          const ribAttr = ribLine.geometry.attributes.position as THREE.BufferAttribute;
+          (ribAttr.array as Float32Array).set(heapF32.subarray(ribPtr, ribPtr + ribFloats));
           ribAttr.needsUpdate = true;
         }
       }
       return;
     }
 
-    // Default: Continuous 3D Spacetime Funnel / Horn
     this.funnelSubGroup.visible = true;
     this.bubblesSubGroup.visible = false;
     this.funnelMat.opacity = baseOpacity;
 
-    const posAttr = this.funnelMesh.geometry.attributes.position;
-    const colAttr = this.funnelMesh.geometry.attributes.color;
-    const posArr = posAttr.array;
-    const colArr = colAttr.array;
-
-    for (let i = 0; i < FUNNEL_RINGS; i++) {
-      const t = FUNNEL_TIMES[i];
-      const c = computeBallisticCenter(
-        posX,
-        posY,
-        posZ,
-        velX,
-        velY,
-        velZ,
-        upX,
-        upY,
-        upZ,
-        t,
-        includeJump,
-        isOnGround
-      );
-
-      const rgb = t <= 1.05 ? HORIZON_RGB[0] : t <= 2.05 ? HORIZON_RGB[1] : HORIZON_RGB[2];
-
-      for (let j = 0; j < FUNNEL_SECTORS; j++) {
-        const cosPhi = FUNNEL_COS[j];
-        const sinPhi = FUNNEL_SIN[j];
-
-        // Radial direction in car's (right, up) cross-plane
-        const dirX = rightX * cosPhi + upX * sinPhi;
-        const dirY = rightY * cosPhi + upY * sinPhi;
-        const dirZ = rightZ * cosPhi + upZ * sinPhi;
-
-        const tTurn = computeAerialTurnLatency(
-          fwdX,
-          fwdY,
-          fwdZ,
-          dirX,
-          dirY,
-          dirZ,
-          angVelX,
-          angVelY,
-          angVelZ
-        );
-        const velAlongD = c.ivx * dirX + c.ivy * dirY + c.ivz * dirZ;
-        const sThrust = computeDirectionalBoostReach(t, boost, tTurn, velAlongD);
-
-        const rLat = sThrust * 0.92 + 35.0 + 28.0 * t;
-        const rVert = rLat;
-
-        const wx = c.x + rightX * (rLat * cosPhi) + upX * (rVert * sinPhi);
-        const wy = c.y + rightY * (rLat * cosPhi) + upY * (rVert * sinPhi);
-        const wzCoord = c.z + rightZ * (rLat * cosPhi) + upZ * (rVert * sinPhi);
-        const clipped = clipArenaRocketSimXYZ(wx, wy, wzCoord, 32.0);
-
-        const vIdx3 = (i * FUNNEL_SECTORS + j) * 3;
-        posArr[vIdx3 + 0] = clipped.x;
-        posArr[vIdx3 + 1] = clipped.z;
-        posArr[vIdx3 + 2] = clipped.y;
-
-        const shade =
-          0.5 +
-          0.3 * Math.max(0, 0.4 * dirX - 0.4 * dirY + 0.8 * dirZ) +
-          0.2 * (0.5 * (dirZ + 1.0));
-        colArr[vIdx3 + 0] = rgb[0] * shade;
-        colArr[vIdx3 + 1] = rgb[1] * shade;
-        colArr[vIdx3 + 2] = rgb[2] * shade;
-      }
-    }
+    const funnelFloats = FUNNEL_VERTS_COUNT * 3;
+    const posPtr = wasmModule._physics_getAerialFunnelPositionsPtr() >> 2;
+    const colPtr = wasmModule._physics_getAerialFunnelColorsPtr() >> 2;
+    const posAttr = this.funnelMesh.geometry.attributes.position as THREE.BufferAttribute;
+    const colAttr = this.funnelMesh.geometry.attributes.color as THREE.BufferAttribute;
+    (posAttr.array as Float32Array).set(heapF32.subarray(posPtr, posPtr + funnelFloats));
+    (colAttr.array as Float32Array).set(heapF32.subarray(colPtr, colPtr + funnelFloats));
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
 
-    // Update 1s, 2s, 3s Isochrone Rings
-    const ringIndices = [FUNNEL_IDX_1S, FUNNEL_IDX_2S, FUNNEL_IDX_3S];
+    const ringFloats = FUNNEL_RING_LINE_VERTS * 3;
     for (let h = 0; h < 3; h++) {
       const rLine = this.funnelRingLines[h];
-      rLine.visible = Boolean(config.aerialShowRings);
-      if (rLine.visible) {
-        const ringI = ringIndices[h];
-        const rAttr = rLine.geometry.attributes.position;
-        const rArr = rAttr.array;
-        const baseV3 = ringI * FUNNEL_SECTORS * 3;
-        for (let j = 0; j < FUNNEL_SECTORS; j++) {
-          const src = baseV3 + j * 3;
-          const dst = j * 3;
-          rArr[dst + 0] = posArr[src + 0];
-          rArr[dst + 1] = posArr[src + 1];
-          rArr[dst + 2] = posArr[src + 2];
-        }
-        const lastDst = FUNNEL_SECTORS * 3;
-        rArr[lastDst + 0] = posArr[baseV3 + 0];
-        rArr[lastDst + 1] = posArr[baseV3 + 1];
-        rArr[lastDst + 2] = posArr[baseV3 + 2];
+      rLine.visible = showRings;
+      if (showRings) {
+        const ringPtr = wasmModule._physics_getAerialFunnelRingLinePtr(h) >> 2;
+        const rAttr = rLine.geometry.attributes.position as THREE.BufferAttribute;
+        (rAttr.array as Float32Array).set(heapF32.subarray(ringPtr, ringPtr + ringFloats));
         rAttr.needsUpdate = true;
       }
     }
 
-    // Update 4 Longitudinal Rails
-    this.funnelRailsLine.visible = Boolean(config.aerialShowRails);
-    if (this.funnelRailsLine.visible) {
-      const railAttr = this.funnelRailsLine.geometry.attributes.position;
-      const railArr = railAttr.array;
-      const quarterSectors = [
-        0,
-        FUNNEL_SECTORS >> 2,
-        FUNNEL_SECTORS >> 1,
-        (3 * FUNNEL_SECTORS) >> 2,
-      ];
-      let ptr = 0;
-      for (const secJ of quarterSectors) {
-        for (let i = 0; i < FUNNEL_RINGS - 1; i++) {
-          const v0 = (i * FUNNEL_SECTORS + secJ) * 3;
-          const v1 = ((i + 1) * FUNNEL_SECTORS + secJ) * 3;
-          railArr[ptr++] = posArr[v0 + 0];
-          railArr[ptr++] = posArr[v0 + 1];
-          railArr[ptr++] = posArr[v0 + 2];
-          railArr[ptr++] = posArr[v1 + 0];
-          railArr[ptr++] = posArr[v1 + 1];
-          railArr[ptr++] = posArr[v1 + 2];
-        }
-      }
+    this.funnelRailsLine.visible = showRails;
+    if (showRails) {
+      const railFloats = FUNNEL_RAIL_SEGMENTS_VERTS * 3;
+      const railPtr = wasmModule._physics_getAerialFunnelRailsPtr() >> 2;
+      const railAttr = this.funnelRailsLine.geometry.attributes.position as THREE.BufferAttribute;
+      (railAttr.array as Float32Array).set(heapF32.subarray(railPtr, railPtr + railFloats));
       railAttr.needsUpdate = true;
     }
   }
