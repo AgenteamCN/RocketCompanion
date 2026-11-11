@@ -123,6 +123,88 @@ export interface ReproHandshakeDiagnosticSnapshot {
   readonly hostRegisteredClientPeers: number;
 }
 
+export interface ReproLobbyProbeDiagnosticSnapshot {
+  readonly role: ReproRole;
+  readonly rosterMode: ReproRosterMode;
+  readonly elapsedMs: number;
+  readonly fleetControllerEnabled: boolean;
+  readonly serverActiveCarMask: number;
+  readonly serverCar6BitActive: boolean;
+  readonly serverCar7BitActive: boolean;
+  readonly car6MeshVisible: boolean;
+  readonly car7MeshVisible: boolean;
+  readonly car6ResolvedNameTag: string | null;
+  readonly car7ResolvedNameTag: string | null;
+  readonly expectedCar6NameTag: 'Boost';
+  readonly expectedCar7NameTag: 'Roll';
+  readonly hostProbeNamesMismatch: boolean;
+  readonly clientCannotSeeHostProbes: boolean;
+}
+
+export interface ReproRosterVisibilityAndNameTagSnapshot {
+  readonly stage: string;
+  readonly role: ReproRole;
+  readonly rosterMode: ReproRosterMode;
+  readonly elapsedMs: number;
+  readonly uiLocalTeamDefault: string;
+  readonly uiLobbyPeersPropPassed: boolean;
+  readonly connectedPeerCount: number;
+  readonly localPlayerCarIndex: number;
+  readonly visibleCarIndices: readonly number[];
+  readonly clientCar1Visible: boolean;
+  readonly nameTagCarEntries: ReadonlyArray<{
+    readonly carIndex: number;
+    readonly name: string;
+    readonly isBot: boolean;
+  }>;
+  readonly forcedGenericCarNamesDetected: boolean;
+  readonly hostMissingClientVisibility: boolean;
+}
+
+export interface ReproHostTakeoverDiagnosticSnapshot {
+  readonly rosterMode: ReproRosterMode;
+  readonly elapsedMs: number;
+  readonly maxPlayers: number;
+  readonly botFillMode: string;
+  readonly uiDefaultLocalTeam: string;
+  readonly activeBotCountInMatch: number;
+  readonly botFillRunsInMode: boolean;
+  readonly neutralTeamSwitchMovesHostToSpectator: boolean;
+  readonly botFillTakesOverCar0WhenHostNeutralSwitched: boolean;
+  readonly hostLocalCarIndexStillZero: boolean;
+  readonly car0AssignedEntityAfterNeutralSwitch: string | null;
+}
+
+export interface ReproTrajectoryPredictorOnlineSample {
+  readonly sampleIndex: number;
+  readonly elapsedMs: number;
+  readonly simTick: number;
+  readonly ballPosZ: number;
+  readonly ballVelZ: number;
+  readonly ballStateWriteRevision: number;
+  readonly reconcilerCorrectionCount: number;
+  readonly predictionCount: number;
+  readonly maxPredictionTicks: number;
+  readonly catchupTicksPerFrame: number;
+  readonly lastUpdateMode: string;
+}
+
+export interface ReproTrajectoryPredictorDiagnosticSummary {
+  readonly role: ReproRole;
+  readonly rosterMode: ReproRosterMode;
+  readonly predictorEnabled: boolean;
+  readonly catchupTicksPerFrame: number;
+  readonly maxPredictionTicks: number;
+  readonly initialWriteRevision: number;
+  readonly finalWriteRevision: number;
+  readonly writeRevisionIncrementsDuringFlight: number;
+  readonly fullResetCountDuringFlight: number;
+  readonly minPredictionCountObserved: number;
+  readonly maxPredictionCountObserved: number;
+  readonly trajectoryCollapsedBelow30Ticks: boolean;
+  readonly samples: readonly ReproTrajectoryPredictorOnlineSample[];
+}
+
 export interface ReproRoleSummaryReport {
   readonly role: ReproRole;
   readonly peerIndex: number;
@@ -139,6 +221,10 @@ export interface ReproRoleSummaryReport {
   readonly rawCrossTabJoinedBeforeBridge: boolean;
   readonly bridgedDataChannelOpened: boolean;
   readonly handshakeDiagnostics: ReproHandshakeDiagnosticSnapshot;
+  readonly lobbyProbeDiagnostics: ReproLobbyProbeDiagnosticSnapshot | null;
+  readonly rosterVisibilityProbes: readonly ReproRosterVisibilityAndNameTagSnapshot[];
+  readonly hostTakeoverDiagnostics: ReproHostTakeoverDiagnosticSnapshot | null;
+  readonly trajectoryDiagnostics: ReproTrajectoryPredictorDiagnosticSummary | null;
   readonly poseProbes: readonly ReproPoseProbeSnapshot[];
   readonly reconcilerSamples: readonly ReproReconcilerDesyncSample[];
   readonly starvationSamples: readonly ReproInputStarvationSample[];
@@ -156,6 +242,22 @@ export type ReproStreamEvent =
   | {
       readonly type: 'pose_probe';
       readonly probe: ReproPoseProbeSnapshot;
+    }
+  | {
+      readonly type: 'lobby_probe_diag';
+      readonly diag: ReproLobbyProbeDiagnosticSnapshot;
+    }
+  | {
+      readonly type: 'roster_visibility_probe';
+      readonly probe: ReproRosterVisibilityAndNameTagSnapshot;
+    }
+  | {
+      readonly type: 'host_takeover_diag';
+      readonly diag: ReproHostTakeoverDiagnosticSnapshot;
+    }
+  | {
+      readonly type: 'trajectory_diag';
+      readonly summary: ReproTrajectoryPredictorDiagnosticSummary;
     }
   | {
       readonly type: 'reconciler_snap';
@@ -232,19 +334,46 @@ export interface ReproInspectableWebRtcChannel {
   readonly acceptAnswerToken?: (answerToken: string) => Promise<boolean>;
 }
 
+export interface ReproProbePhysicsView {
+  readonly state?: Float32Array | null;
+  readonly ballStateWriteRevision?: number;
+  readonly getActiveCarMask?: () => number;
+  readonly getHeaderView?: () => { readonly tickCount: number };
+  readonly isCarSlotActive?: (carIndex: number) => boolean;
+  readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
+  readonly getBallStateView?: () => ReproProbeBallView | null;
+  readonly setBallState?: (state: Record<string, unknown> | Float32Array | number[]) => unknown;
+  readonly sim?: ReproProbePhysicsView | null;
+}
+
 export interface ReproProbeRuntimeView {
   readonly stop?: () => void;
   readonly renderFrame?: (timestamp?: number) => boolean;
-  readonly pipeline?: {
-    readonly executeSimulationOnly?: (timestamp: number) => void;
-  } | null;
+  readonly pipeline?: { readonly executeSimulationOnly?: (timestamp: number) => void } | null;
   readonly clockScheduler?: { gl?: unknown } | null;
   readonly renderSubsystem?: { update?: (ctx: { shouldSkipGpuRender?: boolean }) => void } | null;
   readonly setupAudio?: () => Promise<void>;
   readonly setupBot?: () => Promise<void>;
+  readonly playerCarIndex?: number;
+  readonly selectedPreset?: string;
+  readonly selectedHitbox?: string | null;
+  readonly selectedColorSlot?: number | null;
+  readonly replayTimelineController?: unknown;
   readonly ballTrajectoryPredictor?: {
+    forcePredictAnyMovement?: boolean;
     readonly isActive?: boolean;
     readonly predictionCount?: number;
+    readonly settings?: {
+      readonly enabled?: boolean;
+      readonly predictionTicks?: number;
+      readonly catchupTicksPerFrame?: number;
+    };
+    readonly sampler?: { readonly lastUpdateKind?: string };
+    readonly updateSettings?: (patch: { enabled?: boolean }) => void;
+    readonly setSceneContext?: (ctx: {
+      isGoalReplayActive?: boolean;
+      isPodiumActive?: boolean;
+    }) => void;
     readonly update?: (
       currentTick: number,
       liveBallPos: unknown,
@@ -253,20 +382,7 @@ export interface ReproProbeRuntimeView {
       physics: unknown
     ) => void;
   } | null;
-  readonly physics?: {
-    readonly getHeaderView?: () => { readonly tickCount: number };
-    readonly isCarSlotActive?: (carIndex: number) => boolean;
-    readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
-    readonly getBallStateView?: () => ReproProbeBallView | null;
-    readonly setBallState?: (state: Record<string, unknown> | Float32Array | number[]) => unknown;
-    readonly sim?: {
-      readonly getHeaderView?: () => { readonly tickCount: number };
-      readonly isCarSlotActive?: (carIndex: number) => boolean;
-      readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
-      readonly getBallStateView?: () => ReproProbeBallView | null;
-      readonly setBallState?: (state: Record<string, unknown> | Float32Array | number[]) => unknown;
-    } | null;
-  } | null;
+  readonly physics?: ReproProbePhysicsView | null;
   readonly arena?: {
     readonly playerCarIndex?: number;
     readonly ball?: { readonly position?: unknown } | null;
@@ -285,10 +401,7 @@ export interface ReproProbeRuntimeView {
     } | null> | null>;
   } | null;
   readonly match?: {
-    readonly state?: {
-      readonly mode?: string;
-      readonly phase?: string;
-    } | null;
+    readonly state?: { readonly mode?: string; readonly phase?: string } | null;
   } | null;
   readonly matchPort?: {
     readonly hostOnlineWarmup?: (opts: {
@@ -307,6 +420,7 @@ export interface ReproProbeRuntimeView {
       playerName?: string;
     }) => Promise<boolean>;
     readonly forceStartOnlineMatch?: (durationSeconds?: number) => void;
+    readonly switchOnlineRoleOrTeam?: (role?: string, team?: number) => void;
   } | null;
   readonly multiplayerSession?: {
     readonly hostController?: {
@@ -329,13 +443,26 @@ export interface ReproProbeRuntimeView {
   } | null;
   readonly networkManager?: {
     readonly isLobbyDualWorldActive?: () => boolean;
+    readonly diagnosticsProbe?: {
+      readonly diagnosticsFleetController?: { readonly enabled?: boolean } | null;
+      readonly spawnDiagnosticTestFleet?: (opts?: {
+        anchorMode?: string | null;
+      }) => Promise<unknown>;
+    } | null;
+    readonly rosterSyncCoordinator?: {
+      readonly lastRosterSnapshot?: {
+        readonly players?: ReadonlyArray<{
+          readonly sessionId?: string;
+          readonly entityId?: number;
+          readonly name?: string;
+          readonly isBot?: boolean;
+          readonly team?: number;
+        }>;
+      } | null;
+    } | null;
     readonly sessionCoordinator?: {
       readonly authoritativeServer?: {
-        readonly sim?: {
-          readonly setBallState?: (
-            state: Record<string, unknown> | Float32Array | number[]
-          ) => unknown;
-        } | null;
+        readonly sim?: ReproProbePhysicsView | null;
       } | null;
     } | null;
   } | null;

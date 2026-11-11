@@ -14,16 +14,30 @@ import {
   type ReproLogInterceptorState,
 } from './multiplayerRoomReproLogInterceptor.ts';
 import {
+  createTrajectoryObservationTracker,
+  probeBallTrajectoryPredictorOnlineResets,
+  probeHostTakeoverPhenomenon,
+  sampleLobbyDiagnosticProbes,
+  sampleRosterVisibilityAndNameTags,
+  startHeadlessReproPacingLoop,
+  triggerGoalReplayNameTagCorruptionRepro,
+  type ReproTrajectoryWindowTracker,
+} from './multiplayerRoomReproPhenomenaPipeline.ts';
+import {
+  applyHostCrossTabSignalingBridge,
   emitReproStreamEvent,
   inspectChannelHandshakeDiagnostics,
   parseMultiplayerRoomReproUrlConfig,
   sampleSimAndMeshVehiclePose,
-  type ReproInspectableWebRtcChannel,
   type ReproProbeRuntimeView,
 } from './multiplayerRoomReproProbePipeline.ts';
 import type {
+  ReproHostTakeoverDiagnosticSnapshot,
+  ReproLobbyProbeDiagnosticSnapshot,
   ReproPoseProbeSnapshot,
   ReproRoleSummaryReport,
+  ReproRosterVisibilityAndNameTagSnapshot,
+  ReproTrajectoryPredictorDiagnosticSummary,
   ReproUrlConfig,
 } from './multiplayerRoomReproTypes.ts';
 
@@ -34,53 +48,23 @@ export class MultiplayerRoomReproAgent {
   private readonly cfg: ReproUrlConfig;
   private readonly startTimeMs = performance.now();
   private readonly poseProbes: ReproPoseProbeSnapshot[] = [];
+  private readonly rosterVisibilityProbes: ReproRosterVisibilityAndNameTagSnapshot[] = [];
+  private lobbyProbeDiagnostics: ReproLobbyProbeDiagnosticSnapshot | null = null;
+  private hostTakeoverDiagnostics: ReproHostTakeoverDiagnosticSnapshot | null = null;
+  private trajectoryDiagnostics: ReproTrajectoryPredictorDiagnosticSummary | null = null;
   private readonly logState: ReproLogInterceptorState = createReproLogInterceptorState();
+  private readonly trajTracker: ReproTrajectoryWindowTracker;
   private rawCrossTabJoinedBeforeBridge = false;
   private speedTimerId: ReturnType<typeof setInterval> | null = null;
-  private trajectoryTrackingActive = false;
-  private maxObservedPredictionCount = 0;
-  private prevObservedPredictionCount = 0;
-  private collapseToCatchupCount = 0;
 
   constructor(targetView: ReproProbeRuntimeView, cfg: ReproUrlConfig) {
     this.targetView = targetView;
     this.cfg = cfg;
+    this.trajTracker = createTrajectoryObservationTracker(targetView);
   }
 
   private elapsedMs(): number {
     return Math.round(performance.now() - this.startTimeMs);
-  }
-
-  private resetTrajectoryWindow(active: boolean): void {
-    this.trajectoryTrackingActive = active;
-    this.maxObservedPredictionCount = 0;
-    this.prevObservedPredictionCount = 0;
-    this.collapseToCatchupCount = 0;
-  }
-
-  private stepBallTrajectoryPredictorAndObserve(): void {
-    const sim = this.targetView.physics?.sim ?? this.targetView.physics;
-    const btp = this.targetView.ballTrajectoryPredictor;
-    if (!sim || !btp?.update) return;
-    const curTick = sim.getHeaderView?.()?.tickCount ?? 0;
-    btp.update(curTick, this.targetView.arena?.ball?.position, 1280, 720, this.targetView.physics);
-    if (!this.trajectoryTrackingActive) return;
-
-    const bv = sim.getBallStateView?.();
-    const ballZ = bv?.posZ ?? 0;
-    const ballSpeed = Math.hypot(bv?.velX ?? 0, bv?.velY ?? 0, bv?.velZ ?? 0);
-    const count = Number(btp.predictionCount ?? 0);
-    const sampler = (btp as { sampler?: Record<string, unknown> }).sampler;
-    const isCarHitReset = sampler?.lastUpdateKind === 'full-car-hit';
-    if (ballZ > 110 && ballSpeed > 100) {
-      if (this.prevObservedPredictionCount >= 20 && count > 0 && count <= 5 && !isCarHitReset) {
-        this.collapseToCatchupCount++;
-      }
-      if (count > this.maxObservedPredictionCount) {
-        this.maxObservedPredictionCount = count;
-      }
-      this.prevObservedPredictionCount = count;
-    }
   }
 
   private logLifecycle(message: string): void {
@@ -102,50 +86,38 @@ export class MultiplayerRoomReproAgent {
       role,
       this.cfg.rosterMode,
       this.elapsedMs(),
-      {
-        maxObservedPredictionCount: this.maxObservedPredictionCount,
-        collapseToCatchupCount: this.collapseToCatchupCount,
-      }
+      this.trajTracker.getWindowSnapshot()
     );
     this.poseProbes.push(probe);
     emitReproStreamEvent({ type: 'pose_probe', probe });
     return probe;
   }
 
-  private configureHeadlessPacing(): void {
-    const mutableRuntime = this.targetView as {
-      setupAudio?: () => Promise<void>;
-      setupBot?: () => Promise<void>;
-      renderSubsystem?: { update?: (ctx: { shouldSkipGpuRender?: boolean }) => void } | null;
-    };
-    mutableRuntime.setupAudio = async () => {};
-    mutableRuntime.setupBot = async () => {};
-    this.targetView.stop?.();
-    if (mutableRuntime.renderSubsystem) {
-      mutableRuntime.renderSubsystem.update = (ctx) => {
-        ctx.shouldSkipGpuRender = true;
-      };
-    }
+  private recordRosterVisibilityProbe(stage: string): ReproRosterVisibilityAndNameTagSnapshot {
+    const role = this.cfg.role ?? 'host';
+    const probe = sampleRosterVisibilityAndNameTags(
+      this.targetView,
+      stage,
+      role,
+      this.cfg.rosterMode,
+      this.elapsedMs()
+    );
+    this.rosterVisibilityProbes.push(probe);
+    emitReproStreamEvent({ type: 'roster_visibility_probe', probe });
+    return probe;
+  }
 
-    const extraSimTicks = 3;
-    let syntheticNow = performance.now();
-    this.speedTimerId = setInterval(() => {
-      for (let i = 0; i < extraSimTicks; i++) {
-        syntheticNow += 1000 / 120;
-        try {
-          this.targetView.pipeline?.executeSimulationOnly?.(syntheticNow);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-      syntheticNow += 1000 / 120;
-      try {
-        this.targetView.renderFrame?.(syntheticNow);
-        this.stepBallTrajectoryPredictorAndObserve();
-      } catch (err) {
-        console.error(err);
-      }
-    }, 33);
+  private recordLobbyProbeDiagnostics(): ReproLobbyProbeDiagnosticSnapshot {
+    const role = this.cfg.role ?? 'host';
+    const diag = sampleLobbyDiagnosticProbes(
+      this.targetView,
+      role,
+      this.cfg.rosterMode,
+      this.elapsedMs()
+    );
+    this.lobbyProbeDiagnostics = diag;
+    emitReproStreamEvent({ type: 'lobby_probe_diag', diag });
+    return diag;
   }
 
   public async run(): Promise<ReproRoleSummaryReport> {
@@ -156,7 +128,11 @@ export class MultiplayerRoomReproAgent {
       () => this.elapsedMs(),
       this.logState
     );
-    this.configureHeadlessPacing();
+    this.speedTimerId = startHeadlessReproPacingLoop(
+      this.targetView,
+      this.cfg.speedMultiplier,
+      () => this.trajTracker.stepAndObserve()
+    );
 
     try {
       if (this.cfg.role === 'host') {
@@ -205,6 +181,10 @@ export class MultiplayerRoomReproAgent {
       rawCrossTabJoinedBeforeBridge: this.rawCrossTabJoinedBeforeBridge,
       bridgedDataChannelOpened: this.logState.bridgedDataChannelOpened,
       handshakeDiagnostics,
+      lobbyProbeDiagnostics: this.lobbyProbeDiagnostics,
+      rosterVisibilityProbes: this.rosterVisibilityProbes,
+      hostTakeoverDiagnostics: this.hostTakeoverDiagnostics,
+      trajectoryDiagnostics: this.trajectoryDiagnostics,
       poseProbes: this.poseProbes,
       reconcilerSamples: this.logState.reconcilerSamples,
       starvationSamples: this.logState.starvationSamples,
@@ -224,10 +204,16 @@ export class MultiplayerRoomReproAgent {
 
     const bridgeChannel = new BroadcastChannel(`rc_repro_bridge_${this.cfg.roomCode}`);
     let pendingClientAnswerToken: string | null = null;
+    let clientJoinedSignalReceived = false;
+    let clientTrajectoryProbeDone = false;
     bridgeChannel.onmessage = (ev: MessageEvent) => {
       const data = ev.data as { type?: string; answerToken?: string } | null;
       if (data?.type === 'client_answer_ready' && typeof data.answerToken === 'string') {
         pendingClientAnswerToken = data.answerToken;
+      } else if (data?.type === 'client_joined_lobby') {
+        clientJoinedSignalReceived = true;
+      } else if (data?.type === 'client_trajectory_probe_done') {
+        clientTrajectoryProbeDone = true;
       }
     };
 
@@ -248,6 +234,7 @@ export class MultiplayerRoomReproAgent {
 
     this.recordPoseProbe('host_after_warmup_0ms');
     await sleepMs(1000);
+    this.recordLobbyProbeDiagnostics();
     this.recordPoseProbe('host_lobby_1500ms');
 
     if (typeof window !== 'undefined') {
@@ -259,7 +246,14 @@ export class MultiplayerRoomReproAgent {
     }
 
     for (let i = 0; i < 60; i++) {
-      if (pendingClientAnswerToken) break;
+      const diagNow = inspectChannelHandshakeDiagnostics(this.targetView, 'host');
+      if (
+        pendingClientAnswerToken ||
+        clientJoinedSignalReceived ||
+        diagNow.hostRegisteredClientPeers > 0
+      ) {
+        break;
+      }
       await sleepMs(250);
     }
     await sleepMs(500);
@@ -271,36 +265,16 @@ export class MultiplayerRoomReproAgent {
       `Pre-bridge Host channel state: hasOwnIsHost=${preBridgeDiag.hasOwnIsHostProperty}, isHost=${String(preBridgeDiag.channelIsHostValue)}, isCrossTab=${preBridgeDiag.isCrossTab}, peers=${preBridgeDiag.hostRegisteredClientPeers}`
     );
 
-    if (this.cfg.bridgeSignalingAfterProbe) {
-      const sigChan = this.targetView.multiplayerSession?.hostController?.channel as
-        | (ReproInspectableWebRtcChannel & {
-            handshake?: { handleRoomMessage?: (msg: unknown) => void };
-          })
-        | null
-        | undefined;
-      if (sigChan) {
-        if (pendingClientAnswerToken && sigChan.acceptAnswerToken) {
-          const applied = await sigChan.acceptAnswerToken(pendingClientAnswerToken);
-          this.logLifecycle(`Applied Client WebRTC answer token via bridge: applied=${applied}`);
-        }
-        sigChan.handshake?.handleRoomMessage?.({
-          type: 'cross_tab_join',
-          clientName: 'Player2727',
-          clientColorSlot: 5,
-          clientColorHex: '#ff7043',
-        });
-        await sleepMs(250);
-        const postBridgePeers =
-          this.targetView.multiplayerSession?.hostController?.getConnectedPeerList?.()?.length ?? 0;
-        this.logLifecycle(
-          `Post-bridge Host channel state: isCrossTab=${Boolean(sigChan.isCrossTab)}, registeredClientPeers=${postBridgePeers}`
-        );
-      }
+    if (this.cfg.bridgeSignalingAfterProbe && !this.rawCrossTabJoinedBeforeBridge) {
+      await applyHostCrossTabSignalingBridge(this.targetView, pendingClientAnswerToken, (msg) =>
+        this.logLifecycle(msg)
+      );
     }
 
     // Allow Client to receive Lobby state + diagnostic probes #6/#7 before starting match
     await sleepMs(1000);
     bridgeChannel.postMessage({ type: 'host_lobby_settled' });
+    this.recordRosterVisibilityProbe('host_lobby_with_client');
     await sleepMs(400);
 
     if (this.cfg.rosterMode !== '2p') {
@@ -313,6 +287,7 @@ export class MultiplayerRoomReproAgent {
 
     await sleepMs(350);
     this.recordPoseProbe('host_match_start_250ms');
+    this.recordRosterVisibilityProbe('host_match_start_250ms');
 
     // Wait for prepare + 480-tick (4.0s) kickoff countdown to transition to playing phase
     for (let i = 0; i < 40; i++) {
@@ -320,22 +295,40 @@ export class MultiplayerRoomReproAgent {
       await sleepMs(200);
     }
     await sleepMs(250);
+    this.recordRosterVisibilityProbe('host_match_running_1450ms');
 
-    const airborneBallState = {
-      pos: [0, 0, 950],
-      vel: [180, 720, 420],
-      angVel: [0, 0, 0],
-    };
-    this.targetView.networkManager?.sessionCoordinator?.authoritativeServer?.sim?.setBallState?.(
-      airborneBallState
-    );
-    (this.targetView.physics?.sim ?? this.targetView.physics)?.setBallState?.(airborneBallState);
-    this.resetTrajectoryWindow(true);
+    this.trajTracker.resetWindow(true);
     bridgeChannel.postMessage({ type: 'host_ball_launched_in_playing' });
+    this.trajectoryDiagnostics = await probeBallTrajectoryPredictorOnlineResets(
+      this.targetView,
+      'host',
+      this.cfg.rosterMode,
+      () => this.elapsedMs()
+    );
+    emitReproStreamEvent({ type: 'trajectory_diag', summary: this.trajectoryDiagnostics });
 
-    await sleepMs(1400);
+    await sleepMs(1000);
     this.recordPoseProbe('host_match_playing_trajectory');
-    this.resetTrajectoryWindow(false);
+    this.trajTracker.resetWindow(false);
+
+    for (let i = 0; i < 20; i++) {
+      if (clientTrajectoryProbeDone) break;
+      await sleepMs(100);
+    }
+
+    // Phenomenon B: Trigger Goal Replay Director session and observe Car 1..4 generic name overwrite
+    triggerGoalReplayNameTagCorruptionRepro(this.targetView);
+    this.recordRosterVisibilityProbe('host_after_goal_replay_director');
+
+    // Phenomenon A: Probe Host forced takeover in auto_fill modes vs 2p (1v1)
+    this.hostTakeoverDiagnostics = await probeHostTakeoverPhenomenon(
+      this.targetView,
+      this.cfg.rosterMode,
+      this.elapsedMs()
+    );
+    emitReproStreamEvent({ type: 'host_takeover_diag', diag: this.hostTakeoverDiagnostics });
+
+    bridgeChannel.postMessage({ type: 'host_probes_complete' });
     bridgeChannel.close();
   }
 
@@ -350,11 +343,13 @@ export class MultiplayerRoomReproAgent {
     let hostLobbySettled = false;
     let hostMatchStarted = false;
     let hostBallLaunched = false;
+    let hostProbesComplete = false;
     bridgeChannel.onmessage = (ev: MessageEvent) => {
       const data = ev.data as { type?: string } | null;
       if (data?.type === 'host_lobby_settled') hostLobbySettled = true;
       if (data?.type === 'host_match_started') hostMatchStarted = true;
       if (data?.type === 'host_ball_launched_in_playing') hostBallLaunched = true;
+      if (data?.type === 'host_probes_complete') hostProbesComplete = true;
     };
 
     void this.targetView.matchPort
@@ -368,24 +363,25 @@ export class MultiplayerRoomReproAgent {
     for (let i = 0; i < 30; i++) {
       const clientCtrl = this.targetView.multiplayerSession?.clientJoinNegotiator?.clientController;
       answerToken = clientCtrl?.channel?.answerToken || clientCtrl?.answerToken || '';
-      if (answerToken) break;
+      const isCrossTab = Boolean(clientCtrl?.channel?.isCrossTab);
+      if (answerToken || isCrossTab) break;
       await sleepMs(200);
     }
 
     this.logLifecycle(`Client answer generated: answerLen=${answerToken.length}`);
 
-    if (answerToken) {
-      bridgeChannel.postMessage({
-        type: 'client_answer_ready',
-        answerToken,
-      });
-    }
+    bridgeChannel.postMessage({
+      type: answerToken ? 'client_answer_ready' : 'client_joined_lobby',
+      answerToken,
+    });
 
     for (let i = 0; i < 20; i++) {
       if (hostLobbySettled) break;
       await sleepMs(200);
     }
     this.recordPoseProbe('client_lobby_connected');
+    this.recordLobbyProbeDiagnostics();
+    this.recordRosterVisibilityProbe('client_lobby_after_join');
 
     for (let i = 0; i < 20; i++) {
       if (hostMatchStarted) break;
@@ -393,6 +389,7 @@ export class MultiplayerRoomReproAgent {
     }
     await sleepMs(350);
     this.recordPoseProbe('client_match_countdown');
+    this.recordRosterVisibilityProbe('client_match_active_600ms');
 
     for (let i = 0; i < 60; i++) {
       const sim = this.targetView.physics?.sim ?? this.targetView.physics;
@@ -403,10 +400,24 @@ export class MultiplayerRoomReproAgent {
       await sleepMs(100);
     }
 
-    this.resetTrajectoryWindow(true);
-    await sleepMs(1400);
+    this.trajTracker.resetWindow(true);
+    this.trajectoryDiagnostics = await probeBallTrajectoryPredictorOnlineResets(
+      this.targetView,
+      'client',
+      this.cfg.rosterMode,
+      () => this.elapsedMs()
+    );
+    emitReproStreamEvent({ type: 'trajectory_diag', summary: this.trajectoryDiagnostics });
+    await sleepMs(1000);
     this.recordPoseProbe('client_match_playing_trajectory');
-    this.resetTrajectoryWindow(false);
+    this.trajTracker.resetWindow(false);
+    bridgeChannel.postMessage({ type: 'client_trajectory_probe_done' });
+
+    for (let i = 0; i < 20; i++) {
+      if (hostProbesComplete) break;
+      await sleepMs(150);
+    }
+    this.recordRosterVisibilityProbe('client_final_state');
     bridgeChannel.close();
   }
 }

@@ -53,7 +53,7 @@ export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
   const rawMode = params.get('reproMode');
   const rosterMode: ReproRosterMode =
     rawMode === '2p' ? '2p' : rawMode === '2p2ai' ? '2p2ai' : '3p3ai';
-  const defaultRoom = rosterMode === '2p' ? '4816' : rosterMode === '2p2ai' ? '5916' : '7216';
+  const defaultRoom = rosterMode === '2p' ? '4816' : rosterMode === '2p2ai' ? '8144' : '7216';
   const roomCode = (params.get('reproRoom') || defaultRoom).trim() || defaultRoom;
   const rawSpeed = Number(params.get('reproSpeed') || 1);
   const speedMultiplier =
@@ -360,6 +360,36 @@ export function inspectChannelHandshakeDiagnostics(
     reconcilerLobbyDualWorldMode: Boolean(targetView.networkReconciler?.lobbyDualWorldMode),
     hostRegisteredClientPeers: hostCtrl?.getConnectedPeerList?.()?.length ?? 0,
   };
+}
+
+export async function applyHostCrossTabSignalingBridge(
+  targetView: ReproProbeRuntimeView,
+  pendingClientAnswerToken: string | null,
+  logLifecycle: (msg: string) => void
+): Promise<void> {
+  const sigChan = targetView.multiplayerSession?.hostController?.channel as
+    | (ReproInspectableWebRtcChannel & {
+        handshake?: { handleRoomMessage?: (msg: unknown) => void };
+      })
+    | null
+    | undefined;
+  if (!sigChan) return;
+  if (pendingClientAnswerToken && sigChan.acceptAnswerToken) {
+    const applied = await sigChan.acceptAnswerToken(pendingClientAnswerToken);
+    logLifecycle(`Applied Client WebRTC answer token via bridge: applied=${applied}`);
+  }
+  sigChan.handshake?.handleRoomMessage?.({
+    type: 'cross_tab_join',
+    clientName: 'Player2727',
+    clientColorSlot: 5,
+    clientColorHex: '#ff7043',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const postBridgePeers =
+    targetView.multiplayerSession?.hostController?.getConnectedPeerList?.()?.length ?? 0;
+  logLifecycle(
+    `Post-bridge Host channel state: isCrossTab=${Boolean(sigChan.isCrossTab)}, registeredClientPeers=${postBridgePeers}`
+  );
 }
 
 export function emitReproStreamEvent(event: ReproStreamEvent): void {
