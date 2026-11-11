@@ -15,8 +15,7 @@
  */
 
 import { CarStateView, BallStateView } from '../../physics/RocketSimStateViews.ts';
-import { resolveActiveCars } from './experimentalMultiCarObsPipeline.ts';
-import type { CarControls } from './botpack9700488Actions.ts';
+import { resolveActiveCars, type CarControls } from './experimentalMultiCarObsPipeline.ts';
 import {
   ensureSharedBallPrediction,
   type ActiveCarSlot,

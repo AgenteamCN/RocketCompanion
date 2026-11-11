@@ -3,6 +3,7 @@
 
 pub mod bot_director;
 pub mod heuristic_and_kickoff;
+pub mod kickoff_ppo;
 pub mod layout_and_specs;
 pub mod safetensors_store;
 pub mod simd_math;

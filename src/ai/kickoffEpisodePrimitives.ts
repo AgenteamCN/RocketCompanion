@@ -1,14 +1,24 @@
 /**
  * kickoffEpisodePrimitives.ts
- * Spawn constants, MultiDiscrete action conversions, and CarJumpAirTimeTracker
- * for KickoffPPOAgent and KickoffTrainingMode.
+ * Spawn constants, MultiDiscrete action conversions, CarJumpAirTimeTracker,
+ * and WASM-backed Kickoff V1 (`ko_v1`) & V2 (`ko_v2`) agents.
  */
 
-import { KICKOFF_PPO_META, getKickoffPPOActorWeights } from './kickoffPPOWeights.ts';
 import { KICKOFF_SPAWNS } from '../ui-core/config/trainingDefaults.ts';
+import {
+  DEFAULT_CAR_CONTROLS,
+  type CarControls,
+} from './experimental/experimentalMultiCarObsPipeline.ts';
+import {
+  ensureExperimentalEngine,
+  syncBotWeightsToWasmModule,
+} from './experimental/ExperimentalBotAgent.ts';
+import type { ParsedSafeTensorsModel } from './experimental/botpackSharedBallPredPipeline.ts';
+import type { RocketSimWasmModule } from '../physics/core.d.ts';
 
-export const KICKOFF_SETTLE_TICKS: number = KICKOFF_PPO_META.settleTicks || 30;
-export const TICKS_PER_DECISION: number = KICKOFF_PPO_META.actionRepeat || 4;
+export const KICKOFF_SETTLE_TICKS = 30;
+export const KICKOFF_V1_SETTLE_TICKS = 60;
+export const TICKS_PER_DECISION = 4;
 export const OBS_V3_DIM = 75;
 export const CPP_SPAWN_INDEX_MAP: readonly number[] = [0, 2, 4, 3, 1];
 
@@ -43,11 +53,14 @@ export interface ResetKickoffSpawnOptions {
   recreateArena?: boolean;
 }
 
-export interface KickoffSpawnResettableEngine {
+export interface KickoffAgentSimPort {
+  module?: RocketSimWasmModule | null;
+  getCarStateView?: (carIndex?: number) => any;
+  getBallStateView?: () => any;
+}
+
+export interface KickoffSpawnResettableEngine extends KickoffAgentSimPort {
   numCars?: number;
-  module?: {
-    _physics_createArena?: () => number;
-  } | null;
   addCar?: (team: number, hitboxType?: string) => number;
   resetKickoffAtSpawn?: (cppSpawnIndex: number, settleTicks: number) => boolean | void;
   resetKickoff: (seed?: number) => void;
@@ -58,10 +71,40 @@ export interface KickoffSpawnResettableEngine {
   clearEvents: () => void;
 }
 
+export interface KickoffTimelineNoteBar {
+  key: string;
+  startTick: number;
+  endTick: number;
+  startStep: number;
+  endStep: number;
+}
+
+export interface KickoffTimelineStep {
+  step: number;
+  startTick: number;
+  endTick: number;
+  action: number[];
+  controls: CarControls;
+  keys: Record<string, boolean>;
+  keyStr: string;
+}
+
+export interface KickoffPrecomputedTimeline {
+  spawnIndex: number;
+  steps: KickoffTimelineStep[];
+  noteBars: KickoffTimelineNoteBar[];
+  touchTick: number;
+  touchStep: number;
+}
+
+export const preloadKickoffPPOWeights = (): Promise<ParsedSafeTensorsModel | null> =>
+  ensureExperimentalEngine('ko_v1');
+export const preloadKickoffV1BestWeights = (): Promise<ParsedSafeTensorsModel | null> =>
+  ensureExperimentalEngine('ko_v2');
+
 export function getSameSidePartnerSpawnIndex(spawnIndex: number): number | null {
   const idx = Math.max(0, Math.min(4, spawnIndex | 0));
-  if (idx === 2) return null;
-  return 4 - idx;
+  return idx === 2 ? null : 4 - idx;
 }
 
 const JUMP_MIN_TIME = 0.025;
@@ -69,20 +112,12 @@ const JUMP_RESET_TIME_PAD = 1.0 / 40.0;
 const JUMP_MAX_TIME = 0.2;
 const TICK_TIME = 1.0 / 120.0;
 
-export function getActorWeights(): ReturnType<typeof getKickoffPPOActorWeights> {
-  return getKickoffPPOActorWeights();
-}
-
 export class CarJumpAirTimeTracker {
   public isJumping = false;
   public hasJumped = false;
   public jumpTime = 0.0;
   public airTime = 0.0;
   public lastJumpControl = false;
-
-  constructor() {
-    this.reset();
-  }
 
   public reset(): void {
     this.isJumping = false;
@@ -93,16 +128,16 @@ export class CarJumpAirTimeTracker {
   }
 
   public stepTick(jumpControlBool: boolean, isOnGroundPostTick: boolean): void {
-    const jumpPressed = !!jumpControlBool && !this.lastJumpControl;
-    const isOnGround = !!isOnGroundPostTick;
-
-    if (isOnGround && !this.isJumping) {
-      if (!(this.hasJumped && this.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD)) {
-        this.hasJumped = false;
-        this.jumpTime = 0.0;
-      }
+    const jumpPressed = Boolean(jumpControlBool) && !this.lastJumpControl;
+    const isOnGround = Boolean(isOnGroundPostTick);
+    if (
+      isOnGround &&
+      !this.isJumping &&
+      !(this.hasJumped && this.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD)
+    ) {
+      this.hasJumped = false;
+      this.jumpTime = 0.0;
     }
-
     if (this.isJumping) {
       this.isJumping =
         this.jumpTime < JUMP_MIN_TIME ||
@@ -111,67 +146,43 @@ export class CarJumpAirTimeTracker {
       this.isJumping = true;
       this.jumpTime = 0.0;
     }
-
-    if (this.isJumping) {
-      this.hasJumped = true;
-    }
-
-    if (this.isJumping || this.hasJumped) {
-      this.jumpTime = Math.fround(this.jumpTime + TICK_TIME);
-    }
-
+    if (this.isJumping) this.hasJumped = true;
+    if (this.isJumping || this.hasJumped) this.jumpTime = Math.fround(this.jumpTime + TICK_TIME);
     this.airTime = isOnGround ? 0.0 : Math.fround(this.airTime + TICK_TIME);
-    this.lastJumpControl = !!jumpControlBool;
-  }
-
-  public update(isOnGroundPostTick: boolean, jumpControlBool: boolean): void {
-    this.stepTick(jumpControlBool, isOnGroundPostTick);
+    this.lastJumpControl = Boolean(jumpControlBool);
   }
 }
 
 export function makeKickoffRawCarState(
   sx: number,
   sy: number,
-  outArray: Float32Array = new Float32Array(40)
+  out = new Float32Array(40)
 ): Float32Array {
-  outArray.fill(0);
-  outArray[0] = sx;
-  outArray[1] = sy;
-  outArray[2] = 17.0;
-
+  out.fill(0);
+  out[0] = sx;
+  out[1] = sy;
+  out[2] = 17.0;
   if (Math.abs(sx) < 500.0) {
-    outArray[3] = 0.0;
-    outArray[4] = 1.0;
-    outArray[5] = 0.0;
-    outArray[6] = -1.0;
-    outArray[7] = 0.0;
-    outArray[8] = 0.0;
-    outArray[9] = 0.0;
-    outArray[10] = 0.0;
-    outArray[11] = 1.0;
+    out[4] = 1.0;
+    out[6] = -1.0;
   } else {
     const s2 = Math.fround(Math.SQRT1_2);
     const sgn = sx > 0 ? -1.0 : 1.0;
-    outArray[3] = sgn * s2;
-    outArray[4] = s2;
-    outArray[5] = 0.0;
-    outArray[6] = -s2;
-    outArray[7] = sgn * s2;
-    outArray[8] = 0.0;
-    outArray[9] = 0.0;
-    outArray[10] = 0.0;
-    outArray[11] = 1.0;
+    out[3] = sgn * s2;
+    out[4] = s2;
+    out[6] = -s2;
+    out[7] = sgn * s2;
   }
-
-  outArray[18] = Math.fround(100.0 / 3.0);
-  outArray[19] = 1.0;
-  outArray[22] = 1.0;
-  return outArray;
+  out[11] = 1.0;
+  out[18] = Math.fround(100.0 / 3.0);
+  out[19] = 1.0;
+  out[22] = 1.0;
+  return out;
 }
 
 export function resetEngineToKickoffSpawn(
   simTarget: KickoffSpawnResettableEngine,
-  spawnIndex: number = 0,
+  spawnIndex = 0,
   options: ResetKickoffSpawnOptions = {}
 ): void {
   const {
@@ -180,14 +191,12 @@ export function resetEngineToKickoffSpawn(
     hitboxType = 'default',
     recreateArena = false,
   } = options;
-
   const spawn = KICKOFF_SPAWNS[spawnIndex] || KICKOFF_SPAWNS[0];
   const cppSpawnIdx = CPP_SPAWN_INDEX_MAP[spawnIndex] ?? 0;
 
   if (!recreateArena && typeof simTarget.resetKickoffAtSpawn === 'function') {
-    if ((simTarget.numCars ?? 0) === 0 && typeof simTarget.addCar === 'function') {
+    if ((simTarget.numCars ?? 0) === 0 && typeof simTarget.addCar === 'function')
       simTarget.addCar(0, hitboxType);
-    }
     simTarget.resetKickoffAtSpawn(cppSpawnIdx, 0);
     const pre0 = new Float32Array(simTarget.getCarState(carIndex));
     if (settleTicks > 0) {
@@ -203,30 +212,10 @@ export function resetEngineToKickoffSpawn(
     return;
   }
 
-  if (
-    recreateArena &&
-    simTarget.module &&
-    typeof simTarget.module._physics_createArena === 'function'
-  ) {
-    simTarget.module._physics_createArena();
-    simTarget.clearEvents();
-    simTarget.addCar?.(0, hitboxType);
-  }
-
   simTarget.resetKickoff(-1);
   const preState = makeKickoffRawCarState(spawn.x, spawn.y);
   simTarget.setCarState(carIndex, preState);
-  simTarget.setControls(carIndex, {
-    throttle: 0,
-    steer: 0,
-    pitch: 0,
-    yaw: 0,
-    roll: 0,
-    jump: false,
-    boost: false,
-    handbrake: false,
-  });
-
+  simTarget.setControls(carIndex, { ...DEFAULT_CAR_CONTROLS });
   if (settleTicks > 0) {
     simTarget.stepSilent(settleTicks);
     const settled = new Float32Array(simTarget.getCarState(carIndex));
@@ -240,15 +229,15 @@ export function resetEngineToKickoffSpawn(
 }
 
 export function multiDiscreteToControls(act: ArrayLike<number>): KickoffCarControls {
-  const thrVal = (act[0] | 0) - 1;
-  const strVal = (act[1] | 0) - 1;
-  const rolVal = (act[2] | 0) - 1;
+  const thr = (act[0] | 0) - 1;
+  const str = (act[1] | 0) - 1;
+  const rol = (act[2] | 0) - 1;
   return {
-    throttle: thrVal,
-    pitch: -thrVal,
-    steer: strVal,
-    yaw: strVal,
-    roll: rolVal,
+    throttle: thr,
+    pitch: -thr,
+    steer: str,
+    yaw: str,
+    roll: rol,
     jump: act[3] === 1,
     boost: act[4] === 1,
     handbrake: act[5] === 1,
@@ -256,32 +245,20 @@ export function multiDiscreteToControls(act: ArrayLike<number>): KickoffCarContr
 }
 
 export function controlsToMultiDiscrete(
-  controls: Partial<KickoffCarControls> | null | undefined
+  c: Partial<KickoffCarControls> | null | undefined
 ): [number, number, number, number, number, number] {
-  const thr = Number(controls?.throttle || 0);
-  const ptc = Number(controls?.pitch || 0);
-  let ch0 = 1;
-  if (thr > 0.3 || ptc < -0.3) ch0 = 2;
-  else if (thr < -0.3 || ptc > 0.3) ch0 = 0;
-
-  const st = Number(controls?.steer || 0);
-  const yw = Number(controls?.yaw || 0);
-  let ch1 = 1;
-  if (st > 0.3 || yw > 0.3) ch1 = 2;
-  else if (st < -0.3 || yw < -0.3) ch1 = 0;
-
-  const rl = Number(controls?.roll || 0);
-  let ch2 = 1;
-  if (rl > 0.3) ch2 = 2;
-  else if (rl < -0.3) ch2 = 0;
-
+  const thr = Number(c?.throttle || 0),
+    ptc = Number(c?.pitch || 0);
+  const st = Number(c?.steer || 0),
+    yw = Number(c?.yaw || 0),
+    rl = Number(c?.roll || 0);
   return [
-    ch0,
-    ch1,
-    ch2,
-    controls?.jump ? 1 : 0,
-    controls?.boost ? 1 : 0,
-    controls?.handbrake ? 1 : 0,
+    thr > 0.3 || ptc < -0.3 ? 2 : thr < -0.3 || ptc > 0.3 ? 0 : 1,
+    st > 0.3 || yw > 0.3 ? 2 : st < -0.3 || yw < -0.3 ? 0 : 1,
+    rl > 0.3 ? 2 : rl < -0.3 ? 0 : 1,
+    c?.jump ? 1 : 0,
+    c?.boost ? 1 : 0,
+    c?.handbrake ? 1 : 0,
   ];
 }
 
@@ -313,36 +290,35 @@ export function multiDiscreteToKeyString(act: ArrayLike<number>): string {
   return keys.length > 0 ? keys.join(' + ') : 'None (Coast)';
 }
 
+export function formatDiscreteActionKeys(
+  act?: ArrayLike<number> | null,
+  ctrl?: Partial<CarControls> | null
+): string {
+  const r = act && act.length >= 5 ? act : ctrl ? controlsToMultiDiscrete(ctrl) : null;
+  if (!r) return 'Coast';
+  const keys: string[] = [];
+  if (r[0] === 2) keys.push('W');
+  else if (r[0] === 0) keys.push('S');
+  if (r[1] === 0) keys.push('A');
+  else if (r[1] === 2) keys.push('D');
+  if (r[2] === 0) keys.push('Q');
+  else if (r[2] === 2) keys.push('E');
+  if (r[3] === 1) keys.push('Jump');
+  if (r[4] === 1) keys.push('Boost');
+  if (r[5] === 1) keys.push('Drift');
+  return keys.length > 0 ? keys.join('+') : 'Coast';
+}
+
 export function areMultiDiscreteActionsEqual(
-  a: ArrayLike<number> | null | undefined,
-  b: ArrayLike<number> | null | undefined
+  a?: ArrayLike<number> | null,
+  b?: ArrayLike<number> | null
 ): boolean {
   if (!a || !b || a.length !== 6 || b.length !== 6) return false;
-  for (let i = 0; i < 6; i++) {
-    if (a[i] !== b[i]) return false;
-  }
+  for (let i = 0; i < 6; i++) if (a[i] !== b[i]) return false;
   return true;
 }
 
-export interface KickoffTimelineNoteBar {
-  key: string;
-  startTick: number;
-  endTick: number;
-  startStep: number;
-  endStep: number;
-}
-
-const KICKOFF_TIMELINE_LANE_KEYS = [
-  'Shift',
-  'Q',
-  'A',
-  'W',
-  'S',
-  'D',
-  'E',
-  'Boost',
-  'Jump',
-] as const;
+const LANE_KEYS = ['Shift', 'Q', 'A', 'W', 'S', 'D', 'E', 'Boost', 'Jump'] as const;
 
 export function buildKickoffTimelineNoteBars(
   steps: ReadonlyArray<{
@@ -353,7 +329,7 @@ export function buildKickoffTimelineNoteBars(
   }>
 ): KickoffTimelineNoteBar[] {
   const noteBars: KickoffTimelineNoteBar[] = [];
-  for (const lane of KICKOFF_TIMELINE_LANE_KEYS) {
+  for (const lane of LANE_KEYS) {
     let activeBar: KickoffTimelineNoteBar | null = null;
     for (const s of steps) {
       if (s.keys[lane]) {
@@ -374,9 +350,225 @@ export function buildKickoffTimelineNoteBars(
         activeBar = null;
       }
     }
-    if (activeBar) {
-      noteBars.push(activeBar);
-    }
+    if (activeBar) noteBars.push(activeBar);
   }
   return noteBars;
+}
+
+function stepWasmKickoffSlot(
+  sim: KickoffAgentSimPort,
+  policyId: 3 | 4,
+  carIndex: number,
+  isOrange: boolean,
+  outAct: number[]
+): KickoffCarControls {
+  const mod = sim.module;
+  const modelKey = policyId === 3 ? 'ko_v1' : 'ko_v2';
+  if (mod && syncBotWeightsToWasmModule(mod, modelKey)) {
+    mod._physics_configureBotSlot(carIndex, policyId, isOrange ? 1 : 0, 1);
+    mod._physics_stepBotInferenceMask(1 << carIndex, 0);
+    const outPtr = mod._physics_getBotBatchOutputPtr();
+    if (outPtr) {
+      const packed = mod.HEAP32[(outPtr >> 2) + 68 + carIndex * 8 + 5];
+      if (packed >= 0) {
+        outAct[0] = packed & 3;
+        outAct[1] = (packed >> 2) & 3;
+        outAct[2] = (packed >> 4) & 3;
+        outAct[3] = (packed >> 6) & 1;
+        outAct[4] = (packed >> 7) & 1;
+        outAct[5] = (packed >> 8) & 1;
+        return multiDiscreteToControls(outAct);
+      }
+    }
+  }
+  return { ...DEFAULT_CAR_CONTROLS };
+}
+
+function readWasmPrecomputedTimeline(
+  sim: KickoffAgentSimPort,
+  policyId: 3 | 4,
+  spawnIndex: number,
+  maxSteps: number
+): KickoffPrecomputedTimeline | null {
+  const mod = sim.module;
+  const modelKey = policyId === 3 ? 'ko_v1' : 'ko_v2';
+  if (!mod?._physics_precomputeBotKickoffTimeline || !syncBotWeightsToWasmModule(mod, modelKey))
+    return null;
+  const stepCount = mod._physics_precomputeBotKickoffTimeline(policyId, spawnIndex, maxSteps);
+  const tlPtr = mod._physics_getBotKickoffTimelinePtr?.() ?? 0;
+  if (stepCount <= 0 || !tlPtr) return null;
+  const u32 = mod.HEAPU32,
+    u8 = mod.HEAPU8;
+  const hdrWord = tlPtr >> 2;
+  const steps: KickoffTimelineStep[] = [];
+  for (let i = 0; i < stepCount; i++) {
+    const byteOff = tlPtr + 16 + i * 52,
+      wOff = byteOff >> 2;
+    const action = [
+      u8[byteOff + 12],
+      u8[byteOff + 13],
+      u8[byteOff + 14],
+      u8[byteOff + 15],
+      u8[byteOff + 16],
+      u8[byteOff + 17],
+    ];
+    steps.push({
+      step: u32[wOff],
+      startTick: u32[wOff + 1],
+      endTick: u32[wOff + 2],
+      action,
+      controls: multiDiscreteToControls(action),
+      keys: multiDiscreteToOverlayKeys(action),
+      keyStr: multiDiscreteToKeyString(action),
+    });
+  }
+  return {
+    spawnIndex,
+    steps,
+    noteBars: buildKickoffTimelineNoteBars(steps),
+    touchTick: u32[hdrWord + 2],
+    touchStep: u32[hdrWord + 3],
+  };
+}
+
+export class KickoffV2SafeTensorsAgent {
+  public prevActionVec = new Float32Array(6);
+  public act: number[] = [1, 1, 1, 0, 0, 0];
+  public channelMode: string;
+
+  constructor(options: { channelMode?: string } = {}) {
+    this.channelMode = options.channelMode || 'keyboard_coupled';
+  }
+
+  public reset(): void {
+    this.prevActionVec.fill(0);
+    this.act = [1, 1, 1, 0, 0, 0];
+  }
+
+  public resetTracker(): void {
+    this.reset();
+  }
+
+  public actDeterministic(
+    sim: KickoffAgentSimPort,
+    carIndex = 0,
+    isOrange = false
+  ): KickoffCarControls {
+    return stepWasmKickoffSlot(sim, 4, carIndex, isOrange, this.act);
+  }
+
+  public sanitizeAndRecordTickControls(
+    sim: KickoffAgentSimPort,
+    carIndex: number,
+    rawCtrl: KickoffCarControls
+  ): KickoffCarControls {
+    const cs = sim.getCarStateView?.(carIndex),
+      bs = sim.getBallStateView?.();
+    const ctrl = { ...rawCtrl };
+    if (cs && !cs.isOnGround) {
+      ctrl.handbrake = false;
+      if (this.channelMode === 'ground_air_separated') ctrl.throttle = 0;
+    }
+    if (cs?.isFlipping && ctrl.boost && bs) {
+      const dx = bs.posX - cs.posX,
+        dy = bs.posY - cs.posY,
+        dz = bs.posZ - cs.posZ;
+      if ((dx * cs.fwdX + dy * cs.fwdY + dz * cs.fwdZ) / (Math.hypot(dx, dy, dz) + 1e-6) < 0.25)
+        ctrl.boost = false;
+    }
+    const g = Boolean(cs?.isOnGround);
+    this.prevActionVec[0] = g ? rawCtrl.throttle : -rawCtrl.pitch;
+    this.prevActionVec[1] = g ? rawCtrl.steer : rawCtrl.yaw;
+    this.prevActionVec[2] = g ? 0.0 : ctrl.roll;
+    this.prevActionVec[3] = ctrl.jump ? 1.0 : 0.0;
+    this.prevActionVec[4] = ctrl.boost ? 1.0 : 0.0;
+    this.prevActionVec[5] = g && ctrl.handbrake ? 1.0 : 0.0;
+    return ctrl;
+  }
+
+  public precomputeTimeline(
+    ghostEngine: KickoffSpawnResettableEngine,
+    spawnIndex = 0,
+    maxSteps = 95
+  ): KickoffPrecomputedTimeline {
+    const wasmTl = readWasmPrecomputedTimeline(ghostEngine, 4, spawnIndex, maxSteps);
+    if (wasmTl) return wasmTl;
+    resetEngineToKickoffSpawn(ghostEngine, spawnIndex, {
+      settleTicks: KICKOFF_V1_SETTLE_TICKS,
+      recreateArena: false,
+    });
+    return {
+      spawnIndex,
+      steps: [],
+      noteBars: [],
+      touchTick: maxSteps * TICKS_PER_DECISION,
+      touchStep: maxSteps,
+    };
+  }
+}
+
+export class KickoffPPOAgent {
+  public obsBuffer = new Float32Array(OBS_V3_DIM);
+  public tracker = new CarJumpAirTimeTracker();
+  private _lastAct: number[] = [1, 1, 1, 0, 0, 0];
+
+  public resetTracker(): void {
+    this.tracker.reset();
+    this._lastAct = [1, 1, 1, 0, 0, 0];
+  }
+
+  public buildObsV3(
+    engine: KickoffAgentSimPort,
+    carIndex = 0,
+    outObs = this.obsBuffer,
+    teamSign = 1
+  ): Float32Array {
+    stepWasmKickoffSlot(engine, 3, carIndex, teamSign < 0, this._lastAct);
+    return outObs;
+  }
+
+  public actDeterministic(_obs?: Float32Array): number[] {
+    return [...this._lastAct];
+  }
+
+  public precomputeTimeline(
+    ghostEngine: KickoffSpawnResettableEngine,
+    spawnIndex = 0,
+    maxSteps = 95
+  ): KickoffPrecomputedTimeline {
+    const wasmTl = readWasmPrecomputedTimeline(ghostEngine, 3, spawnIndex, maxSteps);
+    if (wasmTl) return wasmTl;
+    resetEngineToKickoffSpawn(ghostEngine, spawnIndex, {
+      settleTicks: KICKOFF_SETTLE_TICKS,
+      recreateArena: false,
+    });
+    return {
+      spawnIndex,
+      steps: [],
+      noteBars: [],
+      touchTick: maxSteps * TICKS_PER_DECISION,
+      touchStep: maxSteps,
+    };
+  }
+}
+
+export function classifyBallOutcome(
+  ballX: number,
+  ballY: number,
+  ballVx: number,
+  ballVy: number
+): string {
+  if (ballY >= 5100) return 'ORANGE GOAL (+Y)';
+  if (ballY <= -5100) return 'BLUE GOAL (-Y)';
+  if (Math.hypot(ballVx, ballVy) < 40 && Math.abs(ballY) < 80) {
+    return Math.abs(ballX) > 150
+      ? ballX > 0
+        ? 'Side Pinch (+X)'
+        : 'Side Pinch (-X)'
+      : 'Dead-Ball Neutral (0,0)';
+  }
+  if (ballVy > 180 || ballY > 120) return 'Toward Orange (+Y)';
+  if (ballVy < -180 || ballY < -120) return 'Toward Blue (-Y)';
+  if (Math.abs(ballVx) > 200) return ballVx > 0 ? 'Lateral Right (+X)' : 'Lateral Left (-X)';
+  return 'Midfield Neutral';
 }

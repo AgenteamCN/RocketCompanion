@@ -13,7 +13,7 @@
  * - Final state_norm -> Linear(dim -> 276, bias=False) -> optional X-mirror logit permutation via invert_map
  */
 
-import type { RippleBotpackSpec } from './botpack9700488Specs.ts';
+import type { RippleBotpackSpec } from './botpackSharedBallPredPipeline.ts';
 import type { RippleObservationTensors } from './RippleObsBuilder.ts';
 import type { SafeTensorsMap } from './SequentialMlpEngine.ts';
 import { simdMatVecBias } from './wasmSimdMatVec.ts';

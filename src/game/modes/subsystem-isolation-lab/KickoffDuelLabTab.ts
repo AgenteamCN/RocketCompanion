@@ -2,7 +2,7 @@ import { DEFAULT_CAR_CONTROLS } from '../../../ai/experimental/experimentalMulti
 import type { BallStateView, CarStateView } from '../../../physics/RocketSimStateViews.ts';
 import { useSubsystemIsolationLabStore } from '../../runtimeUiPort.ts';
 import type { LabTabContext, LabTabController } from './LabTabTypes.ts';
-import { classifyBallOutcome } from '../../../ai/KickoffV2SafeTensorsAgent.ts';
+import { classifyBallOutcome } from '../../../ai/kickoffEpisodePrimitives.ts';
 import { KICKOFF_DUEL_PAIRINGS } from '../../../ui-core/config/kickoffDuelConfig.ts';
 import {
   type KickoffDuelAgentEnsemble,

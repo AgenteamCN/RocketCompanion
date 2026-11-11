@@ -8,7 +8,7 @@
  */
 
 import { simdMatVecBias } from './wasmSimdMatVec.ts';
-import type { SafeTensorEntry } from './SafeTensorsLoader.ts';
+import type { SafeTensorEntry } from './botpackSharedBallPredPipeline.ts';
 
 const MAX_ENTITIES = 64;
 const EMBED_DIM = 128;

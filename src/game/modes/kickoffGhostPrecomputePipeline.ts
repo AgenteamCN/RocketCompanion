@@ -11,6 +11,8 @@ import { RocketSimPhysicsEngine } from '../../physics/RocketSimPhysicsEngine.ts'
 import { KICKOFF_SPAWNS } from '../../ui-core/config/trainingDefaults.ts';
 import {
   CPP_SPAWN_INDEX_MAP,
+  KICKOFF_V1_SETTLE_TICKS,
+  KickoffV2SafeTensorsAgent,
   getSameSidePartnerSpawnIndex,
   makeKickoffRawCarState,
   controlsToMultiDiscrete,
@@ -18,10 +20,6 @@ import {
   multiDiscreteToKeyString,
   areMultiDiscreteActionsEqual,
 } from '../../ai/kickoffEpisodePrimitives.ts';
-import {
-  KickoffV2SafeTensorsAgent,
-  KICKOFF_V1_SETTLE_TICKS,
-} from '../../ai/KickoffV2SafeTensorsAgent.ts';
 
 export type KickoffGhostPlacement = 'same' | 'opposite';
 

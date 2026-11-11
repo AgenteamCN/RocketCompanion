@@ -6,7 +6,7 @@
  * Supports arbitrary layer widths up to MAX_HIDDEN_DIM (1536) and action heads up to 380.
  */
 
-import type { MlpBotpackSpec } from './botpack9700488Specs.ts';
+import type { MlpBotpackSpec } from './botpackSharedBallPredPipeline.ts';
 import { simdMatVecBias } from './wasmSimdMatVec.ts';
 
 export interface SafeTensorEntry {

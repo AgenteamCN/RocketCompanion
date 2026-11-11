@@ -8,8 +8,11 @@
  */
 
 import { ArenaHeaderView, CarStateView, BallStateView } from '../../physics/RocketSimStateViews.ts';
-import { DEFAULT_CAR_CONTROLS, resolveActiveCars } from './experimentalMultiCarObsPipeline.ts';
-import type { CarControls } from './botpack9700488Actions.ts';
+import {
+  DEFAULT_CAR_CONTROLS,
+  resolveActiveCars,
+  type CarControls,
+} from './experimentalMultiCarObsPipeline.ts';
 import type { ActiveCarSlot } from './botpackSharedBallPredPipeline.ts';
 
 const sHeaderView = new ArenaHeaderView();

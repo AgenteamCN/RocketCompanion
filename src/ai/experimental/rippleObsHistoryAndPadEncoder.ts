@@ -9,10 +9,14 @@ import {
   DEFAULT_CAR_CONTROLS,
   encodeCarControls,
   decodeCarControls,
+  type CarControls,
 } from './experimentalMultiCarObsPipeline.ts';
-import { RIPPLE_276_ACTIONS, type CarControls } from './botpack9700488Actions.ts';
-import { CANONICAL_BOOST_LOCATIONS, CANONICAL_TO_WASM_PAD_INDEX } from './botpack9700488Specs.ts';
-import type { ActiveCarSlot } from './botpackSharedBallPredPipeline.ts';
+import {
+  RIPPLE_276_ACTIONS,
+  CANONICAL_BOOST_LOCATIONS,
+  CANONICAL_TO_WASM_PAD_INDEX,
+  type ActiveCarSlot,
+} from './botpackSharedBallPredPipeline.ts';
 
 export const TICK_SKIP = 4;
 export const TICKS_PER_SECOND = 120;

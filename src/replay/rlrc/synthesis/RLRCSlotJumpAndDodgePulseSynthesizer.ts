@@ -272,8 +272,7 @@ export function synthesizeSlotJumpAndDodgePulses120Hz(
       const meanOmg = cnt > 0 ? sumOmg / cnt : kin.flipOmegaMag;
       const prvVz = prv?.entityActive ? prv.rigidBody.linearVelocity.z : 0;
       const vzDamp =
-        Math.abs(prvVz) > 130 &&
-        Math.abs(cur.rigidBody.linearVelocity.z) < Math.abs(prvVz) * 0.82;
+        Math.abs(prvVz) > 130 && Math.abs(cur.rigidBody.linearVelocity.z) < Math.abs(prvVz) * 0.82;
 
       if (
         kin.angAccelMag > 18.0 &&

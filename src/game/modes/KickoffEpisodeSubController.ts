@@ -1,5 +1,5 @@
 import type { RocketSimPhysicsEngine } from '../../physics/RocketSimPhysicsEngine.ts';
-import { preloadKickoffV1BestWeights } from '../../ai/KickoffV2SafeTensorsAgent.ts';
+import { preloadKickoffV1BestWeights } from '../../ai/kickoffEpisodePrimitives.ts';
 import {
   createIsolatedKickoffGhostSim,
   precomputeKickoffGhostTimeline,

@@ -15,7 +15,7 @@ import {
   BOOST_COLLECT_FILE,
 } from '../ui-core/config/audioConstants.ts';
 import { getAllVehicleDescriptors } from '../ui-core/config/vehicleTunerConfig.ts';
-import { EXPERIMENTAL_MODEL_URLS } from '../ai/experimental/SafeTensorsLoader.ts';
+import { EXPERIMENTAL_MODEL_URLS } from '../ai/experimental/botpackSharedBallPredPipeline.ts';
 import { GROUND_REACHABILITY_LUT_URL } from '../entities/reachability/groundReachabilityLut.ts';
 import {
   DRIFTWOODS_GLB_URL,
