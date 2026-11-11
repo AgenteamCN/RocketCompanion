@@ -59,6 +59,8 @@ export interface BotTunnelEncodedPacket {
   packetBytes: Uint8Array;
 }
 
+export const MAX_BOT_STEP_TICKS = 24;
+
 class BotAgentRuntimeRecord {
   readonly agent: ExperimentalBotAgent;
   kickoffStep = 0;
@@ -88,15 +90,17 @@ class BotAgentRuntimeRecord {
     isPrimaryKickoffCar: boolean,
     pads: readonly BoostPadCoordSpec[],
     activeCars: ActiveCarTopologyEntry[],
-    redundantTicks: number
+    redundantTicks: number,
+    allowHeavyInference = true
   ): {
     targetTick: number;
     history: Array<{ tick: number; carIndex: number; controls: CarControlsInput }>;
+    ranHeavyInference: boolean;
   } {
     if (
       matchState !== 'playing' ||
-      this.maxCommittedTick < serverTick - 16 ||
-      this.maxCommittedTick > serverTick + 16
+      this.maxCommittedTick < serverTick - MAX_BOT_STEP_TICKS ||
+      this.maxCommittedTick > serverTick + MAX_BOT_STEP_TICKS
     ) {
       this.maxCommittedTick = serverTick - 1;
       this.committedControls.clear();
@@ -104,11 +108,12 @@ class BotAgentRuntimeRecord {
 
     const deltaTicks =
       this.lastServerTick >= 0 && serverTick > this.lastServerTick
-        ? Math.min(16, serverTick - this.lastServerTick)
+        ? Math.min(MAX_BOT_STEP_TICKS, serverTick - this.lastServerTick)
         : 1;
     this.lastServerTick = serverTick;
 
     let ctrl: CarControlsInput = DEFAULT_CAR_CONTROLS;
+    let ranHeavyInference = false;
     const baseKickoffStep = this.kickoffStep;
 
     if (matchState !== 'playing') {
@@ -122,24 +127,33 @@ class BotAgentRuntimeRecord {
       if (ko) {
         ctrl = ko as CarControlsInput;
         this.agent.overrideControls(ko);
-      } else if (this.agent.tickSkipCounter <= 0) {
-        ctrl = this.agent.decideSync(
-          stateSnapshot,
-          pads as BoostPadCoordSpec[],
-          activeCars
-        ) as CarControlsInput;
-        this.agent.tickSkipCounter = this.staggered
-          ? Math.max(0, this.agent.tickSkip - deltaTicks)
-          : (carIndex % this.agent.tickSkip) + 1;
-        this.staggered = true;
       } else {
-        this.agent.tickSkipCounter = Math.max(0, this.agent.tickSkipCounter - deltaTicks);
-        ctrl = this.agent.action as CarControlsInput;
+        if (!this.staggered) {
+          this.staggered = true;
+          this.agent.tickSkipCounter = (carIndex * 2) % this.agent.tickSkip;
+        } else {
+          this.agent.tickSkipCounter = Math.max(0, this.agent.tickSkipCounter - deltaTicks);
+        }
+
+        if (this.agent.tickSkipCounter <= 0 && allowHeavyInference) {
+          ctrl = this.agent.decideSync(
+            stateSnapshot,
+            pads as BoostPadCoordSpec[],
+            activeCars
+          ) as CarControlsInput;
+          this.agent.tickSkipCounter = this.agent.tickSkip;
+          ranHeavyInference = this.agent.botType !== 'heuristic';
+        } else {
+          ctrl = this.agent.action as CarControlsInput;
+        }
       }
       this.kickoffStep += deltaTicks;
     }
 
-    const horizonTicks = Math.max(2, Math.min(8, Number(redundantTicks) || 6));
+    const horizonTicks = Math.max(
+      2,
+      Math.min(MAX_BOT_STEP_TICKS, Math.max(16, Number(redundantTicks) || 16))
+    );
     const targetTick = serverTick + horizonTicks;
     const startCommitTick = Math.max(serverTick, this.maxCommittedTick + 1);
     for (let t = startCommitTick; t <= targetTick; t++) {
@@ -175,7 +189,7 @@ class BotAgentRuntimeRecord {
       });
     }
 
-    return { targetTick, history };
+    return { targetTick, history, ranHeavyInference };
   }
 }
 
@@ -245,7 +259,7 @@ export function stepBotInferenceBatch(
     bots = [],
     activeCars = [],
     pads = null,
-    redundantTicks = 6,
+    redundantTicks = 12,
     nowMs = Date.now(),
   } = payload;
 
@@ -288,6 +302,7 @@ export function stepBotInferenceBatch(
   }
 
   const packets: BotTunnelEncodedPacket[] = [];
+  let heavyInferencesThisBatch = 0;
   for (let i = 0; i < bots.length; i++) {
     const bot = bots[i];
     const sid = bot.sessionId;
@@ -304,7 +319,7 @@ export function stepBotInferenceBatch(
     }
 
     const isPrimaryKickoffCar = closestCarPerTeam[team] === carIndex;
-    const { targetTick, history } = record.stepSessionHistory(
+    const { targetTick, history, ranHeavyInference } = record.stepSessionHistory(
       stateSnapshot,
       serverTick,
       matchState,
@@ -312,8 +327,12 @@ export function stepBotInferenceBatch(
       isPrimaryKickoffCar,
       cachedPads,
       activeCars,
-      redundantTicks
+      redundantTicks,
+      heavyInferencesThisBatch < 1
     );
+    if (ranHeavyInference) {
+      heavyInferencesThisBatch++;
+    }
 
     const packetBytes = InputPacketCodec.encode(
       carIndex,
