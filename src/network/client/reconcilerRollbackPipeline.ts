@@ -111,9 +111,8 @@ export function executeSyncTimelineStep(
   const savedLobby = saveClientLobbyLocalEntities(sim, input.lobbyDualWorldMode);
   if (serverSnapshot) sim.restoreState(serverSnapshot);
   if (
-    input.lobbyDualWorldMode ||
-    (typeof sim?.isCarSlotActive === 'function' &&
-      (sim.isCarSlotActive(6) || sim.isCarSlotActive(7)))
+    typeof sim?.isCarSlotActive === 'function' &&
+    (sim.isCarSlotActive(6) || sim.isCarSlotActive(7))
   ) {
     configureClientLobbyDiagnosticProbes(sim);
   }
@@ -248,9 +247,8 @@ export function executeReplayAndEvaluateCorrection(
   sim.restoreState(packet.stateSnapshot);
   if (slotFullState) preserveCarTransientTimersAcrossCompactRestore(sim, slotFullState, numCars);
   if (
-    lobbyDualWorldMode ||
-    (typeof sim?.isCarSlotActive === 'function' &&
-      (sim.isCarSlotActive(6) || sim.isCarSlotActive(7)))
+    typeof sim?.isCarSlotActive === 'function' &&
+    (sim.isCarSlotActive(6) || sim.isCarSlotActive(7))
   ) {
     configureClientLobbyDiagnosticProbes(sim);
   }

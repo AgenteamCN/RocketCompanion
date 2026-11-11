@@ -396,9 +396,10 @@ async function main() {
     }
 
     if (c) {
-      console.log(
-        `  [Client] enteredMatch=${c.enteredMatch} (stuck at mode=${c.finalMatchMode}, phase=${c.finalMatchPhase})`
-      );
+      const clientStateLabel = c.enteredMatch
+        ? `mode=${c.finalMatchMode}, phase=${c.finalMatchPhase}`
+        : `stuck at mode=${c.finalMatchMode}, phase=${c.finalMatchPhase}`;
+      console.log(`  [Client] enteredMatch=${c.enteredMatch} (${clientStateLabel})`);
       console.log(
         `  [Client] readonlyRttTypeErrorCount=${c.readonlyRttTypeErrorCount} | measuredRttGetterOnly=${c.handshakeDiagnostics.measuredRttGetterOnly} | isCrossTab=${c.handshakeDiagnostics.isCrossTab}`
       );

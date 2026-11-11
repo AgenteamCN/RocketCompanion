@@ -188,15 +188,10 @@ export function stepArenaVehiclesFrame(
       continue;
     }
 
-    if (!arena.cars[carIndex]) {
-      const defaultTeam = carIndex === 6 ? 0 : carIndex === 7 ? 1 : carIndex % 2;
-      vr.ensureCar(carIndex, defaultTeam, arena.carVisual || 'fennec');
-    }
-    if (!arena.cars[carIndex]) continue;
-
     const isLocalCar = carIndex === (arena.playerCarIndex ?? 0);
     if (arena.isLobbyMode) {
-      const isLobbyDiagCar = carIndex === 6 || carIndex === 7;
+      const isLobbyDiagCar =
+        (carIndex === 6 || carIndex === 7) && Boolean(arena.cars[carIndex]?.visible);
       if (!isLocalCar && !isLobbyDiagCar) {
         if (arena.cars[carIndex]) arena.cars[carIndex]!.visible = false;
         arena.supersonicWheelTrailSystem?.updateCar(
@@ -212,6 +207,12 @@ export function stepArenaVehiclesFrame(
         continue;
       }
     }
+
+    if (!arena.cars[carIndex]) {
+      const defaultTeam = carIndex === 6 ? 0 : carIndex === 7 ? 1 : carIndex % 2;
+      vr.ensureCar(carIndex, defaultTeam, arena.carVisual || 'fennec');
+    }
+    if (!arena.cars[carIndex]) continue;
 
     const carControls =
       typeof carControlsResolver === 'function'

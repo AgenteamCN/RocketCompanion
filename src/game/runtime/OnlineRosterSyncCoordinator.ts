@@ -185,7 +185,7 @@ export class OnlineRosterSyncCoordinator {
       );
     }
 
-    if (isLobbyDualWorld || diagnostics.isDiagnosticFleetEnabled()) {
+    if (diagnostics.isDiagnosticFleetEnabled()) {
       if (!nameTagEntries.some((e) => e.carIndex === 6)) {
         nameTagEntries.push({ carIndex: 6, name: 'Boost', team: 0, isBot: true });
       }

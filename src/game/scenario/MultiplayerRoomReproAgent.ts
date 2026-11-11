@@ -230,13 +230,11 @@ export class MultiplayerRoomReproAgent {
     if (this.cfg.bridgeSignalingAfterProbe) {
       const sigChan = this.targetView.multiplayerSession?.hostController?.channel as
         | (ReproInspectableWebRtcChannel & {
-            isHost?: boolean;
             handshake?: { handleRoomMessage?: (msg: unknown) => void };
           })
         | null
         | undefined;
       if (sigChan) {
-        sigChan.isHost = true;
         if (pendingClientAnswerToken && sigChan.acceptAnswerToken) {
           const applied = await sigChan.acceptAnswerToken(pendingClientAnswerToken);
           this.logLifecycle(`Applied Client WebRTC answer token via bridge: applied=${applied}`);

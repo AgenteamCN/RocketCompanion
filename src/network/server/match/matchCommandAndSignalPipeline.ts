@@ -151,7 +151,7 @@ export function evaluateDomainStepFrameGate(
     return { action: 'ended_or_podium', clockDuration };
   }
   if (st === MATCH_STATES.PREPARE || st === MATCH_STATES.COUNTDOWN) {
-    s.matchTick++;
+    s.matchTick = hasPhysics && typeof physicsTick === 'number' ? physicsTick : s.matchTick + 1;
     const act =
       st === MATCH_STATES.PREPARE
         ? --s.prepareTimeoutTicks <= 0

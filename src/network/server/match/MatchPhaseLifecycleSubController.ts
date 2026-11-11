@@ -390,9 +390,14 @@ export class MatchPhaseLifecycleSubController {
       case 'reset_training_play':
         this.resetTrainingPlay();
         break;
-      case 'begin_goal_replay':
+      case 'begin_goal_replay': {
         gr.beginGoalReplay();
+        if ((d.state as string) === MATCH_STATES.REPLAY) {
+          const rs = gr.stepReplayTick();
+          if (!rs.finished) return this.encodeFramePacket(rs.replayPhysicsSnapshot);
+        }
         break;
+      }
       case 'replay': {
         const rs = gr.stepReplayTick();
         if (!rs.finished) return this.encodeFramePacket(rs.replayPhysicsSnapshot);
