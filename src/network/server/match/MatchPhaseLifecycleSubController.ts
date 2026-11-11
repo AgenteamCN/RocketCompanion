@@ -105,11 +105,20 @@ export class MatchPhaseLifecycleSubController {
   private resetArenaKickoffSpawns(maskInput?: boolean): void {
     const { domain: d, physicsManager: pm, roster: r } = this.host;
     if (!pm) return;
+    const targetTick = Math.max(d.matchTick, pm.currentTick);
     r.applyPendingHitboxSwaps();
     pm.resetKickoff(0);
     r.applyRosterKickoffSpawns();
     if (maskInput !== undefined) pm.setInputMask?.(maskInput);
-    d.matchTick = pm.currentTick;
+    if (targetTick > pm.currentTick) {
+      pm.currentTick = targetTick;
+      const snap = pm.sim?.saveCompactState?.() ?? pm.sim?.saveState?.();
+      if (snap && snap.length > 0) {
+        snap[0] = targetTick;
+        pm.sim?.restoreState?.(snap);
+      }
+    }
+    d.matchTick = Math.max(targetTick, pm.currentTick);
   }
 
   initiateMatchPrepare(sec: number | null = null, timeoutTicks = 240): void {
@@ -358,7 +367,12 @@ export class MatchPhaseLifecycleSubController {
       if (dc?.enabled) dc.applyToAuthority(pm, pm.currentTick);
       const snap = pm.stepAuthoritativeTick();
       d.matchTick = snap.tick ?? pm.currentTick;
-      if (snap.goalScored) pm.resetBallToCenter();
+      if (snap.goalScored) {
+        pm.resetBallToCenter();
+        snap.stateSnapshot =
+          pm.sim?.saveCompactState?.() ?? pm.sim?.saveState?.() ?? snap.stateSnapshot;
+        cq.dispatchSignal(MATCH_SIGNALS.BALL_RESET, d.matchTick, 0, 0);
+      }
       return this.encodeFramePacket(snap);
     }
     return cq.activeSignals.size > 0 ? this.encodeFramePacket(null) : new Uint8Array(0);
@@ -398,6 +412,7 @@ export class MatchPhaseLifecycleSubController {
       case 'begin_goal_replay': {
         gr.beginGoalReplay();
         if ((d.state as string) === MATCH_STATES.REPLAY) {
+          d.matchTick++;
           const rs = gr.stepReplayTick();
           if (!rs.finished) return this.encodeFramePacket(rs.replayPhysicsSnapshot);
         }
@@ -431,7 +446,7 @@ export class MatchPhaseLifecycleSubController {
     }
 
     if (d.stepFramePhaseGate('post', snap?.tick, Boolean(pm)).action === 'kickoff_started') {
-      cq.activeSignals.delete(MATCH_SIGNALS.KICKOFF_WILL_START);
+      cq.retireSignalTypes([MATCH_SIGNALS.KICKOFF_WILL_START], true);
       cq.dispatchSignal(MATCH_SIGNALS.KICKOFF_START, d.matchTick);
       pm?.applySignal(MATCH_SIGNALS.KICKOFF_START);
     }

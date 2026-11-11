@@ -145,7 +145,7 @@ export class MatchCommandQueueSubController {
     return res.signal;
   }
 
-  retireSignalTypes(signalTypes: number[], alsoRetireSessionBuffer = false): void {
+  retireSignalTypes(signalTypes: number[], alsoRetireSessionBuffer = true): void {
     const sb = this.sessionManager ? this.sessionManager.signalBuffer : null;
     for (const sigType of signalTypes) {
       const prev = this.activeSignals.get(sigType);
@@ -159,11 +159,9 @@ export class MatchCommandQueueSubController {
 
   stepFrameSignalRedundancy(): void {
     for (const [sKey, sObj] of this.activeSignals.entries()) {
-      if (sObj.signalType !== MATCH_SIGNALS.KICKOFF_WILL_START) {
-        if (typeof sObj.remainingRedundancy === 'number' && --sObj.remainingRedundancy > 0)
-          continue;
-        this.activeSignals.delete(sKey);
-      }
+      if (typeof sObj.remainingRedundancy === 'number' && --sObj.remainingRedundancy > 0)
+        continue;
+      this.activeSignals.delete(sKey);
     }
   }
 

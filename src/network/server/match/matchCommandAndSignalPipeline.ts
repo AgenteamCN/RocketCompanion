@@ -277,6 +277,12 @@ export function createAndRecordMatchSignal(p: {
     p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_JOINED}_ent_${param1}`);
     p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED}_ent_${param1}`);
     p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_SLOT_UPDATED}_ent_${param1}`);
+  } else if (signalType === MATCH_SIGNALS.KICKOFF_START) {
+    p.activeSignals.delete(MATCH_SIGNALS.KICKOFF_WILL_START);
+    sm?.signalBuffer?.retireByType?.(MATCH_SIGNALS.KICKOFF_WILL_START);
+  } else if (signalType === MATCH_SIGNALS.KICKOFF_WILL_START) {
+    p.activeSignals.delete(MATCH_SIGNALS.KICKOFF_START);
+    sm?.signalBuffer?.retireByType?.(MATCH_SIGNALS.KICKOFF_START);
   }
 
   const mapKey =
@@ -310,7 +316,7 @@ export function applyClientSignalAcksToActiveSignals(
         (!ack.signalType || sObj.signalType === ack.signalType)
       ) {
         sObj.ackedPeers.add(sessionId);
-        if (sObj.signalType !== MATCH_SIGNALS.KICKOFF_WILL_START && expected.size > 0) {
+        if (expected.size > 0) {
           let allAcked = true;
           for (const pid of expected) {
             if (!sObj.ackedPeers.has(pid)) {
