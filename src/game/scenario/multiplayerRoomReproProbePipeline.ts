@@ -49,15 +49,28 @@ export interface ReproProbeRuntimeView {
   readonly renderSubsystem?: { update?: (ctx: { shouldSkipGpuRender?: boolean }) => void } | null;
   readonly setupAudio?: () => Promise<void>;
   readonly setupBot?: () => Promise<void>;
+  readonly playerCarIndex?: number;
+  readonly selectedPreset?: string;
+  readonly selectedHitbox?: string | null;
+  readonly selectedColorSlot?: number | null;
+  readonly replayTimelineController?: unknown;
   readonly physics?: {
+    readonly state?: Float32Array | null;
+    readonly ballStateWriteRevision?: number;
+    readonly getActiveCarMask?: () => number;
     readonly getHeaderView?: () => { readonly tickCount: number };
     readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
+    readonly setBallState?: (state: unknown) => boolean;
     readonly sim?: {
+      readonly getActiveCarMask?: () => number;
       readonly getHeaderView?: () => { readonly tickCount: number };
       readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
     } | null;
   } | null;
   readonly arena?: {
+    readonly ball?: {
+      readonly position?: { readonly x: number; readonly y: number; readonly z: number } | null;
+    } | null;
     readonly cars?: ReadonlyArray<{
       readonly visible?: boolean;
       readonly position?: { readonly y?: number };
@@ -71,6 +84,30 @@ export interface ReproProbeRuntimeView {
       readonly steer?: { readonly position?: { readonly y?: number } };
       readonly mount?: { readonly position?: { readonly y?: number } };
     } | null> | null>;
+  } | null;
+  readonly ballTrajectoryPredictor?: {
+    forcePredictAnyMovement?: boolean;
+    readonly predictionCount?: number;
+    readonly settings?: {
+      readonly enabled?: boolean;
+      readonly predictionTicks?: number;
+      readonly catchupTicksPerFrame?: number;
+    };
+    readonly sampler?: {
+      readonly lastUpdateKind?: string;
+    };
+    readonly updateSettings?: (patch: { enabled?: boolean }) => void;
+    readonly setSceneContext?: (ctx: {
+      isGoalReplayActive?: boolean;
+      isPodiumActive?: boolean;
+    }) => void;
+    readonly update?: (
+      currentTick: number,
+      liveBallPosition?: { readonly x: number; readonly y: number; readonly z: number } | null,
+      renderWidth?: number | null,
+      renderHeight?: number | null,
+      physics?: unknown
+    ) => void;
   } | null;
   readonly match?: {
     readonly state?: {
@@ -95,6 +132,7 @@ export interface ReproProbeRuntimeView {
       playerName?: string;
     }) => Promise<boolean>;
     readonly forceStartOnlineMatch?: (durationSeconds?: number) => void;
+    readonly switchOnlineRoleOrTeam?: (role?: string, team?: number) => void;
   } | null;
   readonly multiplayerSession?: {
     readonly hostController?: {
@@ -117,6 +155,28 @@ export interface ReproProbeRuntimeView {
   } | null;
   readonly networkManager?: {
     readonly isLobbyDualWorldActive?: () => boolean;
+    readonly diagnosticsProbe?: {
+      readonly diagnosticsFleetController?: { readonly enabled?: boolean } | null;
+      readonly spawnDiagnosticTestFleet?: (opts?: { anchorMode?: string | null }) => Promise<unknown>;
+    } | null;
+    readonly rosterSyncCoordinator?: {
+      readonly lastRosterSnapshot?: {
+        readonly players?: ReadonlyArray<{
+          readonly sessionId?: string;
+          readonly entityId?: number;
+          readonly name?: string;
+          readonly isBot?: boolean;
+          readonly team?: number;
+        }>;
+      } | null;
+    } | null;
+    readonly sessionCoordinator?: {
+      readonly authoritativeServer?: {
+        readonly sim?: {
+          readonly setBallState?: (state: unknown) => void;
+        } | null;
+      } | null;
+    } | null;
   } | null;
 }
 

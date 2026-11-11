@@ -69,6 +69,23 @@ function formatEventStreamLine(evt) {
       .join(' | ');
     return `[Stream][PoseProbe][${p.rosterMode}][${p.role}][${p.stage}] mode=${p.matchMode} phase=${p.matchPhase} tick=${p.simTick}\n    sim:  ${simSummary}\n    mesh: ${meshSummary}`;
   }
+  if (evt.type === 'lobby_probe_diag') {
+    const d = evt.diag;
+    return `[Stream][LobbyProbeDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] fleetEnabled=${d.fleetControllerEnabled} mask=0x${d.serverActiveCarMask.toString(16)} car6Vis=${d.car6MeshVisible}(name=${JSON.stringify(d.car6ResolvedNameTag)},exp=${d.expectedCar6NameTag}) car7Vis=${d.car7MeshVisible}(name=${JSON.stringify(d.car7ResolvedNameTag)},exp=${d.expectedCar7NameTag}) hostMismatch=${d.hostProbeNamesMismatch} clientBlind=${d.clientCannotSeeHostProbes}`;
+  }
+  if (evt.type === 'roster_visibility_probe') {
+    const p = evt.probe;
+    const names = p.nameTagCarEntries.map((e) => `#${e.carIndex}:${e.name}`).join(', ');
+    return `[Stream][RosterVisProbe][${p.rosterMode}][${p.role}][${p.stage}] visibleCars=[${p.visibleCarIndices.join(',')}] clientCar1Vis=${p.clientCar1Visible} genericCarNames=${p.forcedGenericCarNamesDetected} nameTags=[${names}]`;
+  }
+  if (evt.type === 'host_takeover_diag') {
+    const d = evt.diag;
+    return `[Stream][HostTakeoverDiag][${d.rosterMode} +${d.elapsedMs}ms] localTeamDefault=${d.uiDefaultLocalTeam} botFill=${d.botFillMode} bots=${d.activeBotCountInMatch} car0AfterNeutralSwitch=${d.car0AssignedEntityAfterNeutralSwitch} botTookOverCar0=${d.botFillTakesOverCar0WhenHostNeutralSwitched} hostCarIdxStill0=${d.hostLocalCarIndexStillZero}`;
+  }
+  if (evt.type === 'trajectory_diag') {
+    const t = evt.summary;
+    return `[Stream][TrajectoryDiag][${t.rosterMode}][${t.role}] writeRevDelta=+${t.writeRevisionIncrementsDuringFlight} fullResets=${t.fullResetCountDuringFlight}/${t.samples.length} predCountRange=[${t.minPredictionCountObserved}..${t.maxPredictionCountObserved}]/${t.maxPredictionTicks} catchupBudget=${t.catchupTicksPerFrame} collapsed=${t.trajectoryCollapsedBelow30Ticks}`;
+  }
   if (evt.type === 'reconciler_snap') {
     const s = evt.sample;
     return `[Stream][ReconcilerSnap][${evt.rosterMode}][${evt.role} +${s.elapsedMs}ms] delta=${s.currentDelta} target=${s.targetDelta} rollback=${s.rollbackDepth} serverTick=${s.serverTick}`;
@@ -114,7 +131,11 @@ async function main() {
     seenEventFingerprints.add(fp);
 
     const rosterMode =
-      evt.rosterMode || evt.probe?.rosterMode || evt.summary?.rosterMode || '3p3ai';
+      evt.rosterMode ||
+      evt.probe?.rosterMode ||
+      evt.diag?.rosterMode ||
+      evt.summary?.rosterMode ||
+      '3p3ai';
     if (eventsByMode[rosterMode]) {
       eventsByMode[rosterMode].push(evt);
     }
@@ -382,6 +403,33 @@ async function main() {
       console.log(
         `  [Host]   P2PWebRTCChannel.hasOwnIsHost=${h.handshakeDiagnostics.hasOwnIsHostProperty}, isHost=${String(h.handshakeDiagnostics.channelIsHostValue)}, rawCrossTabJoinedBeforeBridge=${h.rawCrossTabJoinedBeforeBridge}`
       );
+      if (h.lobbyProbeDiagnostics) {
+        const lp = h.lobbyProbeDiagnostics;
+        console.log(
+          `  [Host]   [Phenomenon C: Lobby Probes] car6Name=${JSON.stringify(lp.car6ResolvedNameTag)} (exp="Boost"), car7Name=${JSON.stringify(lp.car7ResolvedNameTag)} (exp="Roll") | mismatch=${lp.hostProbeNamesMismatch}`
+        );
+      }
+      if (h.hostTakeoverDiagnostics) {
+        const ht = h.hostTakeoverDiagnostics;
+        console.log(
+          `  [Host]   [Phenomenon A: Host Takeover] localTeamDefault=${ht.uiDefaultLocalTeam} | botFill=${ht.botFillMode} (bots=${ht.activeBotCountInMatch}) | botTookOverCar0=${ht.botFillTakesOverCar0WhenHostNeutralSwitched} (${ht.car0AssignedEntityAfterNeutralSwitch}) | hostCarIdxStill0=${ht.hostLocalCarIndexStillZero}`
+        );
+      }
+      if (Array.isArray(h.rosterVisibilityProbes) && h.rosterVisibilityProbes.length > 0) {
+        const replayProbe =
+          h.rosterVisibilityProbes.find((p) => p.stage === 'host_after_goal_replay_director') ||
+          h.rosterVisibilityProbes[h.rosterVisibilityProbes.length - 1];
+        const names = replayProbe.nameTagCarEntries.map((e) => `#${e.carIndex}:${e.name}`).join(', ');
+        console.log(
+          `  [Host]   [Phenomenon B: NameTags & Vis] genericCarNames=${replayProbe.forcedGenericCarNamesDetected} | nameTags=[${names}]`
+        );
+      }
+      if (h.trajectoryDiagnostics) {
+        const td = h.trajectoryDiagnostics;
+        console.log(
+          `  [Host]   [Phenomenon D: Trajectory] writeRevDelta=+${td.writeRevisionIncrementsDuringFlight} | fullResets=${td.fullResetCountDuringFlight}/${td.samples.length} | predCount=[${td.minPredictionCountObserved}..${td.maxPredictionCountObserved}]/${td.maxPredictionTicks} (catchup=${td.catchupTicksPerFrame}) | collapsed=${td.trajectoryCollapsedBelow30Ticks}`
+        );
+      }
       const anomalyCount = h.poseProbes.reduce((acc, p) => acc + p.anomalies.length, 0);
       console.log(
         `  [Host]   poseProbes=${h.poseProbes.length} | detectedPoseAnomalies=${anomalyCount}`
@@ -403,6 +451,20 @@ async function main() {
       console.log(
         `  [Client] readonlyRttTypeErrorCount=${c.readonlyRttTypeErrorCount} | measuredRttGetterOnly=${c.handshakeDiagnostics.measuredRttGetterOnly} | isCrossTab=${c.handshakeDiagnostics.isCrossTab}`
       );
+      if (c.lobbyProbeDiagnostics) {
+        const clp = c.lobbyProbeDiagnostics;
+        console.log(
+          `  [Client] [Phenomenon C: Lobby Probes] serverActiveMask=0x${clp.serverActiveCarMask.toString(16)} (bits6&7=${clp.serverCar6BitActive && clp.serverCar7BitActive}) | car6Vis=${clp.car6MeshVisible}, car7Vis=${clp.car7MeshVisible} | clientBlindToHostProbes=${clp.clientCannotSeeHostProbes}`
+        );
+      }
+      if (Array.isArray(c.rosterVisibilityProbes) && c.rosterVisibilityProbes.length > 0) {
+        const matchVis =
+          c.rosterVisibilityProbes.find((p) => p.stage === 'client_match_active_600ms') ||
+          c.rosterVisibilityProbes[c.rosterVisibilityProbes.length - 1];
+        console.log(
+          `  [Client] [Phenomenon B: Client Vis] stage=${matchVis.stage} visibleCars=[${matchVis.visibleCarIndices.join(',')}]`
+        );
+      }
       if (c.caughtErrors.length > 0) {
         console.log(`  [Client] sampleError: ${c.caughtErrors[0]}`);
       }
