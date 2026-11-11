@@ -30,13 +30,15 @@ impl SimInstance {
         self.state_buffer.ball.ang_vel = ball.ang_vel.to_array();
 
         let speed_sq = ball.vel.length_squared();
-        self.state_buffer.ball_motion_state = if speed_sq < 1.0 {
-            0.0
+        self.ball_motion_state = if speed_sq < 1.0 {
+            0
         } else if (ball.pos.z - arena.mutator_config().ball_radius) <= 8.0 {
-            1.0
+            1
         } else {
-            2.0
+            2
         };
+        self.state_buffer.is_ball_sleeping = if arena.is_ball_sleeping() { 1.0 } else { 0.0 };
+        self.state_buffer.is_simulation_frozen = if self.sim_frozen { 1.0 } else { 0.0 };
 
         for slot in 0..MAX_CARS {
             let Some(car_id) = self.car_slots[slot] else {

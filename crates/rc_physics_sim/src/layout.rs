@@ -77,12 +77,12 @@ pub struct GameStateBufferPod {
     pub ball: BallStatePod,                            // 4..22 (18)
     pub cars: [CarStatePod; MAX_CARS],                 // 22..342 (320)
     pub pads: [BoostPadStatePod; MAX_PADS],            // 342..410 (68)
-    pub ball_motion_state: f32,                        // 410
-    pub possession_car_index: f32,                     // 411
-    pub possession_team: f32,                          // 412
-    pub blue_possession_points: f32,                   // 413
-    pub orange_possession_points: f32,                 // 414
-    pub possession_time_accumulator: f32,              // 415
+    pub is_ball_sleeping: f32,                         // 410 (EXTENDED_STATE_OFFSETS.IS_BALL_SLEEPING)
+    pub is_simulation_frozen: f32,                     // 411 (EXTENDED_STATE_OFFSETS.IS_SIMULATION_FROZEN)
+    pub possession_team: f32,                          // 412 (EXTENDED_STATE_OFFSETS.POSSESSION_STATE)
+    pub blue_possession_points: f32,                   // 413 (EXTENDED_STATE_OFFSETS.POSSESSION_BLUE_POINTS)
+    pub orange_possession_points: f32,                 // 414 (EXTENDED_STATE_OFFSETS.POSSESSION_ORANGE_POINTS)
+    pub possession_time_accumulator: f32,              // 415 (EXTENDED_STATE_OFFSETS.POSSESSION_DURATION)
     pub car_jump_air: [CarJumpAirTelemetryPod; MAX_CARS], // 416..448 (32)
 }
 
@@ -93,8 +93,8 @@ impl Default for GameStateBufferPod {
             ball: BallStatePod::default(),
             cars: [CarStatePod::default(); MAX_CARS],
             pads: [BoostPadStatePod::default(); MAX_PADS],
-            ball_motion_state: 0.0,
-            possession_car_index: -1.0,
+            is_ball_sleeping: 0.0,
+            is_simulation_frozen: 0.0,
             possession_team: -1.0,
             blue_possession_points: 0.0,
             orange_possession_points: 0.0,
@@ -124,52 +124,62 @@ pub struct BoostPadInfoPod {
     pub is_big: f32,
 }
 
+/// 9 floats (pos[3], vel[3], ang_vel[3]) matching `BALL_PRED_STRIDE = 9`.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct BallPredSlicePod {
     pub pos: [f32; 3],
     pub vel: [f32; 3],
+    pub ang_vel: [f32; 3],
 }
 
+/// 64-byte (16-word) cache-line aligned event slot matching `PhysicsEventReader.ts` (`strideWords === 16`)
+/// and `RCReplayBinarySchema.ts` (`RC_REPLAY_EVENT_STRIDE = 64`).
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct PhysicsEvent {
-    pub event_type: u32,
-    pub tick: u32,
-    pub pos_x: f32,
-    pub pos_y: f32,
-    pub pos_z: f32,
-    pub norm_x: f32,
-    pub norm_y: f32,
-    pub norm_z: f32,
-    pub vel_x: f32,
-    pub vel_y: f32,
-    pub vel_z: f32,
-    pub primary_id: i32,
-    pub secondary_id: i32,
-    pub sub_type: u8,
-    pub flags: u8,
-    pub reserved: u16,
-    pub custom_float: f32,
-    pub custom_int: i32,
+    pub event_type: u32,     // word 0
+    pub tick: u32,           // word 1
+    pub pos_x: f32,          // word 2
+    pub pos_y: f32,          // word 3
+    pub pos_z: f32,          // word 4
+    pub norm_x: f32,         // word 5
+    pub norm_y: f32,         // word 6
+    pub norm_z: f32,         // word 7
+    pub normal_rel_vel: f32, // word 8
+    pub speed: f32,          // word 9
+    pub impulse: f32,        // word 10
+    pub packed_ids: u32,     // word 11: (primary_id & 0xFFFF) | ((secondary_id & 0xFFFF) << 16)
+    pub sub_type: u32,       // word 12
+    pub flags: u32,          // word 13
+    pub custom_float: f32,   // word 14
+    pub custom_int: u32,     // word 15
 }
 
+impl PhysicsEvent {
+    #[inline]
+    pub const fn pack_ids(primary_id: i32, secondary_id: i32) -> u32 {
+        ((primary_id as u32) & 0xFFFF) | (((secondary_id as u32) & 0xFFFF) << 16)
+    }
+}
+
+/// 16-byte header (`[writeSeq, capacity(256), eventSize(64), droppedCount]`) + 256 * 64-byte ring buffer.
 #[repr(C)]
 pub struct PhysicsEventBuffer {
-    pub count: u32,
+    pub write_seq: u32,
+    pub capacity: u32,
+    pub event_size: u32,
     pub dropped_count: u32,
-    pub reserved0: u32,
-    pub reserved1: u32,
     pub events: [PhysicsEvent; MAX_EVENTS_PER_STEP],
 }
 
 impl Default for PhysicsEventBuffer {
     fn default() -> Self {
         Self {
-            count: 0,
+            write_seq: 0,
+            capacity: MAX_EVENTS_PER_STEP as u32,
+            event_size: core::mem::size_of::<PhysicsEvent>() as u32,
             dropped_count: 0,
-            reserved0: 0,
-            reserved1: 0,
             events: [PhysicsEvent::default(); MAX_EVENTS_PER_STEP],
         }
     }

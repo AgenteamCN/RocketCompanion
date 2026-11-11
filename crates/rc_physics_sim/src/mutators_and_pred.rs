@@ -21,6 +21,7 @@ impl SimInstance {
             self.pred_buffer[i] = BallPredSlicePod {
                 pos: b.pos.to_array(),
                 vel: b.vel.to_array(),
+                ang_vel: b.ang_vel.to_array(),
             };
         }
         self.pred_count = steps;

@@ -84,6 +84,8 @@ pub struct SimInstance {
     pub car_world_restitution: f32,
     pub ball_world_friction: f32,
     pub ball_world_restitution: f32,
+    pub ball_motion_state: i32,
+    pub possession_car_index: i32,
 }
 
 impl Default for SimInstance {
@@ -125,6 +127,8 @@ impl SimInstance {
             car_world_restitution: 0.1,
             ball_world_friction: 0.35,
             ball_world_restitution: 0.6,
+            ball_motion_state: 0,
+            possession_car_index: -1,
         };
         for i in 0..7 {
             let cfg = Self::base_hitbox_config(i as i32);
@@ -290,12 +294,8 @@ impl SimInstance {
     }
 
     pub fn push_event(&mut self, ev: PhysicsEvent) {
-        let idx = self.event_buffer.count as usize;
-        if idx < MAX_EVENTS_PER_STEP {
-            self.event_buffer.events[idx] = ev;
-            self.event_buffer.count += 1;
-        } else {
-            self.event_buffer.dropped_count += 1;
-        }
+        let slot = (self.event_buffer.write_seq as usize) % MAX_EVENTS_PER_STEP;
+        self.event_buffer.events[slot] = ev;
+        self.event_buffer.write_seq = self.event_buffer.write_seq.wrapping_add(1);
     }
 }

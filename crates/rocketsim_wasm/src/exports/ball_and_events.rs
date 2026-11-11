@@ -59,7 +59,7 @@ pub extern "C" fn _physics_getBallStateForTime(pred_time: f32, out_slice9: *mut 
             let out = core::slice::from_raw_parts_mut(out_slice9, 9);
             out[0..3].copy_from_slice(&s.pos);
             out[3..6].copy_from_slice(&s.vel);
-            out[6..9].fill(0.0);
+            out[6..9].copy_from_slice(&s.ang_vel);
         }
         1
     })
@@ -67,7 +67,7 @@ pub extern "C" fn _physics_getBallStateForTime(pred_time: f32, out_slice9: *mut 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_getBallPredictionStride() -> i32 {
-    6
+    9
 }
 
 #[unsafe(no_mangle)]
@@ -114,7 +114,7 @@ pub extern "C" fn _physics_getBallRadius() -> f32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_getBallMotionState() -> i32 {
-    with_sim(|sim| sim.state_buffer.ball_motion_state as i32)
+    with_sim(|sim| sim.ball_motion_state)
 }
 
 #[unsafe(no_mangle)]
@@ -166,7 +166,7 @@ pub extern "C" fn _physics_getPossessionEventEnabled() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_getCurrentPossessionCar() -> i32 {
-    with_sim(|sim| sim.state_buffer.possession_car_index as i32)
+    with_sim(|sim| sim.possession_car_index)
 }
 
 #[unsafe(no_mangle)]
@@ -201,16 +201,14 @@ pub extern "C" fn _physics_pushSignalEvent(
             norm_x,
             norm_y,
             norm_z,
-            vel_x: 0.0,
-            vel_y: 0.0,
-            vel_z: 0.0,
-            primary_id,
-            secondary_id,
-            sub_type: sub_type as u8,
-            flags: flags as u8,
-            reserved: 0,
+            normal_rel_vel: 0.0,
+            speed: 0.0,
+            impulse: 0.0,
+            packed_ids: PhysicsEvent::pack_ids(primary_id, secondary_id),
+            sub_type: sub_type as u32,
+            flags: flags as u32,
             custom_float,
-            custom_int,
+            custom_int: custom_int as u32,
         };
         sim.push_event(ev);
         sim.replay.push_signal(&ev);
@@ -230,7 +228,7 @@ pub extern "C" fn _physics_getEventBufferSize() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn _physics_clearEvents() {
     with_sim(|sim| {
-        sim.event_buffer.count = 0;
+        sim.event_buffer.write_seq = 0;
         sim.event_buffer.dropped_count = 0;
     });
 }

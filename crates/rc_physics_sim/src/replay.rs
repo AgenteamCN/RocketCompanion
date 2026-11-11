@@ -98,25 +98,34 @@ impl ReplayStorage {
             return;
         }
         let mut packed = [0u8; 64];
-        for i in 0..MAX_CARS {
-            let c = &controls[i];
-            let base = i * 8;
-            packed[base] = ((c.throttle.clamp(-1.0, 1.0) * 127.0) as i8) as u8;
-            packed[base + 1] = ((c.steer.clamp(-1.0, 1.0) * 127.0) as i8) as u8;
-            packed[base + 2] = ((c.pitch.clamp(-1.0, 1.0) * 127.0) as i8) as u8;
-            packed[base + 3] = ((c.yaw.clamp(-1.0, 1.0) * 127.0) as i8) as u8;
-            packed[base + 4] = ((c.roll.clamp(-1.0, 1.0) * 127.0) as i8) as u8;
-            let mut flags = 0u8;
-            if c.jump >= 0.5 {
-                flags |= 1;
-            }
-            if c.boost >= 0.5 {
-                flags |= 2;
-            }
-            if c.handbrake >= 0.5 {
-                flags |= 4;
-            }
-            packed[base + 5] = flags;
+        for (i, c) in controls.iter().enumerate() {
+            let thr = ((c.throttle.clamp(-1.0, 1.0) * 31.0).round() as i32).clamp(-31, 31) + 31;
+            let str_v = ((c.steer.clamp(-1.0, 1.0) * 31.0).round() as i32).clamp(-31, 31) + 31;
+            let pit = ((c.pitch.clamp(-1.0, 1.0) * 3.0).round() as i32).clamp(-3, 3) + 3;
+            let yaw = ((c.yaw.clamp(-1.0, 1.0) * 3.0).round() as i32).clamp(-3, 3) + 3;
+            let rol = ((c.roll.clamp(-1.0, 1.0) * 3.0).round() as i32).clamp(-3, 3) + 3;
+            let jmp = u8::from(c.jump >= 0.5);
+            let bst = u8::from(c.boost >= 0.5);
+            let hnd = u8::from(c.handbrake >= 0.5);
+
+            packed[i * 3] = ((thr as u8) & 0x3f) | (((str_v as u8) & 0x30) << 2);
+            packed[i * 3 + 1] =
+                ((str_v as u8) & 0x0f) | (((pit as u8) & 0x07) << 4) | (((yaw as u8) & 0x04) << 5);
+            packed[i * 3 + 2] = ((yaw as u8) & 0x03)
+                | (((rol as u8) & 0x07) << 2)
+                | (jmp << 5)
+                | (bst << 6)
+                | (hnd << 7);
+
+            let q_off = 24 + i * 5;
+            let q_byte = |v: f32| -> u8 {
+                ((v.clamp(-1.0, 1.0) * 127.0).round() as i8) as u8
+            };
+            packed[q_off] = q_byte(c.throttle);
+            packed[q_off + 1] = q_byte(c.steer);
+            packed[q_off + 2] = q_byte(c.pitch);
+            packed[q_off + 3] = q_byte(c.yaw);
+            packed[q_off + 4] = q_byte(c.roll);
         }
         self.state_track.push(ReplayFrameEntry {
             state: *state,
@@ -129,7 +138,11 @@ impl ReplayStorage {
         if self.header.recording_active == 0 || self.incident_track.len() >= REPLAY_MAX_INCIDENTS {
             return;
         }
-        self.incident_track.push(*ev);
+        let mut copy = *ev;
+        if copy.custom_int == 0 {
+            copy.custom_int = self.state_track.len() as u32;
+        }
+        self.incident_track.push(copy);
         self.header.incident_count = self.incident_track.len() as u32;
     }
 
@@ -137,7 +150,11 @@ impl ReplayStorage {
         if self.signal_track.len() >= REPLAY_MAX_SIGNALS {
             return;
         }
-        self.signal_track.push(*ev);
+        let mut copy = *ev;
+        if copy.custom_int == 0 {
+            copy.custom_int = self.state_track.len() as u32;
+        }
+        self.signal_track.push(copy);
         self.header.signal_count = self.signal_track.len() as u32;
     }
 }
