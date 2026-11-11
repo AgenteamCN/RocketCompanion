@@ -1,3 +1,9 @@
+/**
+ * RuntimeBotCoordinator.ts
+ * Coordinates single-player bot AI state, SafeTensors weight preloading via `BotWeightLoader`,
+ * synchronous WASM `BotDirector` (`_physics_stepBotInferenceMask`) stepping, and local bot match lifecycle.
+ */
+
 import { getTeamAssignment } from '../../physics/RocketSimMeshLoader.ts';
 import { CAR_COLOR_SLOTS, resolveVehicleHitboxId } from '../../ui-core/config/vehicleConstants.ts';
 import {
@@ -9,9 +15,14 @@ import { botSettingsStore } from '../../ui-core/config/trainingDefaults.ts';
 import { preloadKickoffPPOWeights } from '../../ai/kickoffPPOWeights.ts';
 import { preloadKickoffV1BestWeights } from '../../ai/KickoffV2SafeTensorsAgent.ts';
 import { preloadGroundReachabilityLut } from '../../entities/reachability/groundReachabilityLut.ts';
-import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
+import {
+  ensureBotWeightsLoaded,
+  readWasmBotSlotControls,
+  resolveBotDefaultTickSkip,
+  resolveBotPolicyId,
+  syncCachedWeightsToWasm,
+} from '../../ai/BotWeightLoader.ts';
 import { BOTPACK_9700488_POLICIES } from '../../ai/experimental/botpack9700488Specs.ts';
-import { ensureWasmSimdMatVec } from '../../ai/experimental/wasmSimdMatVec.ts';
 import { AuthoritativeServerHost } from '../../network/server/AuthoritativeServerHost.ts';
 import { NEUTRAL_CAR_CONTROLS } from '../../network/client/PredictionHistoryBuffer.ts';
 import { yieldIdleSlice } from '../../loader/frameBudgetScheduler.ts';
@@ -70,17 +81,9 @@ export interface RuntimeBotCoordinatorHostPort {
   resetKickoff(seed?: number): void;
 }
 
-/**
- * RuntimeBotCoordinator
- * Stateful SubController owning single-player bot AI state, decision scheduling,
- * authoritative bot control stepping, and local bot match lifecycle.
- */
 export class RuntimeBotCoordinator {
   public readonly runtime: RuntimeBotCoordinatorHostPort;
   public botControls: CarControlsInput;
-  public botTickSkip = 0;
-  public isBotDeciding = false;
-  public botDecisionEpoch = 0;
   public botKickoffStep = 0;
   public isBotPaused = false;
   public isBotMatch = false;
@@ -96,10 +99,7 @@ export class RuntimeBotCoordinator {
     const botpackIds = BOTPACK_9700488_POLICIES.map((p) => p.id);
     const totalSteps = 6 + botpackIds.length;
     let completedSteps = 0;
-    const report = (label: string) => {
-      completedSteps++;
-      onProgress?.(completedSteps, totalSteps, label);
-    };
+    const wasmMod = this.runtime.physics?.module ?? null;
     const runStep = async (
       factory: () => Promise<unknown>,
       label: string,
@@ -111,10 +111,9 @@ export class RuntimeBotCoordinator {
       } catch (err: unknown) {
         console.warn(`[GameRuntime] ${description} preload deferred or failed:`, err);
       }
-      report(label);
+      completedSteps++;
+      onProgress?.(completedSteps, totalSteps, label);
     };
-
-    await ensureWasmSimdMatVec().catch(() => false);
 
     await runStep(
       () => AuthoritativeServerHost.prewarmWorkers(),
@@ -128,23 +127,18 @@ export class RuntimeBotCoordinator {
     );
     await runStep(() => preloadKickoffPPOWeights(), 'ko_v1', 'Kickoff v1 PPO weights');
     await runStep(() => preloadKickoffV1BestWeights(), 'ko_v2', 'Kickoff v2 SafeTensors');
-    await runStep(() => ensureExperimentalEngine('nexto'), 'nexto', 'Nexto SafeTensors');
-    await runStep(() => ensureExperimentalEngine('necto'), 'necto', 'Necto SafeTensors');
+    await runStep(() => ensureBotWeightsLoaded('nexto', wasmMod), 'nexto', 'Nexto SafeTensors');
+    await runStep(() => ensureBotWeightsLoaded('necto', wasmMod), 'necto', 'Necto SafeTensors');
 
     for (const policyId of botpackIds) {
-      await yieldIdleSlice(24);
-      try {
-        await ensureExperimentalEngine(policyId);
-      } catch (err: unknown) {
-        console.warn(`[GameRuntime] Botpack policy "${policyId}" preload warning:`, err);
-      }
-      report(policyId);
+      await runStep(
+        () => ensureBotWeightsLoaded(policyId, wasmMod),
+        policyId,
+        `Botpack policy "${policyId}"`
+      );
     }
   }
 
-  /**
-   * Advances authoritative bot controls for single-player bot matches hosted on an AuthoritativeServerHost.
-   */
   public stepAuthoritativeBotControls(isKickoff: boolean): void {
     const r = this.runtime;
     const server = r.networkManager?.sessionCoordinator.authoritativeServer;
@@ -158,77 +152,43 @@ export class RuntimeBotCoordinator {
       return;
     }
 
+    const mod = r.physics.module;
     if (isKickoff) {
       this.botKickoffStep = 0;
       this.botControls = { ...NEUTRAL_CAR_CONTROLS };
+      mod?._physics_resetBotDirector(1 << BOT_CAR_INDEX);
       server.setCarControls(BOT_CAR_INDEX, this.botControls);
       r.physics.setControls(BOT_CAR_INDEX, this.botControls);
       return;
     }
 
-    const kickoffControls = r.bot?.getKickoffControls?.(r.physics.state, this.botKickoffStep) as
-      CarControlsInput | null | undefined;
-    if (kickoffControls) {
-      this.botControls = kickoffControls;
-      r.bot?.overrideControls?.(kickoffControls);
-    } else if (this.botTickSkip <= 0) {
-      this.scheduleBotDecision();
+    if (mod) {
+      const botId = r.bot?.id || 'nexto';
+      const teamAssignment = getTeamAssignment(false) as {
+        opponentTeam: number;
+        botTeam?: number;
+      };
+      const botTeam = (teamAssignment.botTeam ?? teamAssignment.opponentTeam) === 1 ? 1 : 0;
+      syncCachedWeightsToWasm(mod);
+      mod._physics_configureBotSlot(
+        BOT_CAR_INDEX,
+        resolveBotPolicyId(botId),
+        botTeam,
+        r.bot?.option.tickSkip ?? resolveBotDefaultTickSkip(botId)
+      );
+      mod._physics_stepBotInferenceMask(1 << BOT_CAR_INDEX, 0);
+      this.botControls = readWasmBotSlotControls(mod, BOT_CAR_INDEX);
     }
+
     this.botKickoffStep++;
-    if (!kickoffControls && this.botTickSkip > 0) {
-      this.botTickSkip--;
-    }
     server.setCarControls(BOT_CAR_INDEX, this.botControls);
     r.physics.setControls(BOT_CAR_INDEX, this.botControls);
-  }
-
-  public scheduleBotDecision(): void {
-    const r = this.runtime;
-    if (this.isBotDeciding || !this.isBotMatch || !r.bot || !r.physics) return;
-    this.isBotDeciding = true;
-    const epoch = this.botDecisionEpoch;
-    const pads = r.physics.getPads();
-    const teamAssignment = getTeamAssignment(false) as {
-      playerTeam: number;
-      opponentTeam: number;
-      botTeam?: number;
-    };
-    const botTeam = teamAssignment.botTeam ?? teamAssignment.opponentTeam;
-
-    r.bot
-      .decide(r.physics.state, pads, BOT_CAR_INDEX, botTeam)
-      .then((controls: CarControlsInput) => {
-        if (epoch === this.botDecisionEpoch && r.bot) {
-          this.botControls = controls;
-          this.botTickSkip = r.bot.option.tickSkip;
-          this.isBotDeciding = false;
-          const server = r.networkManager?.sessionCoordinator.authoritativeServer;
-          if (server && this.isBotMatch) {
-            server.setCarControls(BOT_CAR_INDEX, controls);
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        if (epoch === this.botDecisionEpoch) {
-          this.isBotDeciding = false;
-          this.isBotPaused = true;
-          if (r.match) {
-            r.match.state.paused = true;
-          }
-          console.warn(
-            '[GameRuntime] Bot opponent stopped responding:',
-            err instanceof Error ? err.message : err
-          );
-        }
-      });
   }
 
   public resetBotState(): void {
     const r = this.runtime;
     if (r.bot) r.bot.reset();
-    this.botDecisionEpoch++;
-    this.botTickSkip = 0;
-    this.isBotDeciding = false;
+    r.physics?.module?._physics_resetBotDirector(0);
     this.botControls = { ...NEUTRAL_CAR_CONTROLS };
     this.botKickoffStep = 0;
   }
@@ -247,7 +207,11 @@ export class RuntimeBotCoordinator {
       r.bot.select(botId);
       botSettingsStore.save({ botId });
     }
-    await Promise.all([r.bot?.load(), r.arena?.vehicleRegistry.ensureOpponent()]);
+    await Promise.all([
+      ensureBotWeightsLoaded(botId, r.physics.module),
+      r.bot?.load(),
+      r.arena?.vehicleRegistry.ensureOpponent(),
+    ]);
     if (r.arena?.cars?.[1]) {
       r.arena.cars[1].visible = true;
     }
@@ -293,19 +257,14 @@ export class RuntimeBotCoordinator {
     const prevChannel = session.networkChannel;
     const nextChannel = server.channel as NetworkSessionChannelLike;
     session.networkChannel = nextChannel;
-    if (
-      typeof prevChannel?.extraUplinkMs === 'number' ||
-      typeof prevChannel?.extraDownlinkMs === 'number'
-    ) {
-      const up = prevChannel?.extraUplinkMs ?? 0;
-      const down = prevChannel?.extraDownlinkMs ?? 0;
-      if (up > 0 || down > 0) {
-        if (typeof nextChannel.setAsymmetricLatency === 'function') {
-          nextChannel.setAsymmetricLatency(up, down);
-        } else {
-          nextChannel.extraUplinkMs = up;
-          nextChannel.extraDownlinkMs = down;
-        }
+    const up = prevChannel?.extraUplinkMs ?? 0;
+    const down = prevChannel?.extraDownlinkMs ?? 0;
+    if (up > 0 || down > 0) {
+      if (typeof nextChannel.setAsymmetricLatency === 'function') {
+        nextChannel.setAsymmetricLatency(up, down);
+      } else {
+        nextChannel.extraUplinkMs = up;
+        nextChannel.extraDownlinkMs = down;
       }
     } else {
       session.reconcilerBinder.applyInitialChannelLatency(nextChannel, true);

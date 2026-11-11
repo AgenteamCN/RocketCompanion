@@ -4,7 +4,7 @@
  * post-goal ball freeze, post-goal celebration countdown, and sandbox quick actions.
  */
 
-import { isExperimentalEngineReady } from '../../../ai/experimental/ExperimentalBotAgent.ts';
+import { isExperimentalEngineReady } from '../../../ai/BotWeightLoader.ts';
 import { INCIDENT_EVENT_TYPES, MATCH_SIGNALS } from '../../../physics/RocketSimConstants.ts';
 import { useExperimentalMultiBotsStore } from '../../runtimeUiPort.ts';
 import {

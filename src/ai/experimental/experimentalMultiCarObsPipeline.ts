@@ -133,42 +133,6 @@ export interface DynamicPerceiverObs {
 }
 
 /**
- * Scripted kickoff behavior for Nexto (fast speed-flip kickoff, symmetric for left/right spawns).
- */
-export function getNextoKickoffControls(
-  simState: Float32Array,
-  kickoffTick: number,
-  carIndex = 1,
-  team = 1
-): CarControls | null {
-  sBallView.attach(simState);
-  if (kickoffTick < 0 || kickoffTick >= 168 || sBallView.posY !== 0) {
-    return null;
-  }
-  const cv = (sCarViews[carIndex] || new CarStateView()).attachCar(simState, carIndex);
-  const normX = team === 0 ? cv.posX : -cv.posX;
-  const sign = normX < -10 ? -1 : 1;
-
-  if (kickoffTick < 44) return { ...DEFAULT_CAR_CONTROLS, throttle: 1, boost: true };
-  if (kickoffTick < 60)
-    return { ...DEFAULT_CAR_CONTROLS, throttle: 1, boost: true, steer: -1 * sign };
-  if (kickoffTick < 68) return { ...DEFAULT_CAR_CONTROLS, throttle: 1, boost: true, jump: true };
-  if (kickoffTick < 72) return { ...DEFAULT_CAR_CONTROLS, throttle: 1, boost: true };
-  if (kickoffTick < 76) {
-    return {
-      ...DEFAULT_CAR_CONTROLS,
-      throttle: 1,
-      boost: true,
-      jump: true,
-      yaw: 0.8 * sign,
-      pitch: -0.7,
-    };
-  }
-  if (kickoffTick < 128) return { ...DEFAULT_CAR_CONTROLS, throttle: 1, boost: true, pitch: 1 };
-  return { ...DEFAULT_CAR_CONTROLS, throttle: 1, roll: 1 * sign, pitch: 0.5 };
-}
-
-/**
  * Normalizes activeCars list or derives it from simState if not explicitly passed.
  */
 export function resolveActiveCars(

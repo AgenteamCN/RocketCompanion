@@ -1,6 +1,6 @@
 import { BaseGameMode } from './BaseGameMode.ts';
 import type { FrameContext } from '../pipeline/FramePipeline.ts';
-import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
+import { ensureExperimentalEngine } from '../../ai/BotWeightLoader.ts';
 import { useExperimentalMultiBotsStore, hudStore } from '../runtimeUiPort.ts';
 import type {
   CarControls,

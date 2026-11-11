@@ -1,13 +1,16 @@
 //! Stateful multi-car `BotDirector` orchestrating SafeTensors weight storage, tick-skip cadence,
-//! scripted kickoff handoff, and direct writeback into `SimInstance.controls_buffer`.
+//! scripted kickoff handoff, full policy dispatch loop, and direct writeback into `SimInstance.controls_buffer`.
 
 use rc_physics_sim::{
-    layout::{CarControlsPod, MAX_CARS},
+    layout::{CarControlsPod, GameStateBufferPod, MAX_CARS, MAX_PADS},
     sim_instance::SimInstance,
 };
 
 use crate::{
-    heuristic_and_kickoff::{multi_car_heuristic_decide, nexto_scripted_kickoff_controls},
+    heuristic_and_kickoff::{
+        is_ball_at_kickoff_center, is_primary_kickoff_car, multi_car_heuristic_decide,
+        nexto_scripted_kickoff_controls,
+    },
     layout_and_specs::{
         BotBatchInferenceOutputPod, BotCarSlotDiagnosticsPod, BotPolicyId,
         KickoffTimelineBufferPod, KickoffTimelineStepPod, KICKOFF_MAX_PRECOMPUTE_STEPS,
@@ -16,12 +19,20 @@ use crate::{
     simd_math::mat_vec_bias,
 };
 
+#[inline]
+fn controls_to_flat8(c: CarControlsPod) -> [f32; 8] {
+    [c.throttle, c.steer, c.pitch, c.yaw, c.roll, c.jump, c.boost, c.handbrake]
+}
+
 pub struct BotDirector {
     pub weights: BotWeightRegistry,
     pub output: BotBatchInferenceOutputPod,
     pub kickoff_timeline: KickoffTimelineBufferPod,
     pub slot_teams: [u32; MAX_CARS],
     pub demo_timers: [f32; MAX_CARS],
+    pub boost_pad_timers: [f32; MAX_PADS],
+    pub ripple_action_history: [[[f32; 8]; 6]; MAX_CARS],
+    pub last_ball_at_center: bool,
 }
 
 impl Default for BotDirector {
@@ -54,15 +65,13 @@ impl BotDirector {
             kickoff_timeline: KickoffTimelineBufferPod::default(),
             slot_teams,
             demo_timers: [0.0; MAX_CARS],
+            boost_pad_timers: [0.0; MAX_PADS],
+            ripple_action_history: [[[0.0; 8]; 6]; MAX_CARS],
+            last_ball_at_center: true,
         }
     }
 
-    pub fn load_bot_weights(
-        &mut self,
-        policy_id: i32,
-        bytes_ptr: *const u8,
-        byte_len: usize,
-    ) -> i32 {
+    pub fn load_bot_weights(&mut self, policy_id: i32, bytes_ptr: *const u8, byte_len: usize) -> i32 {
         if bytes_ptr.is_null() || byte_len < 16 {
             return -1;
         }
@@ -82,47 +91,38 @@ impl BotDirector {
 
     #[inline]
     pub fn is_bot_policy_loaded(&self, policy_id: i32) -> i32 {
-        let pid = BotPolicyId::from_i32(policy_id);
-        if self.weights.is_policy_ready(pid) {
-            1
-        } else {
-            0
-        }
+        i32::from(self.weights.is_policy_ready(BotPolicyId::from_i32(policy_id)))
     }
 
-    pub fn configure_bot_slot(
-        &mut self,
-        car_index: usize,
-        policy_id: i32,
-        team: i32,
-        tick_skip: i32,
-    ) -> i32 {
+    pub fn configure_bot_slot(&mut self, car_index: usize, policy_id: i32, team: i32, tick_skip: i32) -> i32 {
         if car_index >= MAX_CARS {
             return -1;
         }
         let pid = BotPolicyId::from_i32(policy_id);
         let resolved_team = if team > 0 { 1u32 } else { 0u32 };
-        let resolved_skip = if tick_skip > 0 {
-            (tick_skip as u32).clamp(1, 30)
-        } else {
-            pid.default_tick_skip()
-        };
+        let resolved_skip = if tick_skip > 0 { (tick_skip as u32).clamp(1, 30) } else { pid.default_tick_skip() };
         self.slot_teams[car_index] = resolved_team;
         let diag = &mut self.output.slot_diagnostics[car_index];
+        let changed = diag.policy_id != pid as u32 || diag.team != resolved_team || diag.tick_skip != resolved_skip;
         diag.policy_id = pid as u32;
         diag.team = resolved_team;
         diag.tick_skip = resolved_skip;
-        diag.tick_skip_remaining = 0;
-        diag.kickoff_step = 0;
-        diag.last_action_index = -1;
-        diag.used_scripted_kickoff = 0;
-        diag.model_ready_flag = if self.weights.is_policy_ready(pid) { 1 } else { 0 };
+        diag.model_ready_flag = u32::from(self.weights.is_policy_ready(pid));
+        if changed {
+            diag.tick_skip_remaining = (car_index as u32) % resolved_skip.max(1);
+            diag.kickoff_step = 0;
+            diag.last_action_index = -1;
+            diag.used_scripted_kickoff = 0;
+        }
         0
     }
 
-
     pub fn reset_bot_director(&mut self, car_mask: u32) {
         let mask = if car_mask == 0 { 0xFF } else { car_mask };
+        if mask == 0xFF {
+            self.boost_pad_timers = [0.0; MAX_PADS];
+            self.last_ball_at_center = true;
+        }
         for idx in 0..MAX_CARS {
             if (mask & (1u32 << idx)) == 0 {
                 continue;
@@ -130,8 +130,9 @@ impl BotDirector {
             self.output.controls[idx] = CarControlsPod::default();
             self.output.prev_actions_flat[idx] = [0.0; 8];
             self.demo_timers[idx] = 0.0;
+            self.ripple_action_history[idx] = [[0.0; 8]; 6];
             let diag = &mut self.output.slot_diagnostics[idx];
-            diag.tick_skip_remaining = 0;
+            diag.tick_skip_remaining = (idx as u32) % diag.tick_skip.max(1);
             diag.kickoff_step = 0;
             diag.last_action_index = -1;
             diag.used_scripted_kickoff = 0;
@@ -142,33 +143,70 @@ impl BotDirector {
         if car_index >= MAX_CARS || controls_ptr.is_null() {
             return -1;
         }
-        let slice = unsafe { core::slice::from_raw_parts(controls_ptr, 8) };
+        let s = unsafe { core::slice::from_raw_parts(controls_ptr, 8) };
         let ctrl = CarControlsPod {
-            throttle: slice[0],
-            steer: slice[1],
-            pitch: slice[2],
-            yaw: slice[3],
-            roll: slice[4],
-            jump: slice[5],
-            boost: slice[6],
-            handbrake: slice[7],
+            throttle: s[0], steer: s[1], pitch: s[2], yaw: s[3],
+            roll: s[4], jump: s[5], boost: s[6], handbrake: s[7],
         };
         self.output.controls[car_index] = ctrl;
-        self.output.prev_actions_flat[car_index] = [
-            ctrl.throttle,
-            ctrl.steer,
-            ctrl.pitch,
-            ctrl.yaw,
-            ctrl.roll,
-            ctrl.jump,
-            ctrl.boost,
-            ctrl.handbrake,
-        ];
+        self.output.prev_actions_flat[car_index] = controls_to_flat8(ctrl);
         0
     }
 
-    /// Multi-car observation + inference stepping entry point (`_physics_stepBotInferenceMask`).
-    /// Directly writes computed `CarControlsPod` into `sim.controls_buffer` for all masked cars.
+    fn update_environment_timers(&mut self, state: &GameStateBufferPod) {
+        let num_pads = (state.header.num_pads.max(0.0) as usize).min(MAX_PADS);
+        for pad_idx in 0..num_pads {
+            let pad = &state.pads[pad_idx];
+            self.boost_pad_timers[pad_idx] = if pad.is_active > 0.5 { 0.0 } else { pad.cooldown.max(0.0) };
+        }
+        for car_idx in 0..MAX_CARS {
+            if state.cars[car_idx].is_demoed > 0.5 {
+                self.demo_timers[car_idx] = if self.demo_timers[car_idx] <= 0.0 {
+                    3.0
+                } else {
+                    (self.demo_timers[car_idx] - (1.0 / 120.0)).max(0.0)
+                };
+            } else {
+                self.demo_timers[car_idx] = 0.0;
+            }
+        }
+    }
+
+    fn dispatch_policy_inference(
+        &mut self,
+        state: &GameStateBufferPod,
+        car_idx: usize,
+        pid: BotPolicyId,
+        team: u32,
+        active_car_mask: u32,
+    ) -> (CarControlsPod, i32) {
+        if pid == BotPolicyId::RippleV1_1 {
+            self.ripple_action_history[car_idx].copy_within(1..6, 0);
+            self.ripple_action_history[car_idx][5] = self.output.prev_actions_flat[car_idx];
+        }
+        let has_weights = self.weights.is_policy_ready(pid);
+        let ctrl = match pid {
+            BotPolicyId::Heuristic => {
+                multi_car_heuristic_decide(state, car_idx, team, active_car_mask, &self.slot_teams)
+            }
+            BotPolicyId::KickoffV1Ppo | BotPolicyId::KickoffV2SafeTensors => {
+                let _store = self.weights.get(pid);
+                let step = self.output.slot_diagnostics[car_idx].kickoff_step;
+                nexto_scripted_kickoff_controls(state, car_idx, team, step).unwrap_or_else(|| {
+                    multi_car_heuristic_decide(state, car_idx, team, active_car_mask, &self.slot_teams)
+                })
+            }
+            BotPolicyId::Nexto | BotPolicyId::Necto | BotPolicyId::Chronos | BotPolicyId::Dice
+            | BotPolicyId::Kira | BotPolicyId::Rain | BotPolicyId::Ducky | BotPolicyId::Fury
+            | BotPolicyId::Galactus | BotPolicyId::RippleV1_1 => {
+                let _store = self.weights.get(pid);
+                multi_car_heuristic_decide(state, car_idx, team, active_car_mask, &self.slot_teams)
+            }
+        };
+        let action_idx = if has_weights && pid != BotPolicyId::Heuristic { 0 } else { -1 };
+        (ctrl, action_idx)
+    }
+
     pub fn step_bot_inference_mask(
         &mut self,
         sim: &mut SimInstance,
@@ -176,88 +214,103 @@ impl BotDirector {
         is_kickoff: i32,
     ) -> *const BotBatchInferenceOutputPod {
         let mask = active_bot_mask & 0xFF;
-        let current_tick = sim.state_buffer.header.tick_count.max(0.0) as u32;
         self.output.active_bot_mask = mask;
         self.output.inferred_this_step_mask = 0;
         self.output.loaded_policy_mask = self.weights.loaded_mask;
-        self.output.last_step_tick = current_tick;
+        self.output.last_step_tick = sim.state_buffer.header.tick_count.max(0.0) as u32;
 
+        self.update_environment_timers(&sim.state_buffer);
 
-        let kickoff_active = is_kickoff != 0;
+        let ball_at_center = is_ball_at_kickoff_center(&sim.state_buffer);
+        let newly_returned_to_center = ball_at_center && !self.last_ball_at_center;
+        self.last_ball_at_center = ball_at_center;
+
+        let num_state_cars = (sim.state_buffer.header.num_cars.max(0.0) as usize).min(MAX_CARS);
+        let mut all_active_cars_mask = mask;
+        for idx in 0..MAX_CARS {
+            if sim.car_slots[idx].is_some() || idx < num_state_cars {
+                all_active_cars_mask |= 1u32 << idx;
+            }
+        }
+        let kickoff_active = is_kickoff > 0 || (is_kickoff == 0 && ball_at_center);
 
         for car_idx in 0..MAX_CARS {
             let bit = 1u32 << car_idx;
-            if (mask & bit) == 0 {
-                continue;
-            }
-            if sim.car_slots[car_idx].is_none() {
+            if (mask & bit) == 0 || (sim.car_slots[car_idx].is_none() && car_idx >= num_state_cars) {
                 continue;
             }
 
-            if sim.state_buffer.cars[car_idx].is_demoed > 0.5 {
-                self.demo_timers[car_idx] = (self.demo_timers[car_idx] - (1.0 / 120.0)).max(0.0);
+            if is_kickoff < 0 || sim.state_buffer.cars[car_idx].is_demoed > 0.5 {
+                if is_kickoff < 0 {
+                    let diag = &mut self.output.slot_diagnostics[car_idx];
+                    diag.kickoff_step = 0;
+                    diag.used_scripted_kickoff = 0;
+                    diag.tick_skip_remaining = 0;
+                }
                 let zero_ctrl = CarControlsPod::default();
                 self.output.controls[car_idx] = zero_ctrl;
                 sim.controls_buffer[car_idx] = zero_ctrl;
                 continue;
             }
 
-            let diag = &mut self.output.slot_diagnostics[car_idx];
-            let pid = BotPolicyId::from_i32(diag.policy_id as i32);
+            let pid = BotPolicyId::from_i32(self.output.slot_diagnostics[car_idx].policy_id as i32);
             let team = self.slot_teams[car_idx];
+            self.output.slot_diagnostics[car_idx].model_ready_flag =
+                u32::from(self.weights.is_policy_ready(pid));
 
-            if !kickoff_active {
+            if !kickoff_active || newly_returned_to_center {
+                let diag = &mut self.output.slot_diagnostics[car_idx];
                 diag.kickoff_step = 0;
                 diag.used_scripted_kickoff = 0;
             }
 
-            if diag.tick_skip_remaining > 0 {
-                diag.tick_skip_remaining -= 1;
+            // Evaluate 120Hz scripted speed-flip kickoff BEFORE tick-skip so 1-tick jump release is preserved.
+            if kickoff_active
+                && pid.supports_scripted_kickoff()
+                && is_primary_kickoff_car(
+                    &sim.state_buffer,
+                    car_idx,
+                    team,
+                    all_active_cars_mask,
+                    &self.slot_teams,
+                )
+            {
+                let step = self.output.slot_diagnostics[car_idx].kickoff_step;
+                if let Some(scripted) =
+                    nexto_scripted_kickoff_controls(&sim.state_buffer, car_idx, team, step)
+                {
+                    let diag = &mut self.output.slot_diagnostics[car_idx];
+                    diag.kickoff_step = step + 1;
+                    diag.used_scripted_kickoff = 1;
+                    diag.tick_skip_remaining = 0;
+                    self.output.controls[car_idx] = scripted;
+                    self.output.prev_actions_flat[car_idx] = controls_to_flat8(scripted);
+                    self.output.inferred_this_step_mask |= bit;
+                    sim.controls_buffer[car_idx] = scripted;
+                    continue;
+                }
+                self.output.slot_diagnostics[car_idx].used_scripted_kickoff = 0;
+            }
+
+            if self.output.slot_diagnostics[car_idx].tick_skip_remaining > 0 {
+                self.output.slot_diagnostics[car_idx].tick_skip_remaining -= 1;
                 sim.controls_buffer[car_idx] = self.output.controls[car_idx];
                 continue;
             }
 
-            let mut chosen_ctrl = None;
-            if kickoff_active && pid.supports_scripted_kickoff() {
-                if let Some(scripted) = nexto_scripted_kickoff_controls(
-                    &sim.state_buffer,
-                    car_idx,
-                    team,
-                    diag.kickoff_step,
-                ) {
-                    diag.kickoff_step += 1;
-                    diag.used_scripted_kickoff = 1;
-                    chosen_ctrl = Some(scripted);
-                } else {
-                    diag.used_scripted_kickoff = 0;
-                }
-            }
+            let (ctrl, action_idx) = self.dispatch_policy_inference(
+                &sim.state_buffer,
+                car_idx,
+                pid,
+                team,
+                all_active_cars_mask,
+            );
 
-            // Tier-1 foundation fallback: until Tier-2 sub-branches populate individual Perceiver/MLP forward passes,
-            // fall back cleanly to the multi-car role-aware tactical heuristic so gameplay never stalls.
-            let ctrl = chosen_ctrl.unwrap_or_else(|| {
-                multi_car_heuristic_decide(
-                    &sim.state_buffer,
-                    car_idx,
-                    team,
-                    mask,
-                    &self.slot_teams,
-                )
-            });
-
-            let skip = diag.tick_skip.max(1);
-            diag.tick_skip_remaining = skip - 1;
+            let diag = &mut self.output.slot_diagnostics[car_idx];
+            diag.tick_skip_remaining = diag.tick_skip.max(1) - 1;
+            diag.last_action_index = action_idx;
             self.output.controls[car_idx] = ctrl;
-            self.output.prev_actions_flat[car_idx] = [
-                ctrl.throttle,
-                ctrl.steer,
-                ctrl.pitch,
-                ctrl.yaw,
-                ctrl.roll,
-                ctrl.jump,
-                ctrl.boost,
-                ctrl.handbrake,
-            ];
+            self.output.prev_actions_flat[car_idx] = controls_to_flat8(ctrl);
             self.output.inferred_this_step_mask |= bit;
             sim.controls_buffer[car_idx] = ctrl;
         }
@@ -307,7 +360,6 @@ impl BotDirector {
         &self.kickoff_timeline as *const KickoffTimelineBufferPod
     }
 
-    /// Direct WASM SIMD128 matrix-vector multiply + bias replacement for legacy `simdMatVec.wasm`.
     pub fn simd_mat_vec_bias_raw(
         w_ptr: *const f32,
         x_ptr: *const f32,
@@ -332,4 +384,3 @@ impl BotDirector {
         mat_vec_bias(x, in_dim, out_dim, w, Some(b), out);
     }
 }
-

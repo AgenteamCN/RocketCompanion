@@ -1,18 +1,15 @@
 /**
  * BotTunnelManager.ts
- * Manages isolated virtual loopback tunnels between BotInferenceWorker and HostServerWorker.
- *
- * Each auto-filled bot slot (`bot_fill_1`, `bot_fill_2`, ..., or `bot`) is registered
- * as an independent virtual channel on the authoritative server and feeds standard
- * binary `InputPacketCodec` frames into `NetworkDataHandler` / `EstablishedSessionManager`.
+ * Manages isolated virtual loopback tunnels between WASM `BotDirector` (`BotWeightLoader`)
+ * and `AuthoritativeServerHost` without spawning a separate `BotInferenceWorker`.
  */
 
-import {
-  stepBotInferenceBatch,
-  type BotSessionStepSpec,
-  type BotTunnelEncodedPacket,
-} from './BotInferenceWorker.ts';
-import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
+import { ExperimentalBotAgent, ensureBotWeightsLoaded } from '../../ai/BotWeightLoader.ts';
+import { DEFAULT_CAR_CONTROLS } from '../../ai/experimental/experimentalMultiCarObsPipeline.ts';
+import { BallStateView, CarStateView } from '../../physics/RocketSimStateViews.ts';
+import { InputPacketCodec, type CarControlsInput } from '../protocol/InputPacketCodec.ts';
+import type { WorkerRoomStateSummary } from '../server/HostWorkerMessageRouter.ts';
+import type { BotTunnelHostServerPort } from '../server/hostLoopbackFrameDecodePipeline.ts';
 
 export interface BotTunnelManagerOptions {
   forceInProcess?: boolean;
@@ -25,210 +22,170 @@ export interface RegisteredBotTunnelInfo {
   botType: string;
 }
 
-let prewarmedBotWorker: Worker | null = null;
-let prewarmBotWorkerPromise: Promise<boolean> | null = null;
-
-/**
- * Pre-spawns an idle BotInferenceWorker and warms its TypeScript module graph,
- * SIMD WASM accelerator, and Nexto SafeTensors weights in the background right after
- * Free Play starts, eliminating on-demand worker module fetches when hosting a server.
- */
-export function prewarmBotInferenceWorker(): Promise<boolean> {
-  if (typeof Worker === 'undefined') {
-    return Promise.resolve(false);
-  }
-  if (prewarmedBotWorker) {
-    return Promise.resolve(true);
-  }
-  if (prewarmBotWorkerPromise) {
-    return prewarmBotWorkerPromise;
-  }
-
-  prewarmBotWorkerPromise = new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean, worker: Worker | null) => {
-      if (settled) return;
-      settled = true;
-      prewarmBotWorkerPromise = null;
-      if (ok && worker) {
-        prewarmedBotWorker = worker;
-      } else {
-        try {
-          worker?.terminate();
-        } catch (_e) {}
-      }
-      resolve(ok);
-    };
-
-    try {
-      const worker = new Worker(new URL('./BotInferenceWorker.ts', import.meta.url), {
-        type: 'module',
-      });
-      const timer = setTimeout(() => {
-        worker.removeEventListener('message', onMsg);
-        finish(false, worker);
-      }, 15000);
-
-      const onMsg = (ev: MessageEvent) => {
-        if (ev?.data?.type === 'prewarmed') {
-          clearTimeout(timer);
-          worker.removeEventListener('message', onMsg);
-          finish(true, worker);
-        }
-      };
-
-      worker.addEventListener('message', onMsg);
-      worker.onerror = () => {
-        clearTimeout(timer);
-        worker.removeEventListener('message', onMsg);
-        finish(false, worker);
-      };
-
-      worker.postMessage({ type: 'prewarm', botType: 'nexto' });
-    } catch (_err) {
-      finish(false, null);
-    }
-  });
-
-  return prewarmBotWorkerPromise;
+export interface RoomStateRosterPlayerLike {
+  sessionId?: string;
+  isBot?: boolean;
+  carIndex?: number;
+  entityId?: number;
+  team?: number;
+  botType?: string;
 }
 
+export interface RoomStateLike {
+  pads?: unknown;
+  players?: readonly RoomStateRosterPlayerLike[];
+  roster?: {
+    players?: readonly RoomStateRosterPlayerLike[];
+  };
+}
+
+class InProcessBotTunnelRecord {
+  readonly agent: ExperimentalBotAgent;
+  kickoffStep = 0;
+  staggered = false;
+  lastServerTick = -1;
+  maxCommittedTick = -1;
+  readonly committedControls = new Map<number, CarControlsInput>();
+
+  constructor(botType: string, carIndex: number, team: 0 | 1) {
+    this.agent = new ExperimentalBotAgent(botType, carIndex, team);
+    void ensureBotWeightsLoaded(botType);
+  }
+
+  syncIdentity(carIndex: number, team: 0 | 1, botType: string): void {
+    this.agent.carIndex = carIndex;
+    this.agent.team = team;
+    if (this.agent.botType !== botType) {
+      this.agent.setBotType(botType);
+    }
+  }
+
+  stepSessionHistory(
+    stateSnapshot: Float32Array,
+    serverTick: number,
+    matchState: string,
+    carIndex: number,
+    isPrimaryKickoffCar: boolean,
+    pads: readonly unknown[],
+    activeCars: ReadonlyArray<{ carIndex: number; team: 0 | 1 }>,
+    redundantTicks: number
+  ): {
+    targetTick: number;
+    history: Array<{ tick: number; carIndex: number; controls: CarControlsInput }>;
+  } {
+    if (
+      matchState !== 'playing' ||
+      this.maxCommittedTick < serverTick - 16 ||
+      this.maxCommittedTick > serverTick + 16
+    ) {
+      this.maxCommittedTick = serverTick - 1;
+      this.committedControls.clear();
+    }
+
+    const deltaTicks =
+      this.lastServerTick >= 0 && serverTick > this.lastServerTick
+        ? Math.min(16, serverTick - this.lastServerTick)
+        : 1;
+    this.lastServerTick = serverTick;
+
+    let ctrl: CarControlsInput = DEFAULT_CAR_CONTROLS;
+    const baseKickoffStep = this.kickoffStep;
+
+    if (matchState !== 'playing') {
+      this.kickoffStep = 0;
+      this.staggered = false;
+      this.agent.reset();
+      ctrl =
+        matchState === 'replay' ? { ...DEFAULT_CAR_CONTROLS, jump: true } : DEFAULT_CAR_CONTROLS;
+    } else {
+      const ko = this.agent.getKickoffControls(stateSnapshot, baseKickoffStep, isPrimaryKickoffCar);
+      if (ko) {
+        ctrl = ko as CarControlsInput;
+        this.agent.overrideControls(ko);
+      } else if (this.agent.tickSkipCounter <= 0) {
+        ctrl = this.agent.decideSync(stateSnapshot, pads, activeCars) as CarControlsInput;
+        this.agent.tickSkipCounter = this.staggered
+          ? Math.max(0, this.agent.tickSkip - deltaTicks)
+          : (carIndex % this.agent.tickSkip) + 1;
+        this.staggered = true;
+      } else {
+        this.agent.tickSkipCounter = Math.max(0, this.agent.tickSkipCounter - deltaTicks);
+        ctrl = this.agent.action as CarControlsInput;
+      }
+      this.kickoffStep += deltaTicks;
+    }
+
+    const horizonTicks = Math.max(2, Math.min(8, Number(redundantTicks) || 6));
+    const targetTick = serverTick + horizonTicks;
+    const startCommitTick = Math.max(serverTick, this.maxCommittedTick + 1);
+    for (let t = startCommitTick; t <= targetTick; t++) {
+      let tickCtrl: CarControlsInput = ctrl || DEFAULT_CAR_CONTROLS;
+      const k = t - serverTick;
+      if (matchState === 'playing' && baseKickoffStep + k < 168) {
+        const koTick = this.agent.getKickoffControls(
+          stateSnapshot,
+          baseKickoffStep + k,
+          isPrimaryKickoffCar
+        );
+        if (koTick) {
+          tickCtrl = koTick as CarControlsInput;
+        }
+      }
+      this.committedControls.set(t, { ...tickCtrl });
+      this.maxCommittedTick = t;
+    }
+
+    for (const oldTick of this.committedControls.keys()) {
+      if (oldTick < serverTick - 4) {
+        this.committedControls.delete(oldTick);
+      }
+    }
+
+    const history: Array<{ tick: number; carIndex: number; controls: CarControlsInput }> = [];
+    for (let t = serverTick; t <= targetTick; t++) {
+      history.push({
+        tick: t,
+        carIndex,
+        controls: this.committedControls.get(t) || ctrl || DEFAULT_CAR_CONTROLS,
+      });
+    }
+
+    return { targetTick, history };
+  }
+}
+
+export async function prewarmBotInferenceWorker(): Promise<boolean> {
+  await Promise.all([ensureBotWeightsLoaded('nexto'), ensureBotWeightsLoaded('necto')]);
+  return true;
+}
+
+const sBallView = new BallStateView();
+const sCarView = new CarStateView();
+
 export class BotTunnelManager {
-  hostServer: any;
+  hostServer: BotTunnelHostServerPort | null;
   options: BotTunnelManagerOptions;
-  worker: Worker | null = null;
-  isWorker: boolean;
   registeredTunnels = new Map<string, RegisteredBotTunnelInfo>();
+  private readonly runtimeRecords = new Map<string, InProcessBotTunnelRecord>();
   lastSteppedServerTick = -1;
   lastSteppedMatchState = '';
-  inferenceInFlight = false;
-  inferenceStartedAtMs = 0;
-  cachedPads: any[] | null = null;
-  _padsSentToWorker = false;
-  hasDirectPort = false;
+  cachedPads: readonly unknown[] = [];
 
-  constructor(hostServer: any, options: BotTunnelManagerOptions = {}) {
+  constructor(
+    hostServer: BotTunnelHostServerPort | null = null,
+    options: BotTunnelManagerOptions = {}
+  ) {
     this.hostServer = hostServer;
     this.options = options;
-    this.isWorker =
-      typeof Worker !== 'undefined' && !options.forceInProcess && Boolean(hostServer?.isWorker);
   }
 
   init(): void {
-    if (this.isWorker && !this.worker) {
-      try {
-        if (prewarmedBotWorker) {
-          this.worker = prewarmedBotWorker;
-          prewarmedBotWorker = null;
-        } else {
-          this.worker = new Worker(new URL('./BotInferenceWorker.ts', import.meta.url), {
-            type: 'module',
-          });
-        }
-        this.worker.onmessage = (ev) => this._handleWorkerMessage(ev.data);
-        this.worker.onerror = (err) => {
-          if (typeof err?.preventDefault === 'function') err.preventDefault();
-          console.warn(
-            '[BotTunnelManager] BotInferenceWorker error, falling back to async in-process tunnel:',
-            err
-          );
-          try {
-            this.worker?.terminate?.();
-          } catch (_e) {
-            // Ignore termination error
-          }
-          this.worker = null;
-          this.isWorker = false;
-          this.inferenceInFlight = false;
-          this.hasDirectPort = false;
-          this.hostServer?._postCommand?.('detach_bot_port', {});
-          ensureExperimentalEngine('nexto');
-        };
-        this.worker.postMessage({ type: 'init', botType: 'nexto', pads: this.cachedPads });
-        if (Array.isArray(this.cachedPads) && this.cachedPads.length > 0) {
-          this._padsSentToWorker = true;
-        }
-        this._connectDirectPortIfAvailable();
-      } catch (err) {
-        console.warn(
-          '[BotTunnelManager] Failed to spawn BotInferenceWorker, using in-process tunnel:',
-          err
-        );
-        this.worker = null;
-        this.isWorker = false;
-        this.inferenceInFlight = false;
-        this.hasDirectPort = false;
-        ensureExperimentalEngine('nexto');
-      }
-    } else {
-      ensureExperimentalEngine('nexto');
-    }
+    void ensureBotWeightsLoaded('nexto');
   }
 
-  _connectDirectPortIfAvailable(): boolean {
-    if (
-      this.hasDirectPort ||
-      !this.isWorker ||
-      !this.worker ||
-      !this.hostServer?.isWorker ||
-      !this.hostServer?.worker ||
-      typeof MessageChannel === 'undefined'
-    ) {
-      return false;
-    }
-    try {
-      const { port1, port2 } = new MessageChannel();
-      this.worker.postMessage({ type: 'attach_port', port: port1 }, [port1]);
-      this.hostServer._postCommand('attach_bot_port', { port: port2 }, [port2]);
-      this.hasDirectPort = true;
-      return true;
-    } catch (err) {
-      console.warn(
-        '[BotTunnelManager] Failed to attach direct MessageChannel port, using main-thread relay:',
-        err
-      );
-      this.hasDirectPort = false;
-      return false;
-    }
-  }
-
-  _handleWorkerMessage(data: any): void {
-    if (!data) return;
-    if (data.type === 'bot_tunnel_packets') {
-      this.inferenceInFlight = false;
-      this._deliverBotTunnelPackets(data.packets || []);
-    }
-  }
-
-  _deliverBotTunnelPackets(packets: BotTunnelEncodedPacket[] = []): void {
-    if (!this.hostServer || !Array.isArray(packets)) return;
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    for (let i = 0; i < packets.length; i++) {
-      const item = packets[i];
-      if (!item || !item.sessionId || !item.packetBytes) continue;
-      if (this.hostServer.isWorker && this.hostServer.worker) {
-        this.hostServer._postCommand('channel_packet', {
-          channelId: item.sessionId,
-          packet: item.packetBytes,
-          timestamp: now,
-        });
-      } else if (this.hostServer.fallbackDataHandler) {
-        this.hostServer.fallbackDataHandler.handleIncomingPacket(
-          item.sessionId,
-          item.packetBytes,
-          now
-        );
-      }
-    }
-  }
-
-  syncFromRoomState(roomState: any): void {
+  syncFromRoomState(roomState: RoomStateLike | null | undefined): void {
     if (Array.isArray(roomState?.pads) && roomState.pads.length > 0) {
       this.cachedPads = roomState.pads;
-      if (this.isWorker && this.worker && !this._padsSentToWorker) {
-        this.worker.postMessage({ type: 'set_pads', pads: this.cachedPads });
-        this._padsSentToWorker = true;
-      }
     }
 
     const players = roomState?.roster?.players || roomState?.players || [];
@@ -242,8 +199,8 @@ export class BotTunnelManager {
       const carIndex = p.carIndex ?? p.entityId ?? -1;
       if (carIndex < 0 || carIndex >= 8) continue;
       const botType = p.botType || 'nexto';
-      if (!this.isWorker && botType !== 'heuristic') {
-        void ensureExperimentalEngine(botType);
+      if (botType !== 'heuristic') {
+        void ensureBotWeightsLoaded(botType);
       }
       activeBotMap.set(sid, {
         sessionId: sid,
@@ -269,6 +226,7 @@ export class BotTunnelManager {
     for (const sid of Array.from(this.registeredTunnels.keys())) {
       if (!activeBotMap.has(sid)) {
         this.registeredTunnels.delete(sid);
+        this.runtimeRecords.delete(sid);
       }
     }
   }
@@ -278,73 +236,86 @@ export class BotTunnelManager {
     serverTick: number,
     matchState = 'playing'
   ): void {
-    if (this.hasDirectPort) return;
     if (!stateSnapshot || this.registeredTunnels.size === 0) return;
-    if (serverTick === this.lastSteppedServerTick && matchState === this.lastSteppedMatchState)
+    if (serverTick === this.lastSteppedServerTick && matchState === this.lastSteppedMatchState) {
       return;
+    }
     this.lastSteppedServerTick = serverTick;
     this.lastSteppedMatchState = matchState;
 
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const bots: BotSessionStepSpec[] = Array.from(this.registeredTunnels.values());
-    const rosterPlayers = this.hostServer?.lastRoomState?.roster?.players || [];
+    const bots = Array.from(this.registeredTunnels.values());
+    const lastRoom = this.hostServer?.lastRoomState as RoomStateLike | null | undefined;
+    const rosterPlayers = lastRoom?.roster?.players || lastRoom?.players || [];
     const activeCars: Array<{ carIndex: number; team: 0 | 1 }> = [];
     for (let i = 0; i < rosterPlayers.length; i++) {
       const p = rosterPlayers[i];
       const cIdx = p?.carIndex ?? p?.entityId ?? -1;
       if (cIdx >= 0 && cIdx < 8) {
-        activeCars.push({
-          carIndex: cIdx,
-          team: p.team === 1 ? 1 : 0,
-        });
+        activeCars.push({ carIndex: cIdx, team: p.team === 1 ? 1 : 0 });
       }
     }
     if (activeCars.length === 0) {
       for (let i = 0; i < bots.length; i++) {
-        activeCars.push({ carIndex: bots[i].carIndex!, team: bots[i].team === 1 ? 1 : 0 });
+        activeCars.push({ carIndex: bots[i].carIndex, team: bots[i].team });
       }
     }
 
-    const payload = {
-      stateSnapshot: new Float32Array(stateSnapshot),
-      serverTick,
-      matchState,
-      bots,
-      activeCars,
-      pads: this._padsSentToWorker ? null : this.cachedPads,
-      redundantTicks: 10,
-      nowMs,
-    };
+    sBallView.attach(stateSnapshot);
+    const closestCarPerTeam: Record<0 | 1, number> = { 0: -1, 1: -1 };
+    const closestDistPerTeam: Record<0 | 1, number> = { 0: Infinity, 1: Infinity };
 
-    if (this.isWorker && this.worker) {
-      if (this.inferenceInFlight && nowMs - this.inferenceStartedAtMs < 250) {
-        return;
+    if (matchState === 'playing') {
+      for (let i = 0; i < activeCars.length; i++) {
+        const entry = activeCars[i];
+        sCarView.attachCar(stateSnapshot, entry.carIndex);
+        if (sCarView.isDemoed) continue;
+        const d = Math.hypot(sCarView.posX - sBallView.posX, sCarView.posY - sBallView.posY);
+        if (d < closestDistPerTeam[entry.team]) {
+          closestDistPerTeam[entry.team] = d;
+          closestCarPerTeam[entry.team] = entry.carIndex;
+        }
       }
-      this.inferenceInFlight = true;
-      this.inferenceStartedAtMs = nowMs;
-      if (payload.pads) {
-        this._padsSentToWorker = true;
+    }
+
+    for (let i = 0; i < bots.length; i++) {
+      const bot = bots[i];
+      let record = this.runtimeRecords.get(bot.sessionId);
+      if (!record) {
+        record = new InProcessBotTunnelRecord(bot.botType, bot.carIndex, bot.team);
+        this.runtimeRecords.set(bot.sessionId, record);
+      } else {
+        record.syncIdentity(bot.carIndex, bot.team, bot.botType);
       }
-      this.worker.postMessage({ type: 'step_bots', ...payload }, [payload.stateSnapshot.buffer]);
-    } else {
-      const packets = stepBotInferenceBatch(payload);
-      this._deliverBotTunnelPackets(packets);
+
+      const isPrimaryKickoffCar = closestCarPerTeam[bot.team] === bot.carIndex;
+      const { targetTick, history } = record.stepSessionHistory(
+        stateSnapshot,
+        serverTick,
+        matchState,
+        bot.carIndex,
+        isPrimaryKickoffCar,
+        this.cachedPads,
+        activeCars,
+        10
+      );
+
+      const packetBytes = InputPacketCodec.encode(bot.carIndex, targetTick, history, nowMs, [], []);
+      if (this.hostServer?.isWorker && this.hostServer.worker) {
+        this.hostServer._postCommand('channel_packet', {
+          channelId: bot.sessionId,
+          packet: packetBytes,
+          timestamp: nowMs,
+        });
+      } else if (this.hostServer?.fallbackDataHandler) {
+        this.hostServer.fallbackDataHandler.handleIncomingPacket(bot.sessionId, packetBytes, nowMs);
+      }
     }
   }
 
   destroy(): void {
     this.registeredTunnels.clear();
-    this.inferenceInFlight = false;
-    this._padsSentToWorker = false;
-    this.hasDirectPort = false;
-    if (this.worker) {
-      try {
-        this.worker.terminate();
-      } catch (_e) {
-        // Ignore terminate error
-      }
-      this.worker = null;
-    }
+    this.runtimeRecords.clear();
   }
 }
 

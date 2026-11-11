@@ -1,8 +1,8 @@
 import {
   ExperimentalBotAgent,
   ensureExperimentalEngine,
-} from '../../../ai/experimental/ExperimentalBotAgent.ts';
-import { multiCarHeuristicDecide } from '../../../ai/experimental/multiCarHeuristicPolicy.ts';
+  multiCarHeuristicDecide,
+} from '../../../ai/BotWeightLoader.ts';
 import {
   DEFAULT_CAR_CONTROLS,
   type CarControls,
