@@ -87,8 +87,8 @@ export function normalizeFetchedProfile(fetchedProfile) {
   };
 }
 
-export async function githubApiRequest(url, token, method = 'GET') {
-  const hasProxyEnv = Boolean(
+function hasProxyEnvironment() {
+  return Boolean(
     process.env.HTTPS_PROXY ||
     process.env.https_proxy ||
     process.env.HTTP_PROXY ||
@@ -96,8 +96,16 @@ export async function githubApiRequest(url, token, method = 'GET') {
     process.env.ALL_PROXY ||
     process.env.all_proxy
   );
+}
 
-  if (!hasProxyEnv) {
+function redactAuthSecrets(message) {
+  return String(message || '')
+    .replace(/(Authorization:\s*Bearer\s+)\S+/gi, '$1[REDACTED]')
+    .replace(/(x-agy-request-id:\s*)\S+/gi, '$1[REDACTED]');
+}
+
+export async function githubApiRequest(url, token, method = 'GET') {
+  if (!hasProxyEnvironment()) {
     try {
       const response = await fetch(url, {
         method,
@@ -106,6 +114,7 @@ export async function githubApiRequest(url, token, method = 'GET') {
           Accept: 'application/vnd.github+json',
           'User-Agent': 'rocket-companion-profile-sync',
         },
+        signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) {
         throw new Error(`GitHub API ${method} ${url} returned ${response.status}`);
@@ -116,28 +125,93 @@ export async function githubApiRequest(url, token, method = 'GET') {
     }
   }
 
-  const out = execFileSync(
-    'curl',
-    [
-      '-fsSL',
-      '-X',
-      method,
-      '-H',
-      `Authorization: Bearer ${token}`,
-      '-H',
-      'Accept: application/vnd.github+json',
-      '-H',
-      'User-Agent: rocket-companion-profile-sync',
-      url,
-    ],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
-  );
-  return JSON.parse(out);
+  try {
+    const out = execFileSync(
+      'curl',
+      [
+        '-fsSL',
+        '--connect-timeout',
+        '5',
+        '--max-time',
+        '15',
+        '-X',
+        method,
+        '-H',
+        `Authorization: Bearer ${token}`,
+        '-H',
+        'Accept: application/vnd.github+json',
+        '-H',
+        'User-Agent: rocket-companion-profile-sync',
+        url,
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    return JSON.parse(out);
+  } catch (err) {
+    throw new Error(redactAuthSecrets(err instanceof Error ? err.message : String(err)));
+  }
+}
+
+async function fetchTokenFromWorker(workerUrl, workerHeader) {
+  if (!hasProxyEnvironment()) {
+    try {
+      const response = await fetch(workerUrl, {
+        method: 'GET',
+        headers: {
+          'x-agy-request-id': workerHeader,
+          'User-Agent': 'rocket-companion-profile-sync',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (response.ok) {
+        const text = (await response.text()).trim();
+        if (text) {
+          return text;
+        }
+      }
+    } catch {
+      // Fall through to curl
+    }
+  }
+
+  try {
+    const out = execFileSync(
+      'curl',
+      [
+        '-fsSL',
+        '--connect-timeout',
+        '5',
+        '--max-time',
+        '15',
+        '-H',
+        `x-agy-request-id: ${workerHeader}`,
+        workerUrl,
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+    ).trim();
+    if (!out) {
+      throw new Error('Empty token returned from GitHub Token Worker');
+    }
+    return out;
+  } catch (err) {
+    throw new Error(redactAuthSecrets(err instanceof Error ? err.message : String(err)));
+  }
 }
 
 export async function resolveAccessToken(authInfo) {
   if (authInfo.type === 'token') {
     return authInfo.token;
+  }
+
+  if (authInfo.type === 'worker_header') {
+    try {
+      return await fetchTokenFromWorker(authInfo.tokenWorkerUrl, authInfo.workerHeader);
+    } catch (workerErr) {
+      if (authInfo.fallbackAuth) {
+        return await resolveAccessToken(authInfo.fallbackAuth);
+      }
+      throw workerErr;
+    }
   }
 
   const jwt = createGithubAppJwt(authInfo.appId, authInfo.pem);
@@ -348,9 +422,17 @@ export async function fetchPrivateProfileJson(
     'GET'
   );
   const allRepos = Array.isArray(reposResp?.repositories) ? reposResp.repositories : [];
+  const rankRepo = (repo) => {
+    const name = String(repo?.name || '').toLowerCase();
+    if (name === 'rocketcompanion_privateprofile') return 0;
+    if (name.includes('rocketcompanion') && name.includes('profile')) return 1;
+    if (name.includes('profile')) return 2;
+    return 3;
+  };
+  const sortedRepos = [...allRepos].sort((a, b) => rankRepo(a) - rankRepo(b));
   let fallbackCandidate = null;
 
-  for (const repo of allRepos) {
+  for (const repo of sortedRepos) {
     if (!repo?.private || !repo?.full_name) {
       continue;
     }

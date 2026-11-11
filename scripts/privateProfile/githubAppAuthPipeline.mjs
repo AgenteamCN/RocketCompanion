@@ -120,6 +120,21 @@ export function discoverLocalGithubCredentials(rootDir) {
     }
   }
 
+  const pinnedRefFromEnv = (process.env.RC_PRIVATE_PROFILE_REF || '').trim();
+
+  const workerHeader = (
+    process.env.RC_GITHUB_WORKER_HEADER ||
+    process.env.AGY_GITHUB_WORKER_HEADER ||
+    storedCreds?.githubWorkerHeader ||
+    ''
+  ).trim();
+  const tokenWorkerUrl = (
+    process.env.RC_GITHUB_TOKEN_WORKER_URL ||
+    process.env.AGY_GITHUB_TOKEN_WORKER_URL ||
+    storedCreds?.githubTokenWorkerUrl ||
+    'https://getgithubapptoken.maboco-mark.workers.dev/'
+  ).trim();
+
   let resolvedPem = '';
   let sourcePath = '';
 
@@ -157,34 +172,42 @@ export function discoverLocalGithubCredentials(rootDir) {
     }
   }
 
-  if (!resolvedPem) {
-    return null;
+  let appPemCandidate = null;
+  if (resolvedPem) {
+    const derivedMeta = deriveAppMetadataFromPem(resolvedPem);
+    const appId =
+      (process.env.AGY_GITHUB_APP_ID || '').trim() ||
+      (storedCreds?.githubAppId || '').trim() ||
+      (derivedMeta?.appId || '').trim();
+    const installationId =
+      (process.env.AGY_GITHUB_INSTALLATION_ID || '').trim() ||
+      (storedCreds?.githubInstallationId || '').trim() ||
+      (derivedMeta?.installationId || '').trim();
+    const pinnedRef = pinnedRefFromEnv || (derivedMeta?.pinnedRef || '').trim();
+
+    if (appId) {
+      appPemCandidate = {
+        type: 'app_pem',
+        pem: resolvedPem,
+        appId,
+        installationId,
+        pinnedRef,
+        sourcePath,
+      };
+    }
   }
 
-  const derivedMeta = deriveAppMetadataFromPem(resolvedPem);
-  const appId =
-    (process.env.AGY_GITHUB_APP_ID || '').trim() ||
-    (storedCreds?.githubAppId || '').trim() ||
-    (derivedMeta?.appId || '').trim();
-  const installationId =
-    (process.env.AGY_GITHUB_INSTALLATION_ID || '').trim() ||
-    (storedCreds?.githubInstallationId || '').trim() ||
-    (derivedMeta?.installationId || '').trim();
-  const pinnedRef =
-    (process.env.RC_PRIVATE_PROFILE_REF || '').trim() || (derivedMeta?.pinnedRef || '').trim();
-
-  if (!appId) {
-    return null;
+  if (workerHeader && tokenWorkerUrl) {
+    return {
+      type: 'worker_header',
+      workerHeader,
+      tokenWorkerUrl,
+      pinnedRef: pinnedRefFromEnv || appPemCandidate?.pinnedRef || '',
+      fallbackAuth: appPemCandidate,
+    };
   }
 
-  return {
-    type: 'app_pem',
-    pem: resolvedPem,
-    appId,
-    installationId,
-    pinnedRef,
-    sourcePath,
-  };
+  return appPemCandidate;
 }
 
 function base64UrlEncode(input) {
