@@ -251,7 +251,18 @@ export function mergeDriftwoodsConfig(
         },
     walls: patch.walls ? { ...base.walls, ...patch.walls } : { ...base.walls },
     goalNet: patch.goalNet ? { ...base.goalNet, ...patch.goalNet } : { ...base.goalNet },
-    hexes: patch.hexes ? { ...base.hexes, ...patch.hexes } : { ...base.hexes },
+    hexes: patch.hexes
+      ? {
+          ...base.hexes,
+          ...patch.hexes,
+          thicknessScale: patch.hexes.thicknessScale ?? base.hexes.thicknessScale ?? 1.0,
+          depthScale: patch.hexes.depthScale ?? base.hexes.depthScale ?? 1.0,
+        }
+      : {
+          ...base.hexes,
+          thicknessScale: base.hexes.thicknessScale ?? 1.0,
+          depthScale: base.hexes.depthScale ?? 1.0,
+        },
   };
 }
 

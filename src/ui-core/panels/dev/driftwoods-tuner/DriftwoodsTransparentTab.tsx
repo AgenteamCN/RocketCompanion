@@ -273,6 +273,30 @@ export const DriftwoodsTransparentTab: React.FC<DriftwoodsTransparentTabProps> =
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-1.5">
+              <TunerRow
+                label="Ribbon Width Scale"
+                description="Wall-parallel hex bar width (1.0x = 8 UU)"
+                value={config.hexes.thicknessScale ?? 1.0}
+                sliderMin={0.2}
+                sliderMax={4.0}
+                sliderStep={0.05}
+                onChange={(val) => onChange({ hexes: { ...config.hexes, thicknessScale: val } })}
+                isLight={isLight}
+              />
+
+              <TunerRow
+                label="Fin Depth Scale"
+                description="3D grazing fin depth (1.0x = 8 UU)"
+                value={config.hexes.depthScale ?? 1.0}
+                sliderMin={0.0}
+                sliderMax={4.0}
+                sliderStep={0.05}
+                onChange={(val) => onChange({ hexes: { ...config.hexes, depthScale: val } })}
+                isLight={isLight}
+              />
+            </div>
+
             <TunerToggleRow
               label="Hex Wireframe"
               checked={config.hexes.wireframe}

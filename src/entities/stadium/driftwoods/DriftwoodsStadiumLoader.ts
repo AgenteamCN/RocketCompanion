@@ -16,6 +16,7 @@ import {
 } from 'three';
 import { type GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { resolveAssetPath } from '../../../utils/AssetResponseValidator.ts';
+import { prepareWoodsFieldHexRibbonAttributes } from './DriftwoodsHexGeometryProcessor.ts';
 
 export const DRIFTWOODS_GLB_URL = '/assets/arena/driftwoods.glb';
 export const DRIFTWOODS_Q1_GROUND_TEXTURE_URL = '/assets/arena/ground_q1_7gray_2048x3000.webp';
@@ -141,6 +142,7 @@ export async function loadDriftwoodsStadium(): Promise<Group | null> {
         }
       } else if (node.name === 'Woods_Field_Walls_Hexes') {
         normalizeWoodsFieldHexNormals(node as Mesh);
+        prepareWoodsFieldHexRibbonAttributes(node as Mesh);
       }
     }
   });

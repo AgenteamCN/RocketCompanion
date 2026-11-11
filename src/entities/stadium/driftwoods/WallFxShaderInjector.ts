@@ -28,6 +28,8 @@ export function createWallFxUniforms(
     uWallBaseVisible: { value: 1.0 },
     uHexEmissiveColor: { value: new Color('#ffffff') },
     uHexEmissiveIntensity: { value: 0.0 },
+    uHexThicknessScale: { value: 1.0 },
+    uHexDepthScale: { value: 1.0 },
 
     uCircleEnabled: { value: cfg.circleEnabled ? 1.0 : 0.0 },
     uCircleRadius: { value: Number(cfg.circleRadius) || 500 },
@@ -98,7 +100,7 @@ varying vec3 vExpWorldPos;
 uniform vec3 uCircleBallPos, uPulseBallPos, uHexEmissiveColor, uCircleColor, uPulseColor;
 uniform vec3 uBlueTeamColor, uOrangeTeamColor, uCenterLineColor;
 uniform vec4 uPulseFadeBezier, uPulseRiseBezier, uPulseFallBezier;
-uniform float uTime, uWallBaseVisible, uHexEmissiveIntensity;
+uniform float uTime, uWallBaseVisible, uHexEmissiveIntensity, uHexThicknessScale, uHexDepthScale;
 uniform float uCircleEnabled, uCircleRadius, uCircleVerticalExtendUu, uCircleThickness, uCircleUseTeamColor, uCircleOpacity;
 uniform float uPulseEnabled, uPulseApplyToHexes, uPulseApplyToWalls, uPulseSphereRadius, uPulseVerticalExtendUu;
 uniform float uPulseDirection, uPulseFadeShrinkPct, uPulseSteadyMode, uPulseStaticPositionPct, uPulseStaticBandWidthPct;
@@ -283,7 +285,8 @@ if (isWall) {
   float ndotv = abs(dot(wallNormal, viewDir));
 
   float pixelFootprintUu = max(length(dFdx(vExpWorldPos)), length(dFdy(vExpWorldPos)));
-  float subpixelEnergy = clamp(18.0 / max(18.0, pixelFootprintUu * 0.85), 0.38, 1.0);
+  float effectiveWidthUu = 18.0 * clamp(max(uHexThicknessScale, uHexDepthScale * 0.5), 0.25, 4.0);
+  float subpixelEnergy = clamp(effectiveWidthUu / max(effectiveWidthUu, pixelFootprintUu * 0.85), 0.38, 1.0);
   float grazingFactor = 0.55 + 0.45 * smoothstep(0.02, 0.22, ndotv);
   float antiShimmerGain = mix(subpixelEnergy * grazingFactor, 1.0, clamp((hexAlphaGain - 1.0) * 0.5, 0.0, 1.0));
 
@@ -294,7 +297,7 @@ if (isWall) {
 /**
  * Injects 3D sphere-wall outer ring, independent 3D pulse sphere (with inward/outward direction,
  * 3D sphere outer boundary fade-in / fade-out shrink %, and 2-part split Cubic-Bezier wave gradient),
- * half-field team gradient shader, and 3D GLB Hexagon Mesh anti-shimmer filtering.
+ * half-field team gradient shader, and 3D GLB Hexagon Mesh anti-shimmer filtering + thickness scaling.
  */
 export function injectWallFxShader(
   material: Material & { isMeshLambertMaterial?: boolean },
@@ -305,8 +308,17 @@ export function injectWallFxShader(
     Object.assign(shader.uniforms, wallFxUniforms);
     shader.uniforms.uIsWallsMesh = { value: isWallsMesh ? 1.0 : 0.0 };
 
+    const hexVertexHeader = isWallsMesh
+      ? '#include <common>\nvarying vec3 vExpWorldPos;'
+      : '#include <common>\nvarying vec3 vExpWorldPos;\nattribute vec3 aHexWidthOffset;\nattribute float aHexIsDepthRibbon;\nuniform float uHexThicknessScale;\nuniform float uHexDepthScale;';
+
+    const hexBeginVertex = isWallsMesh
+      ? '#include <begin_vertex>'
+      : '#include <begin_vertex>\nfloat hexRibbonScale = mix(uHexThicknessScale, uHexDepthScale, aHexIsDepthRibbon);\ntransformed += aHexWidthOffset * (hexRibbonScale - 1.0);';
+
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vExpWorldPos;')
+      .replace('#include <common>', hexVertexHeader)
+      .replace('#include <begin_vertex>', hexBeginVertex)
       .replace(
         '#include <worldpos_vertex>',
         '#include <worldpos_vertex>\nvExpWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
@@ -318,5 +330,5 @@ export function injectWallFxShader(
   };
 
   material.customProgramCacheKey = () =>
-    `${material.isMeshLambertMaterial ? 'lambert' : 'standard'}-wall-fx-${isWallsMesh ? 'walls' : 'hexes'}-v9-3d-hex-aa`;
+    `${material.isMeshLambertMaterial ? 'lambert' : 'standard'}-wall-fx-${isWallsMesh ? 'walls' : 'hexes'}-v10-3d-hex-scale`;
 }

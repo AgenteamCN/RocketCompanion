@@ -168,6 +168,8 @@
     "metalness": 0,
     "emissive": "#ffffff",
     "emissiveIntensity": 0,
+    "thicknessScale": 1,
+    "depthScale": 1,
     "visible": true,
     "wireframe": false
   }

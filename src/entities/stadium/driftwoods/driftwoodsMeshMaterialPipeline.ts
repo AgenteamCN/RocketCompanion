@@ -38,6 +38,7 @@ import {
   injectRampsIndicatorRingShader,
 } from './DriftwoodsGoalAndRampShader.ts';
 import { injectWallFxShader, type WallFxUniforms } from './WallFxShaderInjector.ts';
+import { prepareWoodsFieldHexRibbonAttributes } from './DriftwoodsHexGeometryProcessor.ts';
 
 export type DriftwoodsWallFxUniforms = WallFxUniforms;
 
@@ -443,6 +444,18 @@ export function syncDriftwoodsGlobalShaderUniforms(
     }
     if (wallFxUniforms.uHexEmissiveIntensity) {
       wallFxUniforms.uHexEmissiveIntensity.value = Number(c.hexes?.emissiveIntensity ?? 0.0);
+    }
+    if (wallFxUniforms.uHexThicknessScale) {
+      wallFxUniforms.uHexThicknessScale.value = Math.max(
+        0.1,
+        Number(c.hexes?.thicknessScale ?? 1.0)
+      );
+    }
+    if (wallFxUniforms.uHexDepthScale) {
+      wallFxUniforms.uHexDepthScale.value = Math.max(
+        0.0,
+        Number(c.hexes?.depthScale ?? c.hexes?.thicknessScale ?? 1.0)
+      );
     }
   }
 }

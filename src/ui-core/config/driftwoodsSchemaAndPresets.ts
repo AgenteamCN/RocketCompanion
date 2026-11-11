@@ -71,6 +71,8 @@ export interface DriftwoodsLayerConfig {
   emissiveIntensity?: number;
   useTeamColor?: boolean;
   oneWaySeeThrough?: boolean;
+  thicknessScale?: number;
+  depthScale?: number;
 }
 
 export interface DriftwoodsGroundConfig {
