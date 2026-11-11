@@ -103,6 +103,8 @@ export function useFloatingWindowDragResize({
 
   const isDraggingRef = useRef(false);
   const isResizingRef = useRef(false);
+  const onReportIntrinsicMetricsRef = useRef(onReportIntrinsicMetrics);
+  onReportIntrinsicMetricsRef.current = onReportIntrinsicMetrics;
 
   const measureIntrinsicDimensions = useCallback(() => {
     const innerEl = contentInnerElRef.current;
@@ -115,14 +117,14 @@ export function useFloatingWindowDragResize({
     if (contentH > 0) {
       const totalIntrinsicH = Math.round(headerH + contentH + footerH + 2);
       setIntrinsicMaxHeight((prev) =>
-        prev !== null && Math.abs(prev - totalIntrinsicH) <= 1 ? prev : totalIntrinsicH
+        prev !== null && Math.abs(prev - totalIntrinsicH) <= 2 ? prev : totalIntrinsicH
       );
       if (
         lastReportedIntrinsicHRef.current === null ||
-        Math.abs(lastReportedIntrinsicHRef.current - totalIntrinsicH) > 1
+        Math.abs(lastReportedIntrinsicHRef.current - totalIntrinsicH) > 2
       ) {
         lastReportedIntrinsicHRef.current = totalIntrinsicH;
-        onReportIntrinsicMetrics?.({
+        onReportIntrinsicMetricsRef.current?.({
           intrinsicMaxHeight: totalIntrinsicH,
         });
       }
@@ -151,7 +153,7 @@ export function useFloatingWindowDragResize({
         });
         setIntrinsicMinWidth(result.totalMinWidth);
         setScrollbarReservePx(result.scrollbarReservePx);
-        onReportIntrinsicMetrics?.({
+        onReportIntrinsicMetricsRef.current?.({
           autoMinWidth: result.totalMinWidth,
           scrollbarReservePx: result.scrollbarReservePx,
           ...(lastReportedIntrinsicHRef.current !== null
@@ -163,7 +165,6 @@ export function useFloatingWindowDragResize({
   }, [
     isResizable,
     matchedPreset?.tier,
-    onReportIntrinsicMetrics,
     presetMinWidth,
     shouldAutoFitHeight,
     showFooter,

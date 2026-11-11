@@ -153,14 +153,15 @@ export function publishCrossTabActiveTarget(target: CrossTabActiveTarget): void 
     CROSS_TAB_ACTIVE_TARGET_SYNC_KEY,
     DEFAULT_CROSS_TAB_ACTIVE_TARGET
   );
+  const norm = (val?: string) => (val && val.length > 0 ? val : undefined);
   if (
     prev &&
     prev.kind === target.kind &&
     prev.targetId === target.targetId &&
-    prev.subtab === target.subtab &&
-    prev.recipeId === target.recipeId &&
-    prev.floatingWindowId === target.floatingWindowId &&
-    prev.tier === target.tier
+    norm(prev.subtab) === norm(target.subtab) &&
+    norm(prev.recipeId) === norm(target.recipeId) &&
+    norm(prev.floatingWindowId) === norm(target.floatingWindowId) &&
+    (prev.tier ?? 'user') === (target.tier ?? 'user')
   ) {
     return;
   }

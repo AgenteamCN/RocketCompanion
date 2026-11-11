@@ -12,6 +12,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'sliders-horizontal',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 343,
     height: 123,
@@ -42,7 +43,7 @@ export const FloatingWindowOpacityFloatingWindow: React.FC<
   };
 
   return (
-    <div className="px-3 py-2 flex flex-col justify-center text-xs select-none">
+    <div className="flex flex-col justify-center text-xs select-none">
       <SettingSliderRow
         label="Opacity"
         title={<span className="whitespace-nowrap">Opacity</span>}
@@ -57,6 +58,8 @@ export const FloatingWindowOpacityFloatingWindow: React.FC<
         editable={true}
         bordered={false}
         showDescription={false}
+        paddingX={0}
+        paddingY={2}
         onChange={setOpacity}
         hoverDescription="Global opacity (1% - 100%) for all floating windows. Type a value and press Enter to confirm."
         isLight={isLight}

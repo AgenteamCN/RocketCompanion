@@ -164,7 +164,7 @@ export const RewinderTransportProgressSection: React.FC<
   };
 
   const currentBadge = statusBadgeConfig[status];
-  const compactBtnClass = `inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-all active:scale-95 ${
+  const compactBtnClass = `h-7 w-full min-w-0 inline-flex items-center justify-center gap-1 px-2 rounded-lg border text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-all active:scale-95 ${
     isLight
       ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
       : 'bg-neutral-800/90 hover:bg-neutral-700 border-neutral-700 text-neutral-100'
@@ -172,77 +172,81 @@ export const RewinderTransportProgressSection: React.FC<
 
   return (
     <>
-      {/* 1. Top Row: 4 Compact Transport Buttons + Status Badge */}
-      <div className="flex items-center justify-between gap-1.5 flex-nowrap">
-        <div className="flex items-center gap-1 flex-nowrap shrink-0">
-          <button
-            type="button"
-            onClick={onStartNewRecording}
-            className={compactBtnClass}
-            title="Start new recording (Hotkey: O)"
-          >
-            <Play className="h-3 w-3 fill-current text-amber-500 shrink-0" />
-            <span>New</span>
-            <KeycapBadge label="O" size="sm" isLight={isLight} />
-          </button>
+      {/* 1. Top Row: Responsive Paired Transport Buttons (New+Stop | Rewind+Forward) + Pinned Top-Right Status Badge */}
+      <div className="flex items-start justify-between gap-2 w-full min-w-0">
+        <div className="flex-1 min-w-0 flex flex-wrap gap-1.5">
+          <div className="flex-1 basis-[172px] min-w-0 grid grid-cols-[repeat(auto-fit,minmax(76px,1fr))] gap-1.5">
+            <button
+              type="button"
+              onClick={onStartNewRecording}
+              className={compactBtnClass}
+              title="Start new recording (Hotkey: O)"
+            >
+              <Play className="h-3 w-3 fill-current text-amber-500 shrink-0" />
+              <span className="truncate">New</span>
+              <KeycapBadge label="O" size="sm" isLight={isLight} />
+            </button>
 
-          <button
-            type="button"
-            onClick={onStopRecording}
-            className={compactBtnClass}
-            title="Stop recording (Hotkey: P)"
-          >
-            <Square className="h-3 w-3 fill-current text-rose-500 shrink-0" />
-            <span>Stop</span>
-            <KeycapBadge label="P" size="sm" isLight={isLight} />
-          </button>
+            <button
+              type="button"
+              onClick={onStopRecording}
+              className={compactBtnClass}
+              title="Stop recording (Hotkey: P)"
+            >
+              <Square className="h-3 w-3 fill-current text-rose-500 shrink-0" />
+              <span className="truncate">Stop</span>
+              <KeycapBadge label="P" size="sm" isLight={isLight} />
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              if (!onRewindPressStart || e.detail === 0) {
-                onStepFrame(-1);
-              }
-            }}
-            onMouseDown={onRewindPressStart}
-            onMouseUp={onRewindPressEnd}
-            onMouseLeave={onRewindPressEnd}
-            onTouchStart={onRewindPressStart}
-            onTouchEnd={onRewindPressEnd}
-            className={compactBtnClass}
-            title="Rewind cursor (Hotkey: [)"
-          >
-            <Rewind className="h-3 w-3 shrink-0" />
-            <span>Rewind</span>
-            <KeycapBadge label="[" size="sm" isLight={isLight} />
-          </button>
+          <div className="flex-1 basis-[172px] min-w-0 grid grid-cols-[repeat(auto-fit,minmax(76px,1fr))] gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                if (!onRewindPressStart || e.detail === 0) {
+                  onStepFrame(-1);
+                }
+              }}
+              onMouseDown={onRewindPressStart}
+              onMouseUp={onRewindPressEnd}
+              onMouseLeave={onRewindPressEnd}
+              onTouchStart={onRewindPressStart}
+              onTouchEnd={onRewindPressEnd}
+              className={compactBtnClass}
+              title="Rewind cursor (Hotkey: [)"
+            >
+              <Rewind className="h-3 w-3 shrink-0" />
+              <span className="truncate">Rewind</span>
+              <KeycapBadge label="[" size="sm" isLight={isLight} />
+            </button>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              if (!onForwardPressStart || e.detail === 0) {
-                onStepFrame(1);
-              }
-            }}
-            onMouseDown={onForwardPressStart}
-            onMouseUp={onForwardPressEnd}
-            onMouseLeave={onForwardPressEnd}
-            onTouchStart={onForwardPressStart}
-            onTouchEnd={onForwardPressEnd}
-            className={compactBtnClass}
-            title="Forward cursor (Hotkey: ])"
-          >
-            <FastForward className="h-3 w-3 shrink-0" />
-            <span>Forward</span>
-            <KeycapBadge label="]" size="sm" isLight={isLight} />
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                if (!onForwardPressStart || e.detail === 0) {
+                  onStepFrame(1);
+                }
+              }}
+              onMouseDown={onForwardPressStart}
+              onMouseUp={onForwardPressEnd}
+              onMouseLeave={onForwardPressEnd}
+              onTouchStart={onForwardPressStart}
+              onTouchEnd={onForwardPressEnd}
+              className={compactBtnClass}
+              title="Forward cursor (Hotkey: ])"
+            >
+              <FastForward className="h-3 w-3 shrink-0" />
+              <span className="truncate">Forward</span>
+              <KeycapBadge label="]" size="sm" isLight={isLight} />
+            </button>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={onCycleBadgeState}
           title="Status Badge (Idle / Recording / Stopped / Error)"
-          className={`min-w-[78px] inline-flex items-center justify-center text-center whitespace-nowrap px-2 py-1 rounded-lg border font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer transition-colors ${currentBadge.className}`}
+          className={`h-7 min-w-[78px] self-start inline-flex items-center justify-center text-center whitespace-nowrap px-2.5 rounded-lg border font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer transition-colors ${currentBadge.className}`}
         >
           {currentBadge.label}
         </button>

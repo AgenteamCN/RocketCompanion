@@ -20,6 +20,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'cpu',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 441,
     height: 801,
@@ -168,7 +169,7 @@ export const PerformanceMonitorFloatingWindow: React.FC<
     : 'bg-neutral-900/70 border-neutral-800';
 
   return (
-    <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+    <div className="flex flex-col gap-2.5 text-xs select-none">
       {/* 1. Top 5 Data Metrics: P50, P95, P99, Peak, Budget */}
       <div className="grid grid-cols-5 gap-1.5 text-center font-mono">
         <div className={`p-2 rounded-xl border ${metricTileBg}`}>

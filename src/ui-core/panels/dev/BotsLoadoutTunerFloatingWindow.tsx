@@ -28,6 +28,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Bot',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 580,

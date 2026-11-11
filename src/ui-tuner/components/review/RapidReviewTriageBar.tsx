@@ -52,7 +52,7 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
 
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [diffTick, setDiffTick] = useState(0);
-    const noteInputRef = useRef<HTMLInputElement | null>(null);
+    const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
 
     useEffect(() => {
       return subscribeTunerDiffChanges(() => {
@@ -339,21 +339,22 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 flex-1 min-w-[240px] max-w-md">
-                <MessageSquare className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <input
+              <div className="flex items-start gap-1.5 flex-1 min-w-[240px] max-w-md">
+                <MessageSquare className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-1.5" />
+                <textarea
                   ref={noteInputRef}
-                  type="text"
+                  rows={activeUnit.note.includes('\n') ? Math.min(4, activeUnit.note.split('\n').length) : 1}
                   value={activeUnit.note}
                   onChange={(e) => updateNote(activeUnit.unitKey, e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
                       e.currentTarget.blur();
                       quickNotification.success(`Saved note for ${activeUnit.label}`);
                     }
                   }}
-                  placeholder="Press [Space] to type optional 1-line triage note (Enter to save)..."
-                  className={`w-full px-2.5 py-1 rounded-lg border text-[11px] font-mono outline-none transition-colors ${
+                  placeholder="Press [Space] to type triage note (Shift+Enter for newline, Enter to save)..."
+                  className={`w-full px-2.5 py-1 rounded-lg border text-[11px] font-mono outline-none transition-colors resize-y min-h-[26px] max-h-28 leading-relaxed ${
                     isLight
                       ? 'bg-white border-neutral-300 focus:border-amber-500 text-neutral-900 placeholder:text-neutral-400'
                       : 'bg-neutral-950 border-neutral-800 focus:border-amber-500 text-neutral-100 placeholder:text-neutral-500'

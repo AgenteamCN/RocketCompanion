@@ -61,6 +61,10 @@ export interface SurfaceMeta {
   layer: SurfaceLayerKind;
   menuGroup?: SurfaceMenuGroup;
   defaultSizing: SurfaceSizingSpec;
+  /** Mandatory boolean for Floating Windows (`layer === 'floating-user' | 'floating-dev'`) specifying whether Stage 3 Footer is hidden */
+  hideFooter?: boolean;
+  /** Optional inner content padding override in px for Floating Windows */
+  contentPadding?: number;
   defaultOpen?: boolean;
   variants?: SurfaceVariantMeta[];
 }

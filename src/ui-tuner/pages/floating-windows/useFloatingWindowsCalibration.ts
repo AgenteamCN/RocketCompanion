@@ -79,6 +79,8 @@ export function buildMergedFloatingPresets(tier: FloatingWindowVisibilityTier): 
       autoFitHeight: calibrated.mode === 'adaptive',
       resizable: true,
       singleton: true,
+      hideFooter: entry.meta.hideFooter ?? false,
+      contentPadding: entry.meta.contentPadding,
       tier: entryTier,
       summary: entry.meta.subtitle,
       tabs: entry.meta.variants?.map((v) => ({ id: v.variantId, label: v.label })),
@@ -129,6 +131,8 @@ export function useFloatingWindowsCalibration(currentPreset?: PresetConfig) {
       autoFitHeight: preset.autoFitHeight,
       resizable: preset.resizable,
       singleton: singletonOverride ?? preset.singleton,
+      hideFooter: preset.hideFooter,
+      contentPadding: preset.contentPadding,
       startMinimized: false,
     });
   };

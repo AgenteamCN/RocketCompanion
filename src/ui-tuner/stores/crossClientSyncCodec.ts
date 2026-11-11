@@ -56,11 +56,40 @@ export function sanitizeSyncedValue<T>(candidate: unknown, defaultValue: T): T {
     if (!isPlainObject(candidate)) {
       return cloneSerializable(defaultValue);
     }
-    const merged: Record<string, unknown> = { ...defaultValue, ...candidate };
-    for (const key of Object.keys(defaultValue)) {
-      merged[key] = sanitizeSyncedValue(candidate[key], defaultValue[key]);
+    let changed = false;
+    const out: Record<string, unknown> = {};
+
+    for (const key of Object.keys(candidate)) {
+      const val = candidate[key];
+      if (typeof val === 'function') {
+        changed = true;
+        continue;
+      }
+      if (key in defaultValue && val !== undefined) {
+        const cleaned = sanitizeSyncedValue(val, defaultValue[key]);
+        if (cleaned !== val) changed = true;
+        out[key] = cleaned;
+      } else {
+        out[key] = val;
+      }
     }
-    return merged as T;
+
+    for (const key of Object.keys(defaultValue)) {
+      if (!(key in candidate)) {
+        const defVal = defaultValue[key];
+        if (
+          typeof defVal === 'boolean' ||
+          typeof defVal === 'number' ||
+          Array.isArray(defVal) ||
+          isPlainObject(defVal)
+        ) {
+          out[key] = cloneSerializable(defVal);
+          changed = true;
+        }
+      }
+    }
+
+    return (changed ? out : candidate) as T;
   }
 
   return (candidate ?? defaultValue) as T;

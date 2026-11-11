@@ -9,6 +9,8 @@ export interface DevPresetSpec {
   minWidth?: number;
   minHeight?: number;
   autoFitHeight?: boolean;
+  hideFooter?: boolean;
+  contentPadding?: number;
   summary: string;
   menuEntryPath: string;
   component: string;
@@ -78,6 +80,7 @@ export function makeDevPreset(spec: DevPresetSpec): PresetConfig {
     minHeight: spec.minHeight ?? 200,
     resizable: true,
     singleton: true,
+    hideFooter: spec.hideFooter ?? false,
     tier: 'developer',
     summary: spec.summary,
     menuEntryPath: spec.menuEntryPath,
@@ -86,6 +89,7 @@ export function makeDevPreset(spec: DevPresetSpec): PresetConfig {
   };
   if (spec.minWidth !== undefined) out.minWidth = spec.minWidth;
   if (spec.autoFitHeight !== undefined) out.autoFitHeight = spec.autoFitHeight;
+  if (spec.contentPadding !== undefined) out.contentPadding = spec.contentPadding;
   if (spec.tabs !== undefined) out.tabs = spec.tabs;
   return out;
 }

@@ -23,6 +23,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'keyboard',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 470,
     height: 640,

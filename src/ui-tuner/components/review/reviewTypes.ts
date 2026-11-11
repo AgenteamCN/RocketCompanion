@@ -68,6 +68,7 @@ export interface RuntimeReviewDecision {
   note: string;
   approvalMessage?: string;
   simulatedStaleReason?: ReviewStaleReason;
+  visualHashSnapshot?: string;
   updatedAt: string;
 }
 

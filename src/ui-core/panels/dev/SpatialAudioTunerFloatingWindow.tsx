@@ -31,6 +31,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Volume2',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 620,

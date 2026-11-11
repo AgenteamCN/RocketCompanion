@@ -40,6 +40,7 @@ export const SURFACE_META: SurfaceMeta = {
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
   icon: 'Car',
+  hideFooter: false,
   defaultSizing: { width: 540, height: 620, minWidth: 340, minHeight: 220, maxHeight: 820, mode: 'adaptive' },
   variants: [
     { variantId: 'hitbox', label: 'Hitbox & Align' },

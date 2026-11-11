@@ -72,7 +72,7 @@ export const GoalBarrierCanvasStage: React.FC<GoalBarrierCanvasStageProps> = ({
           <div
             ref={goalBoxRef}
             style={{ aspectRatio: `${GOAL_BARRIER_WIDTH_UU} / ${GOAL_BARRIER_HEIGHT_UU}` }}
-            className={`relative w-full ${
+            className={`relative w-full overflow-hidden ${
               isEmbedded ? '' : 'mt-2'
             } rounded-t-2xl border-2 shadow-inner ${
               isLight
@@ -104,7 +104,7 @@ export const GoalBarrierCanvasStage: React.FC<GoalBarrierCanvasStageProps> = ({
             ))}
 
             <svg
-              className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+              className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden"
               viewBox="0 0 100 100"
               preserveAspectRatio="none"
             >
@@ -158,8 +158,8 @@ export const GoalBarrierCanvasStage: React.FC<GoalBarrierCanvasStageProps> = ({
           </div>
 
           {!isEmbedded && (
-            <div className="mt-1.5 flex items-center justify-between text-[10px] font-mono opacity-75 pointer-events-none">
-              <span>
+            <div className="mt-1.5 h-4 leading-4 flex items-center justify-between gap-2 text-[10px] font-mono tabular-nums opacity-75 pointer-events-none whitespace-nowrap overflow-hidden">
+              <span className="truncate">
                 {hoverSnapPoint
                   ? `Cursor: X=${Math.round(
                       (0.5 - hoverSnapPoint.u) * GOAL_BARRIER_WIDTH_UU
@@ -168,13 +168,13 @@ export const GoalBarrierCanvasStage: React.FC<GoalBarrierCanvasStageProps> = ({
                     }`
                   : 'Drag inside or from outer snap zone to sculpt barrier'}
               </span>
-              <span>Mode: {selectionMode.toUpperCase()}</span>
+              <span className="shrink-0">Mode: {selectionMode.toUpperCase()}</span>
             </div>
           )}
         </div>
 
         {isEmbedded && (
-          <div className="px-1 font-mono text-[10px] opacity-75">
+          <div className="px-1 h-4 leading-4 font-mono text-[10px] tabular-nums opacity-75 whitespace-nowrap truncate pointer-events-none">
             {hoverSnapPoint
               ? `Cursor: X=${Math.round(
                   (0.5 - hoverSnapPoint.u) * GOAL_BARRIER_WIDTH_UU

@@ -20,6 +20,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Activity',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 460,
     height: 420,

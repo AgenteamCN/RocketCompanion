@@ -33,6 +33,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Sliders',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 580,
     height: 640,

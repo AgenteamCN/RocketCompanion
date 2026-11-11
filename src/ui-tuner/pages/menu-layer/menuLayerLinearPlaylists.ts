@@ -345,6 +345,8 @@ export function spawnFloatingPresetOnUnifiedStage(preset: PresetConfig): void {
     autoFitHeight: cal.mode === 'adaptive' ? true : preset.autoFitHeight,
     resizable: preset.resizable,
     singleton: true,
+    hideFooter: preset.hideFooter,
+    contentPadding: preset.contentPadding,
     startMinimized: false,
   });
 }

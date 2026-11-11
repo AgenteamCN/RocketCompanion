@@ -14,7 +14,7 @@ import {
   type TunerWorkspaceId,
 } from './sidebarNavConfig';
 import { readUrlParams, updateUrlParams } from './stores/urlSync';
-import { useSyncedState } from './stores/crossClientSync';
+import { crossClientSync, useSyncedState } from './stores/crossClientSync';
 import { useCrossTabTargetFollow } from './stores/crossTabTargetFollow';
 import type { JumpOriginRecord } from './SidebarWorkspaceHeader';
 
@@ -151,6 +151,7 @@ export function useWorkspaceUrlAndHotkeySync() {
     updateUrlParams({ tab: nextTab }, { push: true, hash: null });
     syncWorkspaceUrlParam(nextWs);
     setActiveTab(nextTab);
+    setLastJumpOrigin((prev) => (prev && prev.fromTab === nextTab ? null : prev));
   }, []);
 
   const handleSelectWorkspace = useCallback(
@@ -182,6 +183,7 @@ export function useWorkspaceUrlAndHotkeySync() {
       );
       syncWorkspaceUrlParam(nextWorkspace);
       setActiveTab(targetTab);
+      setLastJumpOrigin((prev) => (prev && prev.fromTab === targetTab ? null : prev));
     },
     [activeWorkspace, lastTabByWorkspace, isFollowingStage, activeTarget]
   );
@@ -216,18 +218,66 @@ export function useWorkspaceUrlAndHotkeySync() {
     (tab: ShowcaseTab, targetId?: string) => {
       if (typeof window !== 'undefined') {
         const p = readUrlParams();
-        const routeDesc =
-          activeTab === 'layer-preview'
-            ? `Unified Approval Stage (${p.fw || p.route || 'main-menu'}${
-                p.fwTab ? ` · ${p.fwTab}` : p.subtab ? ` · ${p.subtab}` : ''
-              })`
-            : activeTab;
-        setLastJumpOrigin({
-          fromTab: activeTab,
-          fromHref: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-          fromDesc: routeDesc,
-          toTab: tab,
-          targetId,
+        const isFromApproval = activeTab === 'layer-preview';
+        const anchorIdx = crossClientSync.get<number>('page:menu-layer-v2:anchorIndex', 0);
+        const fwId =
+          p.fw ||
+          crossClientSync.get<string | null>('page:menu-layer-v2:activeFloatingWindowId', null);
+        const routeVal =
+          p.route || crossClientSync.get<string>('page:menu-layer-v2:currentRoute', 'main-menu');
+        const fwTabVal =
+          p.fwTab || crossClientSync.get<string>('page:menu-layer-v2:activeFloatingSubTab', '');
+        const subtabVal =
+          p.subtab ||
+          (routeVal === 'garage'
+            ? crossClientSync.get<string>('page:menu-layer-v2:garageTab', 'car')
+            : crossClientSync.get<string>('page:menu-layer-v2:settingsTab', 'gameplay'));
+        const routeDesc = isFromApproval
+          ? `Unified Approval Stage (#${anchorIdx + 1} · ${fwId || routeVal || 'main-menu'}${
+              fwTabVal ? ` · ${fwTabVal}` : subtabVal ? ` · ${subtabVal}` : ''
+            })`
+          : activeTab;
+        const approvalSnap = isFromApproval
+          ? {
+              playlistScope: crossClientSync.get<string>(
+                'page:menu-layer-v2:playlistScope',
+                'all'
+              ),
+              visibilityTier:
+                p.tier ||
+                crossClientSync.get<string>('page:menu-layer-v2:visibilityTier', 'user'),
+              anchorIndex: anchorIdx,
+              currentRoute: fwId ? 'layer-0' : routeVal,
+              displayedRoute: fwId ? 'layer-0' : routeVal,
+              activeFloatingWindowId: fwId || null,
+              activeFloatingSubTab: fwTabVal || '',
+              settingsTab: crossClientSync.get<string>(
+                'page:menu-layer-v2:settingsTab',
+                'gameplay'
+              ),
+              garageTab: crossClientSync.get<string>('page:menu-layer-v2:garageTab', 'car'),
+              layer1ContextMode:
+                p.ctx ||
+                crossClientSync.get<string>('page:menu-layer-v2:layer1ContextMode', 'freeplay'),
+            }
+          : undefined;
+
+        setLastJumpOrigin((prev) => {
+          if (prev && prev.fromTab === 'layer-preview' && !isFromApproval) {
+            return {
+              ...prev,
+              toTab: tab,
+              targetId,
+            };
+          }
+          return {
+            fromTab: activeTab,
+            fromHref: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+            fromDesc: routeDesc,
+            toTab: tab,
+            targetId,
+            approvalSnapshot: approvalSnap,
+          };
         });
       }
       const targetWs = getWorkspaceForTab(tab);
@@ -252,6 +302,44 @@ export function useWorkspaceUrlAndHotkeySync() {
 
   const handleReturnToJumpOrigin = useCallback(() => {
     if (!lastJumpOrigin) return;
+    const snap = lastJumpOrigin.approvalSnapshot;
+    if (snap) {
+      if (snap.playlistScope) {
+        crossClientSync.set('page:menu-layer-v2:playlistScope', snap.playlistScope);
+      }
+      if (snap.visibilityTier) {
+        crossClientSync.set('page:menu-layer-v2:visibilityTier', snap.visibilityTier);
+      }
+      if (typeof snap.anchorIndex === 'number') {
+        crossClientSync.set('page:menu-layer-v2:anchorIndex', snap.anchorIndex);
+      }
+      if (snap.currentRoute) {
+        crossClientSync.set('page:menu-layer-v2:currentRoute', snap.currentRoute);
+        crossClientSync.set(
+          'page:menu-layer-v2:displayedRoute',
+          snap.displayedRoute || snap.currentRoute
+        );
+      }
+      crossClientSync.set(
+        'page:menu-layer-v2:activeFloatingWindowId',
+        snap.activeFloatingWindowId ?? null
+      );
+      crossClientSync.set(
+        'page:menu-layer-v2:activeFloatingSubTab',
+        snap.activeFloatingSubTab ?? ''
+      );
+      if (snap.settingsTab) {
+        crossClientSync.set('page:menu-layer-v2:settingsTab', snap.settingsTab);
+      }
+      if (snap.garageTab) {
+        crossClientSync.set('page:menu-layer-v2:garageTab', snap.garageTab);
+      }
+      if (snap.layer1ContextMode) {
+        crossClientSync.set('page:menu-layer-v2:layer1ContextMode', snap.layer1ContextMode);
+      }
+    }
+    const targetWs = getWorkspaceForTab(lastJumpOrigin.fromTab);
+    setLastTabByWorkspace((prev) => ({ ...prev, [targetWs]: lastJumpOrigin.fromTab }));
     if (typeof window !== 'undefined') {
       try {
         window.history.pushState(window.history.state, '', lastJumpOrigin.fromHref);
@@ -259,6 +347,7 @@ export function useWorkspaceUrlAndHotkeySync() {
         // ignore
       }
     }
+    syncWorkspaceUrlParam(targetWs);
     setActiveTab(lastJumpOrigin.fromTab);
     setLastJumpOrigin(null);
   }, [lastJumpOrigin]);

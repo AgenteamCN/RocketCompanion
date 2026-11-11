@@ -16,6 +16,7 @@ export const SURFACE_META: SurfaceMeta = {
   title: '3D Nameplate & Off-Screen Indicator Tuner',
   layer: 'floating-dev',
   menuGroup: 'calibrated-presets',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 620,

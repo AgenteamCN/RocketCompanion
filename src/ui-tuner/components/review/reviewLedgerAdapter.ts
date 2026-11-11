@@ -11,6 +11,10 @@ import {
   resolveUnifiedPlaylistByScope,
   type UnifiedPlaylistScope,
 } from '../../pages/menu-layer/menuLayerLinearPlaylists';
+import {
+  computeLiveSubtreeCombinedHash,
+  detectChangedSubtreeFiles,
+} from './liveSubtreeHashScanner';
 import type {
   ReviewStaleReason,
   ReviewTriageBucketId,
@@ -110,6 +114,8 @@ export function extractAlphaMotherDeps(record?: SurfaceApprovalRecord): string[]
 
 export function classifySurfaceBucket(params: {
   surfaceId: string;
+  variantId?: string;
+  sourceFile?: string;
   ledgerRecord?: SurfaceApprovalRecord;
   runtimeDecision?: RuntimeReviewDecision;
   globalTemplateStaleOverride?: boolean;
@@ -117,30 +123,79 @@ export function classifySurfaceBucket(params: {
   status: SurfaceApprovalStatus;
   bucket: ReviewTriageBucketId;
   staleReason: ReviewStaleReason;
+  changedSubtreeFiles: string[];
 } {
-  const { surfaceId, ledgerRecord, runtimeDecision, globalTemplateStaleOverride } = params;
+  const {
+    surfaceId,
+    variantId = 'default',
+    sourceFile,
+    ledgerRecord,
+    runtimeDecision,
+    globalTemplateStaleOverride,
+  } = params;
+
+  const variantRecord =
+    variantId !== 'default' ? ledgerRecord?.variants?.[variantId] : undefined;
+  const recordedHashes =
+    variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes;
+  const changedSubtreeFiles = detectChangedSubtreeFiles(recordedHashes);
+  const liveVisualHash = computeLiveSubtreeCombinedHash(
+    recordedHashes,
+    sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
+  );
+
+  const isRuntimeDecisionStale = Boolean(
+    runtimeDecision &&
+      runtimeDecision.status === 'approved' &&
+      ((runtimeDecision.visualHashSnapshot &&
+        runtimeDecision.visualHashSnapshot !== liveVisualHash) ||
+        (!runtimeDecision.visualHashSnapshot && changedSubtreeFiles.length > 0))
+  );
+
+  const isLedgerApprovalStale = Boolean(
+    !runtimeDecision &&
+      (variantRecord?.status === 'approved' || ledgerRecord?.status === 'approved') &&
+      changedSubtreeFiles.length > 0
+  );
+
+  const rawStatus: SurfaceApprovalStatus =
+    runtimeDecision?.status ??
+    variantRecord?.status ??
+    ledgerRecord?.status ??
+    'deferred';
 
   const status: SurfaceApprovalStatus =
-    runtimeDecision?.status ?? ledgerRecord?.status ?? 'pending';
+    isRuntimeDecisionStale || isLedgerApprovalStale ? 'deferred' : rawStatus;
 
   if (runtimeDecision?.simulatedStaleReason) {
     const sim = runtimeDecision.simulatedStaleReason;
     if (sim === 'unreviewed' || sim === 'visual-stale' || sim === 'rejected-rework') {
-      return { status, bucket: 'bucket-1-visual', staleReason: sim };
+      return { status, bucket: 'bucket-1-visual', staleReason: sim, changedSubtreeFiles };
     }
     if (sim === 'config-stale') {
-      return { status, bucket: 'bucket-2-config', staleReason: 'config-stale' };
+      return {
+        status,
+        bucket: 'bucket-2-config',
+        staleReason: 'config-stale',
+        changedSubtreeFiles,
+      };
     }
     if (sim === 'template-stale') {
-      return { status, bucket: 'bucket-3-template', staleReason: 'template-stale' };
+      return {
+        status,
+        bucket: 'bucket-3-template',
+        staleReason: 'template-stale',
+        changedSubtreeFiles,
+      };
     }
   }
 
   if (!ledgerRecord) {
     return {
-      status: status === 'approved' ? 'approved' : 'pending',
-      bucket: status === 'approved' ? 'reviewed-healthy' : 'bucket-1-visual',
-      staleReason: status === 'approved' ? 'up-to-date' : 'unreviewed',
+      status: status === 'approved' ? 'approved' : 'deferred',
+      bucket: status === 'approved' ? 'reviewed-healthy' : 'bucket-2-config',
+      staleReason: status === 'approved' ? 'up-to-date' : 'deferred-hold',
+      changedSubtreeFiles,
     };
   }
 
@@ -149,22 +204,25 @@ export function classifySurfaceBucket(params: {
       status,
       bucket: 'bucket-1-visual',
       staleReason: 'rejected-rework',
+      changedSubtreeFiles,
     };
   }
 
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'unreviewed') {
     return {
-      status,
-      bucket: 'bucket-1-visual',
-      staleReason: 'unreviewed',
+      status: 'deferred',
+      bucket: 'bucket-2-config',
+      staleReason: 'deferred-hold',
+      changedSubtreeFiles,
     };
   }
 
   if (status === 'deferred') {
     return {
       status,
-      bucket: 'bucket-2-config',
-      staleReason: 'deferred-hold',
+      bucket: changedSubtreeFiles.length > 0 ? 'bucket-1-visual' : 'bucket-2-config',
+      staleReason: changedSubtreeFiles.length > 0 ? 'visual-stale' : 'deferred-hold',
+      changedSubtreeFiles,
     };
   }
 
@@ -178,6 +236,7 @@ export function classifySurfaceBucket(params: {
       status,
       bucket: 'bucket-3-template',
       staleReason: 'template-stale',
+      changedSubtreeFiles,
     };
   }
 
@@ -187,6 +246,7 @@ export function classifySurfaceBucket(params: {
       status,
       bucket: 'bucket-2-config',
       staleReason: 'config-stale',
+      changedSubtreeFiles,
     };
   }
 
@@ -194,6 +254,7 @@ export function classifySurfaceBucket(params: {
     status,
     bucket: 'reviewed-healthy',
     staleReason: 'up-to-date',
+    changedSubtreeFiles,
   };
 }
 
@@ -235,9 +296,13 @@ export function buildAllReviewUnits(params: {
     const record = UI_APPROVAL_LEDGER.surfaces[surfaceId];
     const reg = registeredUnitsMap[unitKey];
     const decision = decisionsMap[unitKey] ?? decisionsMap[defaultKey];
+    const resolvedSourceFile =
+      reg?.sourceFile || decision?.sourceFile || auditInfo.sourceFile;
 
-    const { status, bucket, staleReason } = classifySurfaceBucket({
+    const { status, bucket, staleReason, changedSubtreeFiles } = classifySurfaceBucket({
       surfaceId,
+      variantId,
+      sourceFile: resolvedSourceFile,
       ledgerRecord: record,
       runtimeDecision: decision,
       globalTemplateStaleOverride,
@@ -250,14 +315,17 @@ export function buildAllReviewUnits(params: {
       label: step.label || reg?.label || decision?.label || auditInfo.componentName,
       referenceCode: reg?.referenceCode || decision?.referenceCode || auditInfo.referenceCode,
       componentName: reg?.componentName || decision?.componentName || auditInfo.componentName,
-      sourceFile: reg?.sourceFile || decision?.sourceFile || auditInfo.sourceFile,
+      sourceFile: resolvedSourceFile,
       subViewFile: reg?.subViewFile || decision?.subViewFile,
       status,
       bucket,
       staleReason,
       note: decision?.note ?? record?.note ?? '',
       updatedAt: decision?.updatedAt ?? record?.approvedAt ?? '',
-      changedSubtreeFiles: reg?.changedSubtreeFiles ?? [],
+      changedSubtreeFiles:
+        changedSubtreeFiles.length > 0
+          ? changedSubtreeFiles
+          : reg?.changedSubtreeFiles ?? [],
       alphaMotherDeps: reg?.alphaMotherDeps ?? extractAlphaMotherDeps(record),
       ledgerRecord: record,
     });

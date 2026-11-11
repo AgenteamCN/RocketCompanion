@@ -172,7 +172,7 @@ export const UITunerApp: React.FC = () => {
           />
 
           <main className="flex-1 h-full overflow-y-auto overflow-x-auto [overflow-anchor:none] min-w-0 relative select-text bg-white dark:bg-neutral-950">
-            {lastJumpOrigin && lastJumpOrigin.toTab === activeTab && (
+            {lastJumpOrigin && activeTab !== lastJumpOrigin.fromTab && (
               <JumpOriginReturnBanner
                 isLight={isLight}
                 lastJumpOrigin={lastJumpOrigin}

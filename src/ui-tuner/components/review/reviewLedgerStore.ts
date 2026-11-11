@@ -3,6 +3,7 @@ import { UI_APPROVAL_LEDGER } from '../../../ui-core/manifest/surfaceCalibration
 import type { SurfaceApprovalStatus } from '../../../ui-core/manifest/surfaceMetaTypes';
 import type { UnifiedPlaylistScope } from '../../pages/menu-layer/menuLayerLinearPlaylists';
 import { buildApprovalMessageWithDiffs } from './exportDiffAndSizeTiering';
+import { computeLiveSubtreeCombinedHash } from './liveSubtreeHashScanner';
 import {
   buildAllReviewUnits,
   buildUnitKey,
@@ -199,6 +200,9 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
     const [surfaceId, variantId = 'default'] = targetKey.split('::');
     const reg = state.registeredUnitsMap[targetKey];
     const prev = state.decisionsMap[targetKey];
+    const ledgerRecord = UI_APPROVAL_LEDGER.surfaces[surfaceId];
+    const variantRecord =
+      variantId !== 'default' ? ledgerRecord?.variants?.[variantId] : undefined;
     const nowIso = new Date().toISOString();
 
     const resolvedNote = note !== undefined ? note : prev?.note ?? '';
@@ -208,6 +212,10 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
       unitKey: targetKey,
       status,
     });
+    const visualHashSnapshot = computeLiveSubtreeCombinedHash(
+      variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes,
+      reg?.sourceFile ?? prev?.sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
+    );
 
     const nextDecision: RuntimeReviewDecision = {
       unitKey: targetKey,
@@ -227,6 +235,7 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
           : status === 'approved'
           ? undefined
           : prev?.simulatedStaleReason,
+      visualHashSnapshot,
       updatedAt: nowIso,
     };
 
@@ -283,13 +292,19 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
     const reg = state.registeredUnitsMap[unitKey];
     const prev = state.decisionsMap[unitKey];
     const ledgerRecord = UI_APPROVAL_LEDGER.surfaces[surfaceId];
-    const resolvedStatus = prev?.status ?? ledgerRecord?.status ?? 'approved';
+    const variantRecord =
+      variantId !== 'default' ? ledgerRecord?.variants?.[variantId] : undefined;
+    const resolvedStatus = prev?.status ?? ledgerRecord?.status ?? 'deferred';
     const approvalMessage = buildApprovalMessageWithDiffs({
       baseNote: note,
       surfaceId,
       unitKey,
       status: resolvedStatus,
     });
+    const visualHashSnapshot = computeLiveSubtreeCombinedHash(
+      variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes,
+      reg?.sourceFile ?? prev?.sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
+    );
 
     const nextDecision: RuntimeReviewDecision = {
       unitKey,
@@ -304,6 +319,7 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
       note,
       approvalMessage,
       simulatedStaleReason: prev?.simulatedStaleReason,
+      visualHashSnapshot,
       updatedAt: new Date().toISOString(),
     };
 
@@ -368,6 +384,10 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
     const nextDecisionsMap = { ...state.decisionsMap };
 
     for (const unit of templateStaleUnits) {
+      const variantRecord =
+        unit.variantId !== 'default'
+          ? unit.ledgerRecord?.variants?.[unit.variantId]
+          : undefined;
       nextDecisionsMap[unit.unitKey] = {
         unitKey: unit.unitKey,
         surfaceId: unit.surfaceId,
@@ -380,6 +400,10 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
         status: 'approved',
         note: unit.note,
         simulatedStaleReason: undefined,
+        visualHashSnapshot: computeLiveSubtreeCombinedHash(
+          variantRecord?.fileVisualHashes ?? unit.ledgerRecord?.fileVisualHashes,
+          unit.sourceFile
+        ),
         updatedAt: nowIso,
       };
     }

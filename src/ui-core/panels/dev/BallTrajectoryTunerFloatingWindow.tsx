@@ -19,6 +19,7 @@ export const SURFACE_META: SurfaceMeta = {
   title: 'Ball Trajectory Prediction Line Tuner',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 640,
