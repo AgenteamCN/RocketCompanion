@@ -1,8 +1,8 @@
 import {
   RemoteEngineAudioLodController,
   type EngineSynthSlotEntry,
-} from '../../audio/RemoteEngineAudioLodController.ts';
-import { loadEngineAudioPackAssets } from '../../audio/EngineAudioLoopConditioner.ts';
+} from '../../audio/TurtleModemEngineSynth.ts';
+import { loadEngineAudioPackAssets } from '../../audio/turtleModemSynthAcousticPipeline.ts';
 import { getAudioContext, subsystemState, registerAudioRuntime } from '../../audio/audioContext.ts';
 import { gameAudio } from '../../audio/GameAudioEngineFacade.ts';
 import { isSignalAudioMutedInGoalReplay } from '../../audio/SignalAudioEngine.ts';

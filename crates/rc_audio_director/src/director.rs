@@ -181,7 +181,7 @@ impl AudioDirectorInstance {
         }
 
         // 1. Step 8-car drivetrains and Top-3 remote LOD budget
-        self.cue_pod.awake_remote_car_mask = step_all_vehicles_baseline(
+        let (awake_mask, backfire_mask_hi) = step_all_vehicles_baseline(
             &mut self.drivetrains,
             &sim.state_buffer.cars,
             &sim.controls_buffer,
@@ -189,6 +189,8 @@ impl AudioDirectorInstance {
             &self.config_pod,
             &mut self.cue_pod.cars,
         );
+        self.cue_pod.awake_remote_car_mask = awake_mask;
+        self.cue_pod.one_shot_edge_mask_hi |= backfire_mask_hi;
 
         // 2. Step continuous ball rolling & downward flying loops
         let ball = &sim.state_buffer.ball;
