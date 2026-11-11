@@ -1,4 +1,3 @@
-import type { SpatialAudioTunerConfig } from '../ui-core/config/spatialAudioConfig.ts';
 import type {
   NameTagBoostBorderOverride,
   NameTagCarEntry,
@@ -18,8 +17,10 @@ import type {
 import type { AppState } from '../ui-core/stores/appStoreTypes.ts';
 import type { HudStoreState } from '../ui-core/stores/hudStore.ts';
 import type {
+  BgmSceneConfig,
   BgmUploadedTrack,
   SpatialAudioStoreState,
+  SpatialAudioTunerConfig,
 } from '../ui-core/stores/spatialAudioStore.ts';
 import type { SubsystemIsolationLabState } from '../ui-core/stores/subsystemIsolationLabTypes.ts';
 import type { RewinderState } from '../ui-core/stores/rewinderStore.ts';

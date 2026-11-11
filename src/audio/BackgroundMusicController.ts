@@ -1,4 +1,4 @@
-import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAudioConfig.ts';
+import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import {
   useSpatialAudioStore,
   getFilteredBgmTracks,

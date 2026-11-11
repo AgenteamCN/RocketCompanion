@@ -10,6 +10,7 @@ use crate::{
     config_pod::AudioDirectorConfigPod,
     drivetrain_state::{step_all_vehicles_baseline, VehicleDrivetrainState},
     pod_types::{edge_mask_bits, AudioFrameCuePod, AudioListenerStatePod},
+    stadium_bus::{collect_stadium_and_signal_events, step_stadium_bus_blend},
 };
 
 /// Central WASM audio director state machine.
@@ -26,6 +27,8 @@ pub struct AudioDirectorInstance {
     pub last_goal_scored_tick: u32,
     pub last_pad_pickup_tick: [u32; MAX_PADS],
     pub last_car_demo_tick: [u32; MAX_CARS],
+    pub last_signal_tick_by_subtype: [u32; 10],
+    pub stadium_phase: f32,
     pub smoothed_ball_rolling_gain: f32,
     pub smoothed_ball_flying_gain: f32,
     pub smoothed_ball_rolling_rate: f32,
@@ -58,6 +61,8 @@ impl AudioDirectorInstance {
             last_goal_scored_tick: 0,
             last_pad_pickup_tick: [0; MAX_PADS],
             last_car_demo_tick: [0; MAX_CARS],
+            last_signal_tick_by_subtype: [0; 10],
+            stadium_phase: 0.0,
             smoothed_ball_rolling_gain: 0.0,
             smoothed_ball_flying_gain: 0.0,
             smoothed_ball_rolling_rate: 1.0,
@@ -82,6 +87,8 @@ impl AudioDirectorInstance {
         self.last_goal_scored_tick = 0;
         self.last_pad_pickup_tick = [0; MAX_PADS];
         self.last_car_demo_tick = [0; MAX_CARS];
+        self.last_signal_tick_by_subtype = [0; 10];
+        self.stadium_phase = 0.0;
         self.smoothed_ball_rolling_gain = 0.0;
         self.smoothed_ball_flying_gain = 0.0;
         self.smoothed_ball_rolling_rate = 1.0;
@@ -171,6 +178,11 @@ impl AudioDirectorInstance {
             self.cue_pod.ball_roll_gain = 0.0;
             self.cue_pod.ball.rolling_gain = 0.0;
             self.cue_pod.ball.flying_gain = 0.0;
+            self.cue_pod.stadium_bus = step_stadium_bus_blend(
+                &self.listener_pod,
+                &self.config_pod,
+                &mut self.stadium_phase,
+            );
             for c in &mut self.cue_pod.cars {
                 c.engine_gain = 0.0;
                 c.boost_gain = 0.0;
@@ -220,6 +232,25 @@ impl AudioDirectorInstance {
         self.cue_pod.ball.rolling_gain = roll_gain;
         self.cue_pod.ball.rolling_rate = 0.85 + 0.35 * (b_speed / 2000.0).clamp(0.0, 1.0);
         self.cue_pod.ball_roll_gain = roll_gain;
+
+        // 3. Step stadium PA reverb & HPF/LPF filter blend
+        self.cue_pod.stadium_bus = step_stadium_bus_blend(
+            &self.listener_pod,
+            &self.config_pod,
+            &mut self.stadium_phase,
+        );
+
+        // 4. Collect boost pad pickup & countdown/match signal one-shot slots
+        collect_stadium_and_signal_events(
+            &sim.event_buffer,
+            self.last_event_read_seq,
+            &self.listener_pod,
+            &self.config_pod,
+            &mut self.last_pad_pickup_tick,
+            &mut self.last_signal_tick_by_subtype,
+            &mut self.cue_pod.one_shots,
+            &mut self.cue_pod.one_shot_count,
+        );
 
         self.last_event_read_seq = sim.event_buffer.write_seq;
         &self.cue_pod as *const AudioFrameCuePod

@@ -2,7 +2,7 @@ import { type StateCreator } from 'zustand';
 import { STORAGE_KEYS, safeStorage } from '../../config/storageHelpers';
 import { getInitialTrajectory } from '../../config/trainingDefaults';
 import { audioConfig } from '../../config/audioConfig';
-import { loadStoredBgmPrefs } from '../../config/spatialAudioConfig';
+import { loadStoredBgmPrefs } from '../spatialAudioBgmPersistence';
 import { type AppState } from '../appStoreTypes';
 
 function getInitialAppAudio(): AppState['audio'] {

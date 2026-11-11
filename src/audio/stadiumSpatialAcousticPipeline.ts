@@ -4,17 +4,11 @@
  * and match-phase transition evaluation for StadiumSpatialAudioEngine.
  */
 
-import { audioConfig } from '../ui-core/config/audioConfig.ts';
-import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAudioConfig.ts';
+import { type SpatialAudioTunerConfig } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import { fetchAudioBuffer } from './audioAssetLoader.ts';
-import {
-  useSpatialAudioStore,
-  useHudStore,
-  useAppStore,
-  useStaticTrainingPackStore,
-} from '../game/runtimeUiPort.ts';
 import { type SpatialAudioRuntimeContextSnapshot } from './SpatialAudioBusChain.ts';
 import { type GoalAnthemPlayer } from './GoalAnthemPlayer.ts';
+import { readRuntimeAudioSnapshot } from './spatialMusicAndAnthemPipeline.ts';
 
 export const BGM_PREVIEW_SAMPLE_URL =
   '/assets/audio/bgm/Hollywood Principle - Breathing Underwater (Ether Remix).m4a';
@@ -31,18 +25,6 @@ export interface SpatialContextTransitionPlan {
   syncBgmPlayback: boolean;
 }
 
-export function computeAnthemOutputGain(isActiveOrDraining: boolean, forceActive = false): number {
-  if (!forceActive && !isActiveOrDraining) return 0.0;
-  const raw = Number(audioConfig.get('anthemVolume') ?? 1.0);
-  return Math.max(0, Math.min(5.0, Number.isFinite(raw) ? raw : 1.0));
-}
-
-export function computeBgmVolumeScalar(store = useSpatialAudioStore.getState()): number {
-  const baseScalar = Math.max(0, Math.min(1, (Number(store.bgmVolume) ?? 80) / 100));
-  const busMult = Number(audioConfig.get('bgmBusVolume') ?? 1.0);
-  return baseScalar * Math.max(0, Math.min(5.0, Number.isFinite(busMult) ? busMult : 1.0));
-}
-
 export function isTrainingShotExpireContext(context: SpatialAudioRuntimeContextSnapshot): boolean {
   return (
     context.matchMode === 'static-training-pack' && context.staticTrainingReplayType === 'expire'
@@ -50,19 +32,7 @@ export function isTrainingShotExpireContext(context: SpatialAudioRuntimeContextS
 }
 
 export function readSpatialAudioRuntimeContextSnapshot(): SpatialAudioRuntimeContextSnapshot {
-  const appState = useAppStore.getState() || {};
-  const hudState = useHudStore.getState() || {};
-  const trainingState = useStaticTrainingPackStore.getState() || {};
-  return {
-    isOpen: Boolean(appState.isOpen ?? appState.isMenuOpen),
-    matchMode: appState.matchMode || 'freeplay',
-    onlineSession: appState.onlineSession || null,
-    matchPhase: hudState.matchPhase || 'playing',
-    choreographySignal: hudState.choreographySignal || null,
-    replayScorerAnthemId: hudState.replayScorerAnthemId || null,
-    staticTrainingReplayType:
-      trainingState.liveTelemetry?.replayType ?? trainingState.replayType ?? null,
-  };
+  return readRuntimeAudioSnapshot();
 }
 
 export function computeSpatialTransitionMaxDelta(

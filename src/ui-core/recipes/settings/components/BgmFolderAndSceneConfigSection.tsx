@@ -13,9 +13,11 @@ import { SettingSliderRow } from '../../../compounds/SettingSliderRow';
 import { SettingToggleRow } from '../../../compounds/SettingToggleRow';
 import { Checkbox } from '../../../primitives/Checkbox';
 import { useSettingActionRowStore } from '../../../stores/settingRowStore';
-import { useSpatialAudioStore } from '../../../stores/spatialAudioStore';
+import {
+  useSpatialAudioStore,
+  type BgmSceneConfig,
+} from '../../../stores/spatialAudioStore';
 import { useScopedStore } from '../../../stores/storeSnapshotScope';
-import type { BgmSceneConfig } from '../../../config/spatialAudioConfig';
 
 export interface BgmFolderAndSceneConfigSectionProps {
   isLight?: boolean;

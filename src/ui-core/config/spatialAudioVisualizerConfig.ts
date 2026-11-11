@@ -4,9 +4,8 @@
  * 3D In-Arena Spatial Audio Attenuation Visualizer & Distance Tuner.
  */
 
-import { solveCubicBezier } from './spatialAudioConfig';
 import { AUDIO_ATTENUATION_CATEGORIES } from './spatialAttenuationPresets';
-import { getSpatialAttenuationProfile, type AudioAttenuationCategory, type SpatialAttenuationProfile } from './spatialAttenuationProfiles';
+import { getSpatialAttenuationProfile, solveCubicBezier, type AudioAttenuationCategory, type SpatialAttenuationProfile } from './spatialAttenuationProfiles';
 import {
   booleanOrDefault,
   clampNumberOrDefault,

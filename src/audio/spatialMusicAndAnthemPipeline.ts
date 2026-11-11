@@ -2,7 +2,7 @@ import { audioConfig } from '../ui-core/config/audioConfig.ts';
 import {
   DEFAULT_BGM_SCENE_CONFIG,
   type SpatialAudioTunerConfig,
-} from '../ui-core/config/spatialAudioConfig.ts';
+} from '../ui-core/config/spatialAttenuationProfiles.ts';
 import {
   ANTHEM_SPECIFIC_CATEGORIES,
   resolvePlayableAnthemDef,

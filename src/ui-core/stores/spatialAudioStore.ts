@@ -9,17 +9,15 @@ import {
   loadStoredRandomAnthemPrefs,
   saveStoredRandomAnthemPrefs,
 } from "../config/anthemCatalogConfig";
+import { audioConfig } from "../config/audioConfig";
+import { updateReplayDirectorConfig } from "../config/replayDirectorConfig";
+import { DEFAULT_SPATIAL_AUDIO_TUNER_CONFIG } from "../config/spatialAttenuationProfiles";
 import {
-  DEFAULT_SPATIAL_AUDIO_TUNER_CONFIG,
   type SpatialAudioTunerConfig,
   type BgmSceneConfig,
   loadStoredBgmPrefs,
   loadStoredSpatialAudioTunerConfig,
   saveStoredSpatialAudioTunerConfig,
-} from "../config/spatialAudioConfig";
-import { audioConfig } from "../config/audioConfig";
-import { updateReplayDirectorConfig } from "../config/replayDirectorConfig";
-import {
   type BgmUploadedTrack,
   type AnthemPreviewSource,
   type SpatialAudioRuntimeCallbacks,
@@ -30,7 +28,13 @@ import {
   filterBgmTracksByPrefs,
 } from "./spatialAudioBgmPersistence";
 
-export type { BgmUploadedTrack, AnthemPreviewSource, SpatialAudioRuntimeCallbacks };
+export type {
+  BgmUploadedTrack,
+  AnthemPreviewSource,
+  SpatialAudioRuntimeCallbacks,
+  SpatialAudioTunerConfig,
+  BgmSceneConfig,
+};
 
 export interface SpatialAudioStoreState {
   selectedAnthem: string;

@@ -7,9 +7,9 @@
  * for 3D in-arena visualization.
  */
 
-import { solveCubicBezier } from '../ui-core/config/spatialAudioConfig.ts';
 import {
   getSpatialAttenuationProfile,
+  solveCubicBezier,
   type AudioAttenuationCategory,
   type SpatialAttenuationProfile,
 } from '../ui-core/config/spatialAttenuationProfiles.ts';
