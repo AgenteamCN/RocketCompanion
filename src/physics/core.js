@@ -195,6 +195,31 @@ async function loadDirectRocketSimWasm(moduleArg = {}) {
   Module['_physics_getCarDemoRespawnTimer'] = wasmExports._physics_getCarDemoRespawnTimer;
   Module['_physics_getCarFlipsRemaining'] = wasmExports._physics_getCarFlipsRemaining;
   Module['_physics_getCarFlipWindowTimer'] = wasmExports._physics_getCarFlipWindowTimer;
+  Module['_physics_getTrajectoryMeshHeaderPtr'] = wasmExports._physics_getTrajectoryMeshHeaderPtr;
+  Module['_physics_getTrajectoryMeshConfigPtr'] = wasmExports._physics_getTrajectoryMeshConfigPtr;
+  Module['_physics_getTrajectoryPositionsPtr'] = wasmExports._physics_getTrajectoryPositionsPtr;
+  Module['_physics_getTrajectoryNormalsPtr'] = wasmExports._physics_getTrajectoryNormalsPtr;
+  Module['_physics_getTrajectoryUvsPtr'] = wasmExports._physics_getTrajectoryUvsPtr;
+  Module['_physics_getTrajectoryIndicesPtr'] = wasmExports._physics_getTrajectoryIndicesPtr;
+  Module['_physics_getTrajectoryBounceMarkersPtr'] = wasmExports._physics_getTrajectoryBounceMarkersPtr;
+  Module['_physics_getTrajectoryGroundDropsPtr'] = wasmExports._physics_getTrajectoryGroundDropsPtr;
+  Module['_physics_getTrajectoryPredictedThreePointsPtr'] = wasmExports._physics_getTrajectoryPredictedThreePointsPtr;
+  Module['_physics_getTrajectoryRawPointsPtr'] = wasmExports._physics_getTrajectoryRawPointsPtr;
+  Module['_physics_buildTrajectoryMesh'] = wasmExports._physics_buildTrajectoryMesh;
+  Module['_physics_loadGroundReachabilityLut'] = wasmExports._physics_loadGroundReachabilityLut;
+  Module['_physics_getReachabilityHeaderPtr'] = wasmExports._physics_getReachabilityHeaderPtr;
+  Module['_physics_getGroundReachabilityRadiiPtr'] = wasmExports._physics_getGroundReachabilityRadiiPtr;
+  Module['_physics_getGroundReachabilityLinePtr'] = wasmExports._physics_getGroundReachabilityLinePtr;
+  Module['_physics_getGroundReachabilityFillPtr'] = wasmExports._physics_getGroundReachabilityFillPtr;
+  Module['_physics_getAerialFunnelPositionsPtr'] = wasmExports._physics_getAerialFunnelPositionsPtr;
+  Module['_physics_getAerialFunnelColorsPtr'] = wasmExports._physics_getAerialFunnelColorsPtr;
+  Module['_physics_getAerialFunnelRingLinePtr'] = wasmExports._physics_getAerialFunnelRingLinePtr;
+  Module['_physics_getAerialFunnelRailsPtr'] = wasmExports._physics_getAerialFunnelRailsPtr;
+  Module['_physics_getAerialBubblePositionsPtr'] = wasmExports._physics_getAerialBubblePositionsPtr;
+  Module['_physics_getAerialBubbleColorsPtr'] = wasmExports._physics_getAerialBubbleColorsPtr;
+  Module['_physics_getAerialBubbleRibsPtr'] = wasmExports._physics_getAerialBubbleRibsPtr;
+  Module['_physics_getInterceptCrossSegmentsPtr'] = wasmExports._physics_getInterceptCrossSegmentsPtr;
+  Module['_physics_updateReachabilityAndIntercept'] = wasmExports._physics_updateReachabilityAndIntercept;
 
   for (const [key, val] of Object.entries(wasmExports)) {
     if (typeof val === 'function' && key.startsWith('_physics_')) {

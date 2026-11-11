@@ -198,6 +198,56 @@ export interface RocketSimWasmModule {
   _physics_getCarDemoRespawnTimer(carIndex: number): number;
   _physics_getCarFlipsRemaining(carIndex: number): number;
   _physics_getCarFlipWindowTimer(carIndex: number): number;
+  _physics_getTrajectoryMeshHeaderPtr(): number;
+  _physics_getTrajectoryMeshConfigPtr(): number;
+  _physics_getTrajectoryPositionsPtr(): number;
+  _physics_getTrajectoryNormalsPtr(): number;
+  _physics_getTrajectoryUvsPtr(): number;
+  _physics_getTrajectoryIndicesPtr(): number;
+  _physics_getTrajectoryBounceMarkersPtr(): number;
+  _physics_getTrajectoryGroundDropsPtr(): number;
+  _physics_getTrajectoryPredictedThreePointsPtr(): number;
+  _physics_getTrajectoryRawPointsPtr(): number;
+  _physics_buildTrajectoryMesh(
+    startIndex: number,
+    solidTicks: number,
+    transparentTicks: number,
+    phaseOffsetTicks: number,
+    worldRadius: number,
+    radiusTaper: number,
+    radialSegments: number,
+    sampleStride: number,
+    dashCapStyle: number,
+    dropLineIntervalTicks: number,
+    flags: number,
+    liveBallOverride: number,
+    liveX: number,
+    liveY: number,
+    liveZ: number
+  ): number;
+  _physics_loadGroundReachabilityLut(
+    lutU16Ptr: number,
+    elementCount: number,
+    unitScaleUu: number
+  ): number;
+  _physics_getReachabilityHeaderPtr(): number;
+  _physics_getGroundReachabilityRadiiPtr(): number;
+  _physics_getGroundReachabilityLinePtr(horizonIdx: number): number;
+  _physics_getGroundReachabilityFillPtr(horizonIdx: number): number;
+  _physics_getAerialFunnelPositionsPtr(): number;
+  _physics_getAerialFunnelColorsPtr(): number;
+  _physics_getAerialFunnelRingLinePtr(horizonIdx: number): number;
+  _physics_getAerialFunnelRailsPtr(): number;
+  _physics_getAerialBubblePositionsPtr(horizonIdx: number): number;
+  _physics_getAerialBubbleColorsPtr(horizonIdx: number): number;
+  _physics_getAerialBubbleRibsPtr(horizonIdx: number): number;
+  _physics_getInterceptCrossSegmentsPtr(): number;
+  _physics_updateReachabilityAndIntercept(
+    carIndex: number,
+    elapsedTicks: number,
+    flags: number,
+    crossArmLength: number
+  ): number;
 
   // Semantic unprefixed aliases bound by RocketSimWasm.ts
   physics_init: RocketSimWasmModule['_physics_init'];
@@ -313,6 +363,31 @@ export interface RocketSimWasmModule {
   physics_getCarDemoRespawnTimer: RocketSimWasmModule['_physics_getCarDemoRespawnTimer'];
   physics_getCarFlipsRemaining: RocketSimWasmModule['_physics_getCarFlipsRemaining'];
   physics_getCarFlipWindowTimer: RocketSimWasmModule['_physics_getCarFlipWindowTimer'];
+  physics_getTrajectoryMeshHeaderPtr: RocketSimWasmModule['_physics_getTrajectoryMeshHeaderPtr'];
+  physics_getTrajectoryMeshConfigPtr: RocketSimWasmModule['_physics_getTrajectoryMeshConfigPtr'];
+  physics_getTrajectoryPositionsPtr: RocketSimWasmModule['_physics_getTrajectoryPositionsPtr'];
+  physics_getTrajectoryNormalsPtr: RocketSimWasmModule['_physics_getTrajectoryNormalsPtr'];
+  physics_getTrajectoryUvsPtr: RocketSimWasmModule['_physics_getTrajectoryUvsPtr'];
+  physics_getTrajectoryIndicesPtr: RocketSimWasmModule['_physics_getTrajectoryIndicesPtr'];
+  physics_getTrajectoryBounceMarkersPtr: RocketSimWasmModule['_physics_getTrajectoryBounceMarkersPtr'];
+  physics_getTrajectoryGroundDropsPtr: RocketSimWasmModule['_physics_getTrajectoryGroundDropsPtr'];
+  physics_getTrajectoryPredictedThreePointsPtr: RocketSimWasmModule['_physics_getTrajectoryPredictedThreePointsPtr'];
+  physics_getTrajectoryRawPointsPtr: RocketSimWasmModule['_physics_getTrajectoryRawPointsPtr'];
+  physics_buildTrajectoryMesh: RocketSimWasmModule['_physics_buildTrajectoryMesh'];
+  physics_loadGroundReachabilityLut: RocketSimWasmModule['_physics_loadGroundReachabilityLut'];
+  physics_getReachabilityHeaderPtr: RocketSimWasmModule['_physics_getReachabilityHeaderPtr'];
+  physics_getGroundReachabilityRadiiPtr: RocketSimWasmModule['_physics_getGroundReachabilityRadiiPtr'];
+  physics_getGroundReachabilityLinePtr: RocketSimWasmModule['_physics_getGroundReachabilityLinePtr'];
+  physics_getGroundReachabilityFillPtr: RocketSimWasmModule['_physics_getGroundReachabilityFillPtr'];
+  physics_getAerialFunnelPositionsPtr: RocketSimWasmModule['_physics_getAerialFunnelPositionsPtr'];
+  physics_getAerialFunnelColorsPtr: RocketSimWasmModule['_physics_getAerialFunnelColorsPtr'];
+  physics_getAerialFunnelRingLinePtr: RocketSimWasmModule['_physics_getAerialFunnelRingLinePtr'];
+  physics_getAerialFunnelRailsPtr: RocketSimWasmModule['_physics_getAerialFunnelRailsPtr'];
+  physics_getAerialBubblePositionsPtr: RocketSimWasmModule['_physics_getAerialBubblePositionsPtr'];
+  physics_getAerialBubbleColorsPtr: RocketSimWasmModule['_physics_getAerialBubbleColorsPtr'];
+  physics_getAerialBubbleRibsPtr: RocketSimWasmModule['_physics_getAerialBubbleRibsPtr'];
+  physics_getInterceptCrossSegmentsPtr: RocketSimWasmModule['_physics_getInterceptCrossSegmentsPtr'];
+  physics_updateReachabilityAndIntercept: RocketSimWasmModule['_physics_updateReachabilityAndIntercept'];
 
   [key: string]: any;
 }
