@@ -360,16 +360,35 @@ export class CloudProfileMqttTransport {
     this.subWaiters.clear();
     this.pubAckWaiters.clear();
     if (this.ws) {
+      const sock = this.ws;
+      this.ws = null;
       try {
-        if (this.ws.readyState === 1 && this.isConnected) {
-          this.ws.send(MQTT_DISCONNECT_PACKET);
+        sock.onmessage = null;
+        sock.onerror = null;
+        sock.onclose = null;
+        if (sock.readyState === 0) {
+          sock.onopen = () => {
+            sock.onopen = null;
+            try {
+              sock.close(1000, 'Client closed');
+            } catch {
+              // Ignore close error
+            }
+          };
+        } else if (sock.readyState === 1) {
+          sock.onopen = null;
+          if (this.isConnected) {
+            sock.send(MQTT_DISCONNECT_PACKET);
+          }
+          sock.close(1000, 'Client closed');
+        } else {
+          sock.onopen = null;
         }
-        this.ws.close(1000, 'Client closed');
       } catch {
         // Ignore close error
       }
-      this.ws = null;
     }
+    this.rxBuffer = new Uint8Array(0);
     this.isConnected = false;
     this.activeRole = null;
   }

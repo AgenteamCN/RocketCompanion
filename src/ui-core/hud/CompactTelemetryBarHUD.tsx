@@ -25,6 +25,15 @@ export const DEFAULT_COMPACT_TELEMETRY_CONFIG: CompactTelemetryConfig = {
   latencyMode: 'always',
 };
 
+export const DEFAULT_TELEMETRY_SNAPSHOT: CompactTelemetryTransientSnapshot = Object.freeze({
+  fps: 120,
+  refreshHz: 120,
+  renderScalePct: 100,
+  physicsRateHz: 120.0,
+  baseLatencyMs: 18,
+  extraLatencyMs: 0,
+});
+
 export interface CompactTelemetryBarHandle {
   /** Imperatively push live telemetry numbers to DOM refs with zero React re-renders */
   setTelemetry: (snapshot: CompactTelemetryTransientSnapshot) => void;
@@ -59,14 +68,7 @@ export const CompactTelemetryBarHUD = React.memo(
     (
       {
         config = DEFAULT_COMPACT_TELEMETRY_CONFIG,
-        snapshot = {
-          fps: 120,
-          refreshHz: 120,
-          renderScalePct: 100,
-          physicsRateHz: 120.0,
-          baseLatencyMs: 18,
-          extraLatencyMs: 0,
-        },
+        snapshot,
         errorMessage = null,
         subscribeTelemetry,
         isFpsPaused = false,
@@ -80,8 +82,19 @@ export const CompactTelemetryBarHUD = React.memo(
     const scaleTextRef = useRef<HTMLSpanElement | null>(null);
     const physicsTextRef = useRef<HTMLSpanElement | null>(null);
     const latencyTextRef = useRef<HTMLSpanElement | null>(null);
+    const lastSnapshotRef = useRef<CompactTelemetryTransientSnapshot>(
+      snapshot ? { ...snapshot } : { ...DEFAULT_TELEMETRY_SNAPSHOT }
+    );
 
     const applySnapshotToDom = useCallback((snap: CompactTelemetryTransientSnapshot) => {
+      lastSnapshotRef.current = {
+        fps: snap.fps,
+        refreshHz: snap.refreshHz,
+        renderScalePct: snap.renderScalePct,
+        physicsRateHz: snap.physicsRateHz,
+        baseLatencyMs: snap.baseLatencyMs,
+        extraLatencyMs: snap.extraLatencyMs,
+      };
       if (fpsTextRef.current) {
         const nextFps = String(Math.round(snap.fps));
         if (fpsTextRef.current.textContent !== nextFps) {
@@ -124,8 +137,12 @@ export const CompactTelemetryBarHUD = React.memo(
     );
 
     useEffect(() => {
-      applySnapshotToDom(snapshot);
-    }, [snapshot, applySnapshotToDom]);
+      if (snapshot !== undefined) {
+        applySnapshotToDom(snapshot);
+      } else if (!subscribeTelemetry) {
+        applySnapshotToDom(lastSnapshotRef.current);
+      }
+    }, [snapshot, subscribeTelemetry, applySnapshotToDom]);
 
     useEffect(() => {
       if (!subscribeTelemetry) return;
@@ -156,7 +173,8 @@ export const CompactTelemetryBarHUD = React.memo(
       return null;
     }
 
-    const isHighPing = (snapshot.baseLatencyMs ?? 0) > 80;
+    const activeSnapshot = snapshot ?? lastSnapshotRef.current;
+    const isHighPing = (activeSnapshot.baseLatencyMs ?? 0) > 80;
     const bgBorderClass = isLight
       ? 'bg-white/95 border-neutral-300 text-neutral-800 shadow-md'
       : 'bg-neutral-950/92 border-neutral-800 text-neutral-300 shadow-md';
@@ -193,7 +211,7 @@ export const CompactTelemetryBarHUD = React.memo(
             ref={fpsTextRef}
             className={`font-bold tabular-nums transition-colors ${fpsValueColorClass}`}
           >
-            {Math.round(snapshot.fps)}
+            {String(Math.round(activeSnapshot.fps))}
           </span>
           {showRefreshRate && (
             <>
@@ -202,7 +220,7 @@ export const CompactTelemetryBarHUD = React.memo(
                 ref={refreshTextRef}
                 className={`tabular-nums ${isLight ? 'text-neutral-600' : 'text-neutral-300'}`}
               >
-                {Math.round(snapshot.refreshHz)}
+                {String(Math.round(activeSnapshot.refreshHz))}
               </span>
             </>
           )}
@@ -221,14 +239,14 @@ export const CompactTelemetryBarHUD = React.memo(
             ref={scaleTextRef}
             className={`font-bold tabular-nums ${isLight ? 'text-neutral-900' : 'text-white'}`}
           >
-            {Math.round(snapshot.renderScalePct)}%
+            {`${Math.round(activeSnapshot.renderScalePct)}%`}
           </span>
         </div>
       );
     }
 
     if (showPhysicsRate) {
-      const clampedPhysicsRate = Math.max(1, Math.min(600, snapshot.physicsRateHz ?? 120));
+      const clampedPhysicsRate = Math.max(1, Math.min(600, activeSnapshot.physicsRateHz ?? 120));
       items.push(
         <div key="physics" className="flex items-center gap-1">
           <Gauge className={`h-3 w-3 ${isLight ? 'text-purple-600' : 'text-purple-400'}`} />
@@ -260,7 +278,7 @@ export const CompactTelemetryBarHUD = React.memo(
             ref={latencyTextRef}
             className={`font-bold tabular-nums ${isLight ? 'text-neutral-900' : 'text-white'}`}
           >
-            {Math.round(snapshot.baseLatencyMs)}ms(+{Math.round(snapshot.extraLatencyMs)})
+            {`${Math.round(activeSnapshot.baseLatencyMs)}ms(+${Math.round(activeSnapshot.extraLatencyMs)})`}
           </span>
         </div>
       );
