@@ -438,22 +438,37 @@ export class SupabaseRealtimeSignalingClient {
   close(): void {
     this._stopHeartbeat();
     if (this.ws) {
+      const sock = this.ws;
+      this.ws = null;
       try {
-        if (this.ws.readyState === 1 && this.isSubscribed) {
-          this.ws.send(
-            JSON.stringify({
-              topic: this.phoenixTopic,
-              event: 'phx_leave',
-              payload: {},
-              ref: this._nextRef(),
-            })
-          );
+        sock.onmessage = null;
+        sock.onerror = null;
+        sock.onclose = null;
+        if (sock.readyState === 0) {
+          sock.onopen = () => {
+            try {
+              sock.close(1000, 'Client closed');
+            } catch {
+              // ignore
+            }
+          };
+        } else if (sock.readyState === 1) {
+          sock.onopen = null;
+          if (this.isSubscribed) {
+            sock.send(
+              JSON.stringify({
+                topic: this.phoenixTopic,
+                event: 'phx_leave',
+                payload: {},
+                ref: this._nextRef(),
+              })
+            );
+          }
+          sock.close(1000, 'Client closed');
         }
-        this.ws.close(1000, 'Client closed');
       } catch {
         // Ignore close error
       }
-      this.ws = null;
     }
     this.isConnected = false;
     this.isSubscribed = false;

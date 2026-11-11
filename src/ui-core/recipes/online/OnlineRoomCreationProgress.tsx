@@ -8,43 +8,38 @@ export function dispatchOnlineRoomErrorNotification(
   details = 'WebSocket Signaling Handshake Failed (ERR_CONNECTION_TIMED_OUT).\nEndpoint: wss://relay.carball.dev/signaling\nAttempted Room: #4829 (120Hz Sub-Tick WebRTC)'
 ) {
   const store = useQuickNotificationStore.getState();
-  const existing =
-    store.activeNotification?.id === 'online-room-error' ||
-    store.unreadStack.some((item) => item.id === 'online-room-error') ||
-    store.preemptedPersistentStack.some((item) => item.id === 'online-room-error');
+  store.dismissNotification('online-room-error');
 
-  if (!existing) {
-    pushQuickNotification({
-      id: 'online-room-error',
-      type: 'persistent',
-      tone: 'error',
-      icon: 'octagon-alert',
-      duration: 0,
-      content: summary,
-      buttons: [
-        {
-          label: 'Details',
-          color: 'amber',
-          onClick: () => {
-            dialogue.show({
-              title: 'CONNECTION DIAGNOSTIC LOG',
-              tone: 'error',
-              icon: 'octagon-alert',
-              content: (
-                <div className="flex flex-col gap-2 font-mono text-xs w-full text-left">
-                  <p className="font-bold text-rose-600 dark:text-rose-400">{summary}</p>
-                  <div className="p-3 rounded-lg bg-neutral-100 text-neutral-800 border border-neutral-300 dark:bg-neutral-950/70 dark:border-neutral-800 dark:text-neutral-200 text-[11px] leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap select-all">
-                    {details}
-                  </div>
+  pushQuickNotification({
+    id: 'online-room-error',
+    type: 'persistent',
+    tone: 'error',
+    icon: 'octagon-alert',
+    duration: 0,
+    content: summary,
+    buttons: [
+      {
+        label: 'Details',
+        color: 'amber',
+        onClick: () => {
+          dialogue.show({
+            title: 'CONNECTION DIAGNOSTIC LOG',
+            tone: 'error',
+            icon: 'octagon-alert',
+            content: (
+              <div className="flex flex-col gap-2 font-mono text-xs w-full text-left">
+                <p className="font-bold text-rose-600 dark:text-rose-400">{summary}</p>
+                <div className="p-3 rounded-lg bg-neutral-100 text-neutral-800 border border-neutral-300 dark:bg-neutral-950/70 dark:border-neutral-800 dark:text-neutral-200 text-[11px] leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap select-all">
+                  {details}
                 </div>
-              ),
-              buttons: [{ label: 'Close', variant: 'primary' }],
-            });
-          },
+              </div>
+            ),
+            buttons: [{ label: 'Close', variant: 'primary' }],
+          });
         },
-      ],
-    });
-  }
+      },
+    ],
+  });
 }
 
 export interface CreationStepSpec {
@@ -91,6 +86,44 @@ export const DEFAULT_HOST_CREATION_STEPS: CreationStepSpec[] = [
     description: 'Applying match configuration, pre-allocating bot slots, and entering Match Lobby...',
     errorTitle: 'Lobby Spawn Aborted',
     errorDescription: 'Could not transition session state into Match Lobby.',
+  },
+];
+
+export const DEFAULT_JOIN_ROOM_STEPS: CreationStepSpec[] = [
+  {
+    step: 1,
+    stageTitle: 'Validating Room Code & Key',
+    description: 'Verifying room code checksum and preparing client authentication payload...',
+    errorTitle: 'Invalid Room Code',
+    errorDescription: 'Room code is empty or failed checksum validation. Please enter a valid room code.',
+  },
+  {
+    step: 2,
+    stageTitle: 'Connecting Signaling Relay',
+    description: 'Establishing WebSocket handshake with signaling server (wss://relay.carball.dev)...',
+    errorTitle: 'Signaling Handshake Timed Out',
+    errorDescription: 'Could not reach wss://relay.carball.dev/signaling within 10s (ERR_CONNECTION_TIMED_OUT).',
+  },
+  {
+    step: 3,
+    stageTitle: 'Resolving Host Room Session',
+    description: 'Looking up active host session and verifying room access key...',
+    errorTitle: 'Room Not Found or Key Mismatch',
+    errorDescription: 'No active room matched this code, or the room access key was rejected.',
+  },
+  {
+    step: 4,
+    stageTitle: 'Negotiating WebRTC ICE & DataChannel',
+    description: 'Exchanging SDP offers, probing STUN/TURN candidates, and opening P2P channels...',
+    errorTitle: 'ICE / NAT Traversal Failed',
+    errorDescription: 'Could not establish peer-to-peer or TURN relay transport with the host.',
+  },
+  {
+    step: 5,
+    stageTitle: 'Synchronizing Arena & Joining Lobby',
+    description: 'Receiving initial match snapshot, registering spectating relay preference, and entering lobby...',
+    errorTitle: 'Lobby Sync Aborted',
+    errorDescription: 'Host closed the lobby before initial state synchronization completed.',
   },
 ];
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Ghost, Play } from 'lucide-react';
 import type { StandardSurfaceProps, SurfaceMeta } from '../manifest/surfaceMetaTypes';
 import { PanelContainer, PanelHeader, PanelContent } from '../layout/Panel';
@@ -25,10 +25,11 @@ import {
 } from '../config/vehiclePresets';
 import { OnlineRoomIdentityFields } from './online/OnlineRoomIdentityFields';
 import {
+  DEFAULT_HOST_CREATION_STEPS,
   OnlineRoomCreationProgress,
-  dispatchOnlineRoomErrorNotification,
   type CreationProgressStatus,
 } from './online/OnlineRoomCreationProgress';
+import { useOnlineRoomProgressController } from './online/useOnlineRoomProgressController';
 
 export type HostTrainingGhostMode = 'automatically-enable' | 'manual';
 
@@ -185,7 +186,7 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
   }, [resolvedDefaultGhostMode]);
   const [hoveredDesc, setHoveredDesc] = useState<string | null>(null);
 
-  const { panels, simulateLayer3Error, setToken } = useMenuLayoutStore();
+  const { panels, simulateLayer3Error } = useMenuLayoutStore();
   const sizing = panels['layer3-host-training'];
   const { rowGap, paddingX } = useSettingActionRowStore();
 
@@ -202,22 +203,19 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
     };
   }, [verifyRelays]);
 
-  const [internalProgressStatus, setProgressStatus] = useState<CreationProgressStatus>('idle');
-  const [internalCurrentStep, setCurrentStep] = useState<number>(1);
-  const controlledProgressStatus = propProgressStatus ?? overrides.progressStatus;
-  const controlledCurrentStep = propCurrentStep ?? overrides.currentStep;
-  const progressStatus = controlledProgressStatus ?? internalProgressStatus;
-  const currentStep = controlledCurrentStep ?? internalCurrentStep;
-  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const clearStepTimer = () => {
-    if (stepTimerRef.current) {
-      clearInterval(stepTimerRef.current);
-      stepTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => () => clearStepTimer(), []);
+  const {
+    progressStatus,
+    currentStep,
+    totalSteps,
+    effectiveSteps,
+    startSequence,
+    cancelSequence,
+  } = useOnlineRoomProgressController({
+    mode: 'host',
+    steps: DEFAULT_HOST_CREATION_STEPS,
+    controlledProgressStatus: propProgressStatus ?? overrides.progressStatus,
+    controlledCurrentStep: propCurrentStep ?? overrides.currentStep,
+  });
 
   const handleRandomizeCode = () => {
     const code = generateRandomRoomCode(hostMask);
@@ -234,7 +232,10 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
     navigate('settings');
   };
 
-  const commitTrainingHostLaunch = (cleanCode: string) => {
+  const startStepSequence = (willFail: boolean) => {
+    const cleanCode = finalizeHostRoomCode(roomCode, hostMask);
+    setRoomCode(cleanCode);
+
     const cleanName = playerName.trim() || generateDefaultPlayerName();
     saveStoredPlayerName(cleanName);
     const finalConfig: HostTrainingConfig = {
@@ -244,7 +245,7 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
       ghostMode,
     };
 
-    setOnlineSession({
+    const sessionPatch = {
       playerName: cleanName,
       roomId: cleanCode,
       password: roomKey || undefined,
@@ -252,70 +253,39 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
       gameMode: '3v3',
       botFillMode: 'no_bots',
       matchDurationSeconds: 0,
-    });
+    } as const;
 
-    if (overrides.onStartTraining) {
-      overrides.onStartTraining(finalConfig);
-      return;
-    }
-
-    if (bridge.onHostOnlineWarmup) {
-      void bridge
-        .onHostOnlineWarmup({
-          roomId: cleanCode,
-          password: roomKey || undefined,
-          playerName: cleanName,
-          roomType: 'warmup',
-          gameMode: '3v3',
-          botFillMode: 'no_bots',
-          durationSeconds: 0,
-          lobbyMode: false,
-          ghostMode,
-        })
-        .then((ok) => {
-          if (ok) {
-            setMatchMode('online-warmup');
-            closeMenu();
-          } else {
-            setProgressStatus('error');
+    const hostViaBridge =
+      !overrides.onStartTraining && bridge.onHostOnlineWarmup
+        ? () => {
+            setOnlineSession(sessionPatch);
+            return bridge.onHostOnlineWarmup!({
+              roomId: cleanCode,
+              password: roomKey || undefined,
+              playerName: cleanName,
+              roomType: 'warmup',
+              gameMode: '3v3',
+              botFillMode: 'no_bots',
+              durationSeconds: 0,
+              lobbyMode: false,
+              ghostMode,
+            });
           }
-        });
-    }
-  };
+        : undefined;
 
-  const startStepSequence = (willFail: boolean) => {
-    clearStepTimer();
-    const cleanCode = finalizeHostRoomCode(roomCode, hostMask);
-    setRoomCode(cleanCode);
-
-    if (controlledProgressStatus !== undefined) {
-      commitTrainingHostLaunch(cleanCode);
-      return;
-    }
-
-    setToken('simulateLayer3Error', false);
-    setCurrentStep(1);
-    setProgressStatus('running');
-
-    stepTimerRef.current = setInterval(() => {
-      setCurrentStep((prev) => {
-        const next = prev + 1;
-        if (willFail && next === 3) {
-          clearStepTimer();
-          setProgressStatus('error');
-          setToken('simulateLayer3Error', true);
-          dispatchOnlineRoomErrorNotification();
-          return 3;
-        }
-        if (next >= 5) {
-          clearStepTimer();
-          setProgressStatus('completed');
-          commitTrainingHostLaunch(cleanCode);
-          return 5;
-        }
-        return next;
-      });
-    }, 520);
+    startSequence({
+      roomCode: cleanCode,
+      willFail,
+      executeAsyncLaunch: hostViaBridge,
+      onSuccess: () => {
+        setMatchMode('online-warmup');
+        closeMenu();
+      },
+      onPreviewComplete: () => {
+        setOnlineSession(sessionPatch);
+        overrides.onStartTraining?.(finalConfig);
+      },
+    });
   };
 
   return (
@@ -379,14 +349,14 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
           {progressStatus !== 'idle' && (
             <OnlineRoomCreationProgress
               currentStep={currentStep}
-              totalSteps={5}
+              totalSteps={totalSteps}
+              steps={effectiveSteps}
               status={progressStatus}
               onRetry={() => startStepSequence(false)}
               onCancel={() => {
-                clearStepTimer();
-                setProgressStatus('idle');
-                setCurrentStep(1);
-                setToken('simulateLayer3Error', false);
+                cancelSequence(() => {
+                  bridge.onLeaveOnlineServer?.();
+                });
               }}
               isLight={isLight}
             />
@@ -397,17 +367,18 @@ export const Layer3HostTrainingRecipe: React.FC<Layer3HostTrainingRecipeProps> =
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={progressStatus === 'running'}
               onClick={() => startStepSequence(simulateLayer3Error)}
               onMouseEnter={() =>
                 setHoveredDesc('Create & Host: Launch the 5-step shared training session initialization.')
               }
               onMouseLeave={() => setHoveredDesc(null)}
-              className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+              className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-wait shrink-0"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               <span>
                 {progressStatus === 'running'
-                  ? `Creating Room (${currentStep}/5)...`
+                  ? `Creating Room (${currentStep}/${totalSteps})...`
                   : progressStatus === 'completed'
                   ? 'Room Created · Restart Sequence'
                   : 'Create & Host'}

@@ -180,6 +180,7 @@ export const HostMatchMutatorAndRelaySection: React.FC<
         <div className="flex items-center gap-2">
           <button
             type="button"
+            disabled={progressStatus === 'running'}
             onClick={() => onLaunchSequence(simulateLayer3Error)}
             onMouseEnter={() =>
               onHoverDesc(
@@ -187,12 +188,12 @@ export const HostMatchMutatorAndRelaySection: React.FC<
               )
             }
             onMouseLeave={() => onHoverDesc(null)}
-            className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+            className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-wait shrink-0"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
             <span>
               {progressStatus === 'running'
-                ? `Creating Room (${currentStep}/5)...`
+                ? `Creating Room (${currentStep}/${steps?.length ?? 5})...`
                 : progressStatus === 'completed'
                 ? 'Room Created · Restart Sequence'
                 : 'Create & Host'}

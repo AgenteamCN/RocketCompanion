@@ -341,8 +341,8 @@ export class MqttWebSocketClient {
       if (this.isConnected && this.ws?.readyState === 1) {
         try {
           this.ws.send(MQTT_PINGREQ_PACKET);
-        } catch (_) {
-          // Ignore keepalive error
+        } catch {
+          // ignore
         }
       }
     }, intervalMs);
@@ -356,19 +356,19 @@ export class MqttWebSocketClient {
   }
 
   on(event: string, listener: (payload?: any) => void): void {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, []);
-    }
-    this.eventListeners.get(event)!.push(listener);
+    const list = this.eventListeners.get(event) ?? [];
+    list.push(listener);
+    this.eventListeners.set(event, list);
   }
 
   off(event: string, listener: (payload?: any) => void): void {
     const list = this.eventListeners.get(event);
-    if (!list) return;
-    this.eventListeners.set(
-      event,
-      list.filter((fn) => fn !== listener)
-    );
+    if (list) {
+      this.eventListeners.set(
+        event,
+        list.filter((fn) => fn !== listener)
+      );
+    }
   }
 
   emit(event: string, payload?: Record<string, unknown> | Error | CloseEvent): void {
@@ -386,15 +386,28 @@ export class MqttWebSocketClient {
   close(): void {
     this._stopKeepAlive();
     if (this.ws) {
-      try {
-        if (this.ws.readyState === 1 && this.isConnected) {
-          this.ws.send(MQTT_DISCONNECT_PACKET);
-        }
-        this.ws.close(1000, 'Client closed');
-      } catch (_) {
-        // Ignore close error
-      }
+      const sock = this.ws;
       this.ws = null;
+      try {
+        sock.onmessage = null;
+        sock.onerror = null;
+        sock.onclose = null;
+        if (sock.readyState === 0) {
+          sock.onopen = () => {
+            try {
+              sock.close(1000, 'Client closed');
+            } catch {
+              // ignore
+            }
+          };
+        } else if (sock.readyState === 1) {
+          sock.onopen = null;
+          if (this.isConnected) sock.send(MQTT_DISCONNECT_PACKET);
+          sock.close(1000, 'Client closed');
+        }
+      } catch {
+        // ignore
+      }
     }
     this.isConnected = false;
     this.isSubscribed = false;
