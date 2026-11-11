@@ -2,7 +2,7 @@
  * [L0 Token Sync Bridge]
  * Lightweight, zero-transport synchronization bridge for L0–L6 stores.
  * In production host applications (such as RocketCompanion), this module acts as a
- * zero-overhead, zero-network pass-through. In RCUITuner, `src/showcase/stores/crossClientSync.ts`
+ * zero-overhead, zero-network pass-through. In RCUITuner, `src/ui-tuner/stores/crossClientSync.ts`
  * attaches its multi-tab BroadcastChannel/WebSocket adapter via `attachSyncBridge(...)`.
  */
 

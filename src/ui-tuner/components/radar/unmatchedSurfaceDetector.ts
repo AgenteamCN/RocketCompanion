@@ -8,17 +8,11 @@ import {
   UI_APPROVAL_LEDGER,
   resolveCalibratedSurfaceSizing,
 } from '../../../ui-core/manifest/surfaceCalibration';
-import type {
-  StandardSurfaceProps,
-  SurfaceMeta,
-} from '../../../ui-core/manifest/surfaceMetaTypes';
+import type { StandardSurfaceProps, SurfaceMeta } from '../../../ui-core/manifest/surfaceMetaTypes';
 import { FLOATING_WINDOW_DESCRIPTORS } from '../../../ui-core/panels/floatingWindowRegistry';
 import { DEV_PRESET_WINDOWS } from '../../../ui-core/stores/devFloatingPresets';
 import { USER_PRESET_WINDOWS } from '../../../ui-core/stores/floatingPresets';
-import {
-  DEFAULT_PANEL_SIZING,
-  type MenuPanelId,
-} from '../../../ui-core/tokens/menuLayoutTokens';
+import { DEFAULT_PANEL_SIZING, type MenuPanelId } from '../../../ui-core/tokens/menuLayoutTokens';
 import {
   DEV_LINEAR_PLAYLIST,
   USER_LINEAR_PLAYLIST,
@@ -57,10 +51,9 @@ const rawRecipeModules: Record<string, GlobSurfaceModule> =
 
 const rawFloatingModules: Record<string, GlobSurfaceModule> =
   typeof importMetaGlob === 'function'
-    ? importMetaGlob<GlobSurfaceModule>(
-        '../../../ui-core/panels/{user,dev}/*FloatingWindow.tsx',
-        { eager: true }
-      )
+    ? importMetaGlob<GlobSurfaceModule>('../../../ui-core/panels/{user,dev}/*FloatingWindow.tsx', {
+        eager: true,
+      })
     : {};
 
 function resolveAnyExportedComponent(
@@ -144,7 +137,11 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
   for (const [globPath, mod] of Object.entries(rawRecipeModules).sort(([a], [b]) =>
     a.localeCompare(b)
   )) {
-    const fileStem = globPath.split('/').pop()?.replace(/\.tsx$/, '') ?? '';
+    const fileStem =
+      globPath
+        .split('/')
+        .pop()
+        ?.replace(/\.tsx$/, '') ?? '';
     if (!fileStem.endsWith('Recipe') && !fileStem.endsWith('Drawer')) continue;
     recipeCandidatesCount += 1;
 
@@ -168,10 +165,16 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
       passedChecks.push('SURFACE_META');
     }
 
-    if (!ledgerRecord || ledgerRecord.status === 'unreviewed' || ledgerRecord.status === 'pending') {
+    if (
+      !ledgerRecord ||
+      ledgerRecord.status === 'unreviewed' ||
+      ledgerRecord.status === 'pending'
+    ) {
       issues.push('missing-approval-ledger');
       issueCounts['missing-approval-ledger'] += 1;
-      followUpTargets.push('src/ui-core/manifest/uiApprovalLedger.json (pnpm run radar --sync-approval)');
+      followUpTargets.push(
+        'src/ui-core/manifest/uiApprovalLedger.json (pnpm run radar --sync-approval)'
+      );
     } else {
       passedChecks.push('Approval Ledger');
     }
@@ -193,12 +196,14 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
 
     const hasCalibrationOverride = Boolean(
       SURFACE_CALIBRATION_OVERRIDES[ledgerSurfaceId] ||
-        SURFACE_CALIBRATION_OVERRIDES[effectiveMetaId] ||
-        SURFACE_CALIBRATION_OVERRIDES[derivedPanelId]
+      SURFACE_CALIBRATION_OVERRIDES[effectiveMetaId] ||
+      SURFACE_CALIBRATION_OVERRIDES[derivedPanelId]
     );
     const isDrawer = fileStem.endsWith('Drawer');
     const hasSizingBaseline =
-      Boolean(resolvedPanelId) || hasCalibrationOverride || (isDrawer && Boolean(meta?.defaultSizing));
+      Boolean(resolvedPanelId) ||
+      hasCalibrationOverride ||
+      (isDrawer && Boolean(meta?.defaultSizing));
 
     if (!hasSizingBaseline) {
       issues.push('uncalibrated-sizing');
@@ -221,7 +226,7 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
       issues.push('missing-6a-curated-tuner');
       issueCounts['missing-6a-curated-tuner'] += 1;
       followUpTargets.push(
-        `src/showcase/pages/recipes/LocalPanelSizingTuner.tsx (curate ${fileStem} in CURATED_RECIPES_JUMP_ITEMS)`
+        `src/ui-tuner/pages/recipes/LocalPanelSizingTuner.tsx (curate ${fileStem} in CURATED_RECIPES_JUMP_ITEMS)`
       );
     } else {
       passedChecks.push('6A Curated Directory');
@@ -236,7 +241,7 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
       issues.push('missing-6a-stage-mount');
       issueCounts['missing-6a-stage-mount'] += 1;
       followUpTargets.push(
-        `src/showcase/pages/recipes/deepLayerRecipeSpecs.tsx (register ${fileStem} stage spec)`
+        `src/ui-tuner/pages/recipes/deepLayerRecipeSpecs.tsx (register ${fileStem} stage spec)`
       );
     } else {
       passedChecks.push('6A Stage Mount');
@@ -246,7 +251,7 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
       issues.push('missing-7a-route');
       issueCounts['missing-7a-route'] += 1;
       followUpTargets.push(
-        `src/showcase/pages/menu-layer/menuLayerRouteConfig.ts (map ${fileStem} in MENU_SANDBOX_JUMP_ITEMS)`
+        `src/ui-tuner/pages/menu-layer/menuLayerRouteConfig.ts (map ${fileStem} in MENU_SANDBOX_JUMP_ITEMS)`
       );
     } else {
       passedChecks.push(`7A Route (${Array.from(mappedRoutes).join(', ')})`);
@@ -257,7 +262,7 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
       issues.push('missing-7a-playlist');
       issueCounts['missing-7a-playlist'] += 1;
       followUpTargets.push(
-        `src/showcase/pages/menu-layer/menuLayerLinearPlaylists.ts (append ${
+        `src/ui-tuner/pages/menu-layer/menuLayerLinearPlaylists.ts (append ${
           mappedRoutes.size > 0 ? Array.from(mappedRoutes).join('/') : fileStem
         } to linear playlist)`
       );
@@ -268,17 +273,17 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
     const resolvedSizing = meta?.defaultSizing
       ? resolveCalibratedSurfaceSizing(meta.id, meta.defaultSizing)
       : resolvedPanelId
-      ? {
-          width: DEFAULT_PANEL_SIZING[resolvedPanelId].width,
-          height: DEFAULT_PANEL_SIZING[resolvedPanelId].targetHeight,
-          minHeight: DEFAULT_PANEL_SIZING[resolvedPanelId].minHeight,
-          maxHeight: DEFAULT_PANEL_SIZING[resolvedPanelId].maxHeight,
-          mode:
-            DEFAULT_PANEL_SIZING[resolvedPanelId].mode === 'fixed'
-              ? ('fixed' as const)
-              : ('adaptive' as const),
-        }
-      : undefined;
+        ? {
+            width: DEFAULT_PANEL_SIZING[resolvedPanelId].width,
+            height: DEFAULT_PANEL_SIZING[resolvedPanelId].targetHeight,
+            minHeight: DEFAULT_PANEL_SIZING[resolvedPanelId].minHeight,
+            maxHeight: DEFAULT_PANEL_SIZING[resolvedPanelId].maxHeight,
+            mode:
+              DEFAULT_PANEL_SIZING[resolvedPanelId].mode === 'fixed'
+                ? ('fixed' as const)
+                : ('adaptive' as const),
+          }
+        : undefined;
 
     const hasUnmatched = issues.some((c) =>
       [
@@ -292,8 +297,8 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
     const status: SurfaceMatchStatus = hasUnmatched
       ? 'unmatched'
       : issues.length > 0
-      ? 'uncalibrated'
-      : 'matched';
+        ? 'uncalibrated'
+        : 'matched';
 
     allItems.push({
       surfaceId: ledgerSurfaceId,
@@ -317,19 +322,16 @@ export function getUnmatchedSurfaceRadarReport(): UnmatchedSurfaceRadarReport {
   for (const [globPath, mod] of Object.entries(rawFloatingModules).sort(([a], [b]) =>
     a.localeCompare(b)
   )) {
-    const fileStem = globPath.split('/').pop()?.replace(/\.tsx$/, '') ?? '';
+    const fileStem =
+      globPath
+        .split('/')
+        .pop()
+        ?.replace(/\.tsx$/, '') ?? '';
     if (!fileStem.endsWith('FloatingWindow')) continue;
     floatingCandidatesCount += 1;
 
     allItems.push(
-      evaluateFloatingSurfaceItem(
-        globPath,
-        mod,
-        fileStem,
-        presetIds,
-        presetComponents,
-        issueCounts
-      )
+      evaluateFloatingSurfaceItem(globPath, mod, fileStem, presetIds, presetComponents, issueCounts)
     );
   }
 

@@ -66,10 +66,6 @@ function runRadarChecks(
   const subsystemStats = new Map<string, SubsystemCount>();
 
   const modifiedRelSet = getGitModifiedRelFiles(ROOT_DIR);
-  const uiSubmoduleModifiedSet = getGitModifiedRelFiles(path.join(SRC_DIR, 'ui-core'));
-  for (const uiRel of uiSubmoduleModifiedSet) {
-    modifiedRelSet.add(`src/ui-core/${uiRel}`);
-  }
 
   let jsCount = 0;
   let tsCount = 0;
@@ -182,7 +178,7 @@ function runRadarChecks(
 
       if (
         !rel.startsWith('src/ui-core/') &&
-        !rel.startsWith('src/showcase/') &&
+        !rel.startsWith('src/ui-tuner/') &&
         !rel.startsWith('src/entry/') &&
         spec.startsWith('.') &&
         !/\.(ts|tsx|js|css|json|wasm)$/.test(spec)
@@ -204,7 +200,7 @@ function runRadarChecks(
           rel !== 'src/main.ts' &&
           !rel.startsWith('src/ui-system/') &&
           !rel.startsWith('src/ui-core/') &&
-          !rel.startsWith('src/showcase/') &&
+          !rel.startsWith('src/ui-tuner/') &&
           !rel.startsWith('src/entry/');
         if (isEngineFile) {
           const prefixBeforeFrom = content.slice(Math.max(0, match.index - 400), match.index);
@@ -226,7 +222,7 @@ function runRadarChecks(
             targetRel.startsWith('src/ui-core/stores/') &&
             isTypeOnlyImport;
 
-          if (targetRel.startsWith('src/ui-system/')) {
+          if (targetRel.startsWith('src/ui-system/') || targetRel.startsWith('src/ui-tuner/')) {
             errors.push(
               `[BOUNDARY VIOLATION] Engine module ${rel} directly imports UI presentation module ${targetRel}. Use src/game/runtimeUiPort instead.`
             );
@@ -286,7 +282,7 @@ function runRadarChecks(
 
   const ENTRYPOINTS = new Set([
     'src/main.ts',
-    'src/showcase/main.tsx',
+    'src/ui-tuner/main.tsx',
     'src/entry/main.tsx',
     'src/physics/core.js',
   ]);
@@ -369,13 +365,21 @@ function main(): void {
   );
 
   const engineSubsystems = [...result.subsystemStats.entries()]
-    .filter(([k]) => !k.startsWith('src/ui-'))
+    .filter(([k]) => !k.startsWith('src/ui-') && k !== 'src/entry')
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  const uiSubsystems = [...result.subsystemStats.entries()]
+    .filter(([k]) => k.startsWith('src/ui-') || k === 'src/entry')
     .sort((a, b) => a[0].localeCompare(b[0]));
 
   const subsystemSummary = engineSubsystems
     .map(([k, v]) => `${k.replace('src/', '')}(${v.ts}ts)`)
     .join(', ');
+  const uiSubsystemSummary = uiSubsystems
+    .map(([k, v]) => `${k.replace('src/', '')}(${v.ts}ts)`)
+    .join(', ');
   console.log(` Engine Subsystems   : ${subsystemSummary}`);
+  console.log(` UI Subsystems       : ${uiSubsystemSummary}`);
   console.log('----------------------------------------------------------------------');
 
   if (auditMode) {

@@ -42,7 +42,11 @@ const RADIUS_ENTRIES = [
   { key: 'window', value: UI_RADIUS.window, desc: 'Main menu and modal container (16px)' },
   { key: 'panel', value: UI_RADIUS.panel, desc: '3-Stage Compound Standard Panel (16px)' },
   { key: 'card', value: UI_RADIUS.card, desc: 'Generic content cards and selectors (12px)' },
-  { key: 'menuItem', value: UI_RADIUS.menuItem, desc: '52px Touch menu items and large buttons (12px)' },
+  {
+    key: 'menuItem',
+    value: UI_RADIUS.menuItem,
+    desc: '52px Touch menu items and large buttons (12px)',
+  },
   { key: 'button', value: UI_RADIUS.button, desc: 'Regular Button, Segmented switch frame (8px)' },
   { key: 'badge', value: UI_RADIUS.badge, desc: 'Status capsule badge and inline label (6px)' },
   { key: 'keycap', value: UI_RADIUS.keycap, desc: 'Keyboard/Controller flat button badge (6px)' },
@@ -61,10 +65,30 @@ const SPACING_SCALE = [
 ];
 
 const SPRING_CARDS = [
-  { title: 'UI_EASING.apple', color: 'text-amber-500', spec: `[${UI_EASING.apple.join(', ')}]`, desc: 'Fluid & Sequenced Standard Curve' },
-  { title: 'spring.tactile', color: 'text-emerald-500', spec: `stiffness: ${UI_EASING.spring.tactile.stiffness}, damping: ${UI_EASING.spring.tactile.damping}`, desc: 'Button and switch micro-haptic feedback' },
-  { title: 'spring.smooth', color: 'text-sky-500', spec: `stiffness: ${UI_EASING.spring.smooth.stiffness}, damping: ${UI_EASING.spring.smooth.damping}`, desc: 'Smooth transition between container and indicator' },
-  { title: 'spring.bouncy', color: 'text-rose-500', spec: `stiffness: ${UI_EASING.spring.bouncy.stiffness}, damping: ${UI_EASING.spring.bouncy.damping}`, desc: 'Kickoff countdown and highlight elastic animation' },
+  {
+    title: 'UI_EASING.apple',
+    color: 'text-amber-500',
+    spec: `[${UI_EASING.apple.join(', ')}]`,
+    desc: 'Fluid & Sequenced Standard Curve',
+  },
+  {
+    title: 'spring.tactile',
+    color: 'text-emerald-500',
+    spec: `stiffness: ${UI_EASING.spring.tactile.stiffness}, damping: ${UI_EASING.spring.tactile.damping}`,
+    desc: 'Button and switch micro-haptic feedback',
+  },
+  {
+    title: 'spring.smooth',
+    color: 'text-sky-500',
+    spec: `stiffness: ${UI_EASING.spring.smooth.stiffness}, damping: ${UI_EASING.spring.smooth.damping}`,
+    desc: 'Smooth transition between container and indicator',
+  },
+  {
+    title: 'spring.bouncy',
+    color: 'text-rose-500',
+    spec: `stiffness: ${UI_EASING.spring.bouncy.stiffness}, damping: ${UI_EASING.spring.bouncy.damping}`,
+    desc: 'Kickoff countdown and highlight elastic animation',
+  },
 ];
 
 export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = true }) => {
@@ -72,7 +96,9 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
   const cardClass = `p-6 rounded-2xl border flex flex-col gap-4 transition-colors ${
     isLight ? 'bg-white border-neutral-200 shadow-2xs' : 'bg-neutral-900/60 border-neutral-800'
   }`;
-  const subCardClass = isLight ? 'bg-neutral-50 border-neutral-200' : 'bg-neutral-900 border-neutral-800';
+  const subCardClass = isLight
+    ? 'bg-neutral-50 border-neutral-200'
+    : 'bg-neutral-900 border-neutral-800';
   const mutedText = isLight ? 'text-neutral-600' : 'text-neutral-400';
 
   const buildFoundationsExportCode = () =>
@@ -89,12 +115,15 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
           <Sparkles className="h-4 w-4" />
           <span>Layer 0 · Foundations (foundation and variables)</span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">L0. Foundations Cornerstone and design variables</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          L0. Foundations Cornerstone and design variables
+        </h1>
         <p className={`text-xs leading-relaxed ${mutedText}`}>
-          Pure static constants at the bottom of the pyramid, Geometry Dimensions Token and Lightweight Theme Store (
-          <code className="font-mono">src/ui-core/tokens/</code> &amp;{' '}
-          <code className="font-mono">src/ui-core/stores/</code>). <strong>Strict Access Rules</strong>: Zero Business
-          Logic JSX Component, Zero Upper-layer (L1~L7) Reverse Dependency.
+          Pure static constants at the bottom of the pyramid, Geometry Dimensions Token and
+          Lightweight Theme Store (<code className="font-mono">src/ui-core/tokens/</code> &amp;{' '}
+          <code className="font-mono">src/ui-core/stores/</code>).{' '}
+          <strong>Strict Access Rules</strong>: Zero Business Logic JSX Component, Zero Upper-layer
+          (L1~L7) Reverse Dependency.
         </p>
 
         <div
@@ -107,7 +136,8 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
             <span>
-              <strong>L0 Dependency Audit:</strong> 0 JSX Components · 0 Imports from L1–L7 · Pure Unidirectional Root
+              <strong>L0 Dependency Audit:</strong> 0 JSX Components · 0 Imports from L1–L7 · Pure
+              Unidirectional Root
             </span>
           </div>
           <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
@@ -150,8 +180,8 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
                       ? 'bg-amber-50/50 border-amber-400 ring-2 ring-amber-500/20'
                       : 'bg-neutral-800/90 border-amber-500/70 ring-2 ring-amber-500/20'
                     : isLight
-                    ? 'bg-neutral-50/80 hover:bg-neutral-100/80 border-neutral-200'
-                    : 'bg-neutral-900 hover:bg-neutral-800/60 border-neutral-800'
+                      ? 'bg-neutral-50/80 hover:bg-neutral-100/80 border-neutral-200'
+                      : 'bg-neutral-900 hover:bg-neutral-800/60 border-neutral-800'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -180,23 +210,35 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
           <span>2. Semantic corner radius system (radius.ts · UI_RADIUS)</span>
         </div>
         <p className={`text-xs ${mutedText}`}>
-          Strictly decreasing from outer to inner container hierarchy (Window 16px → Card/MainMenuRow 12px → Button 8px → Keycap/Badge 6px) :
+          Strictly decreasing from outer to inner container hierarchy (Window 16px →
+          Card/MainMenuRow 12px → Button 8px → Keycap/Badge 6px) :
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {RADIUS_ENTRIES.map((r) => (
-            <div key={r.key} className={`p-3.5 border flex items-center gap-3 ${r.value} ${subCardClass}`}>
+            <div
+              key={r.key}
+              className={`p-3.5 border flex items-center gap-3 ${r.value} ${subCardClass}`}
+            >
               <div
                 className={`h-10 w-10 border-2 shrink-0 flex items-center justify-center font-mono text-[10px] font-bold ${r.value} ${
-                  isLight ? 'border-neutral-800 bg-white text-neutral-900' : 'border-amber-400 bg-neutral-950 text-amber-400'
+                  isLight
+                    ? 'border-neutral-800 bg-white text-neutral-900'
+                    : 'border-amber-400 bg-neutral-950 text-amber-400'
                 }`}
               >
                 R
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-mono font-bold text-xs">UI_RADIUS.{r.key}</span>
-                <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400">{r.value}</span>
-                <span className={`text-[11px] truncate ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}>{r.desc}</span>
+                <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400">
+                  {r.value}
+                </span>
+                <span
+                  className={`text-[11px] truncate ${isLight ? 'text-neutral-500' : 'text-neutral-400'}`}
+                >
+                  {r.desc}
+                </span>
               </div>
             </div>
           ))}
@@ -225,22 +267,40 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
             </div>
           </div>
 
-          <div className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${subCardClass}`}>
+          <div
+            className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${subCardClass}`}
+          >
             <div className="flex flex-col gap-2">
               <span className="font-bold text-xs flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-indigo-500" />
                 <span>3-Stage Compound Panel and menu physical padding</span>
               </span>
-              <ul className={`text-xs space-y-1.5 font-mono ${isLight ? 'text-neutral-700' : 'text-neutral-300'}`}>
-                <li>• <strong>panel.header</strong>: <code>{UI_SPACING.panel.header}</code> (Optical vertical center)</li>
-                <li>• <strong>panel.body</strong>: <code>{UI_SPACING.panel.body}</code> (24px Strict horizontal baseline)</li>
-                <li>• <strong>panel.footer</strong>: <code>{UI_SPACING.panel.footer}</code> (Bottom shortcut hint bar)</li>
-                <li>• <strong>menu.container</strong>: <code>{UI_SPACING.menu.container}</code> (Focus ring clipping buffer)</li>
+              <ul
+                className={`text-xs space-y-1.5 font-mono ${isLight ? 'text-neutral-700' : 'text-neutral-300'}`}
+              >
+                <li>
+                  • <strong>panel.header</strong>: <code>{UI_SPACING.panel.header}</code> (Optical
+                  vertical center)
+                </li>
+                <li>
+                  • <strong>panel.body</strong>: <code>{UI_SPACING.panel.body}</code> (24px Strict
+                  horizontal baseline)
+                </li>
+                <li>
+                  • <strong>panel.footer</strong>: <code>{UI_SPACING.panel.footer}</code> (Bottom
+                  shortcut hint bar)
+                </li>
+                <li>
+                  • <strong>menu.container</strong>: <code>{UI_SPACING.menu.container}</code> (Focus
+                  ring clipping buffer)
+                </li>
               </ul>
             </div>
 
             <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 flex flex-col gap-1">
-              <span className="font-bold text-xs">Active Canvas Percentage grid spacing (Stack Gaps)</span>
+              <span className="font-bold text-xs">
+                Active Canvas Percentage grid spacing (Stack Gaps)
+              </span>
               <div className="flex items-center gap-3 text-xs font-mono text-amber-600 dark:text-amber-400">
                 <span>sm: {UI_SPACING.stackPercentage.sm}</span>
                 <span>•</span>
@@ -275,7 +335,7 @@ export const FoundationsPage: React.FC<{ isLight?: boolean }> = ({ isLight = tru
         code={`import { UI_SPACING } from '@/ui-core/tokens/spacing';
 import { UI_RADIUS } from '@/ui-core/tokens/radius';
 import { UI_EASING } from '@/ui-core/tokens/easing';
-import { useAccentStore } from '@/showcase/stores/themeStore';
+import { useAccentStore } from '@/ui-tuner/stores/themeStore';
 
 const headerClass = \`\${UI_SPACING.panel.header} \${UI_RADIUS.panel}\`;
 const { accent, tokens, setAccent } = useAccentStore();`}

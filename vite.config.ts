@@ -10,10 +10,7 @@ import {
   customParameterUrlsPlugin,
 } from './scripts/vite/http2HighConcurrencyPlugin.ts';
 import { rcGitHeadAutoRestartPlugin } from './scripts/vite/gitHeadAutoRestartPlugin.ts';
-import {
-  rcUiTunerSyncPlugin,
-  customHtmlEntryPlugin,
-} from './scripts/vite/tunerWsSyncPlugin.ts';
+import { rcUiTunerSyncPlugin, customHtmlEntryPlugin } from './scripts/vite/tunerWsSyncPlugin.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
@@ -60,7 +57,7 @@ export function createRcViteConfig(
         'tuner.html',
         'entry.html',
         'src/main.ts',
-        'src/showcase/main.tsx',
+        'src/ui-tuner/main.tsx',
         'src/entry/main.tsx',
         'src/game/GameBootstrap.ts',
         'src/ui-system/index.tsx',
