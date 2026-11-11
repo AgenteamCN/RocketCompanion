@@ -195,6 +195,15 @@ async function loadDirectRocketSimWasm(moduleArg = {}) {
   Module['_physics_getCarDemoRespawnTimer'] = wasmExports._physics_getCarDemoRespawnTimer;
   Module['_physics_getCarFlipsRemaining'] = wasmExports._physics_getCarFlipsRemaining;
   Module['_physics_getCarFlipWindowTimer'] = wasmExports._physics_getCarFlipWindowTimer;
+  Module['_physics_clearReconcilerHistory'] = wasmExports._physics_clearReconcilerHistory;
+  Module['_physics_getReconcilerControlsRingPtr'] = wasmExports._physics_getReconcilerControlsRingPtr;
+  Module['_physics_getReconcilerControlsRingCapacity'] = wasmExports._physics_getReconcilerControlsRingCapacity;
+  Module['_physics_getReconcilerControlsEntryStride'] = wasmExports._physics_getReconcilerControlsEntryStride;
+  Module['_physics_getReconcilerOutcomePtr'] = wasmExports._physics_getReconcilerOutcomePtr;
+  Module['_physics_setReconcilerTickControls'] = wasmExports._physics_setReconcilerTickControls;
+  Module['_physics_setReconcilerRemoteControls'] = wasmExports._physics_setReconcilerRemoteControls;
+  Module['_physics_reconcileRollbackToTick'] = wasmExports._physics_reconcileRollbackToTick;
+  Module['_physics_stepReconcilerRange'] = wasmExports._physics_stepReconcilerRange;
 
   for (const [key, val] of Object.entries(wasmExports)) {
     if (typeof val === 'function' && key.startsWith('_physics_')) {

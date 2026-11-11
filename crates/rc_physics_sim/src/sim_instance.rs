@@ -11,6 +11,7 @@ use crate::{
         PhysicsEvent, PhysicsEventBuffer, WheelPairConfigC, MAX_CARS, MAX_EVENTS_PER_STEP,
         MAX_PADS, MAX_PREDICTION_STEPS,
     },
+    reconciler::{ReconcilerRingStorage, SNAPSHOT_RING_CAPACITY},
     replay::ReplayStorage,
 };
 
@@ -51,6 +52,7 @@ impl Default for CarCustomSettings {
 
 #[derive(Clone)]
 pub struct SavedSlotSnapshot {
+    pub tick: i32,
     pub arena: Arena,
     pub car_slots: [Option<usize>; MAX_CARS],
     pub car_custom: [CarCustomSettings; MAX_CARS],
@@ -68,7 +70,8 @@ pub struct SimInstance {
     pub pred_count: usize,
     pub event_buffer: PhysicsEventBuffer,
     pub replay: ReplayStorage,
-    pub saved_slots: [Option<SavedSlotSnapshot>; 8],
+    pub reconciler: ReconcilerRingStorage,
+    pub saved_slots: Vec<Option<SavedSlotSnapshot>>,
     pub car_config_cache: [CarConfigC; 7],
     pub unlimited_boost_global: bool,
     pub arena_preset: i32,
@@ -111,7 +114,8 @@ impl SimInstance {
             pred_count: 0,
             event_buffer: PhysicsEventBuffer::default(),
             replay: ReplayStorage::new(),
-            saved_slots: [const { None }; 8],
+            reconciler: ReconcilerRingStorage::new(),
+            saved_slots: vec![None; SNAPSHOT_RING_CAPACITY],
             car_config_cache: [CarConfigC::default(); 7],
             unlimited_boost_global: false,
             arena_preset: 0,

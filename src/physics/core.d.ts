@@ -198,6 +198,49 @@ export interface RocketSimWasmModule {
   _physics_getCarDemoRespawnTimer(carIndex: number): number;
   _physics_getCarFlipsRemaining(carIndex: number): number;
   _physics_getCarFlipWindowTimer(carIndex: number): number;
+  _physics_clearReconcilerHistory(): void;
+  _physics_getReconcilerControlsRingPtr(): number;
+  _physics_getReconcilerControlsRingCapacity(): number;
+  _physics_getReconcilerControlsEntryStride(): number;
+  _physics_getReconcilerOutcomePtr(): number;
+  _physics_setReconcilerTickControls(
+    tick: number,
+    carIndex: number,
+    throttle: number,
+    steer: number,
+    pitch: number,
+    yaw: number,
+    roll: number,
+    jump: number,
+    boost: number,
+    handbrake: number
+  ): void;
+  _physics_setReconcilerRemoteControls(
+    carIndex: number,
+    throttle: number,
+    steer: number,
+    pitch: number,
+    yaw: number,
+    roll: number,
+    jump: number,
+    boost: number,
+    handbrake: number
+  ): void;
+  _physics_reconcileRollbackToTick(
+    serverTick: number,
+    targetClientTick: number,
+    localCarIndex: number,
+    kickoffMaskUntilTick: number,
+    authoritativeStatePtr: number,
+    floatCount: number
+  ): number;
+  _physics_stepReconcilerRange(
+    fromTick: number,
+    toTick: number,
+    localCarIndex: number,
+    kickoffMaskUntilTick: number,
+    silent: number
+  ): number;
 
   // Semantic unprefixed aliases bound by RocketSimWasm.ts
   physics_init: RocketSimWasmModule['_physics_init'];
@@ -313,6 +356,15 @@ export interface RocketSimWasmModule {
   physics_getCarDemoRespawnTimer: RocketSimWasmModule['_physics_getCarDemoRespawnTimer'];
   physics_getCarFlipsRemaining: RocketSimWasmModule['_physics_getCarFlipsRemaining'];
   physics_getCarFlipWindowTimer: RocketSimWasmModule['_physics_getCarFlipWindowTimer'];
+  physics_clearReconcilerHistory: RocketSimWasmModule['_physics_clearReconcilerHistory'];
+  physics_getReconcilerControlsRingPtr: RocketSimWasmModule['_physics_getReconcilerControlsRingPtr'];
+  physics_getReconcilerControlsRingCapacity: RocketSimWasmModule['_physics_getReconcilerControlsRingCapacity'];
+  physics_getReconcilerControlsEntryStride: RocketSimWasmModule['_physics_getReconcilerControlsEntryStride'];
+  physics_getReconcilerOutcomePtr: RocketSimWasmModule['_physics_getReconcilerOutcomePtr'];
+  physics_setReconcilerTickControls: RocketSimWasmModule['_physics_setReconcilerTickControls'];
+  physics_setReconcilerRemoteControls: RocketSimWasmModule['_physics_setReconcilerRemoteControls'];
+  physics_reconcileRollbackToTick: RocketSimWasmModule['_physics_reconcileRollbackToTick'];
+  physics_stepReconcilerRange: RocketSimWasmModule['_physics_stepReconcilerRange'];
 
   [key: string]: any;
 }
