@@ -111,7 +111,10 @@ export function restoreClientLobbyLocalEntities(
       sim.state.subarray(416, 416 + 6 * 4).set(saved.compactState.subarray(416, 416 + 6 * 4));
     }
     if (typeof sim.restoreCompactState === 'function') {
-      sim.restoreCompactState(sim.state, { preserveEngineTick: true });
+      sim.restoreCompactState(sim.state, {
+        preserveEngineTick: true,
+        suppressBallWriteMark: true,
+      });
     } else {
       sim.setBallState?.(saved.compactState.subarray(BALL_OFFSET, CAR_BASE_OFFSET));
       if (localIdx >= 0 && localIdx < 6) {

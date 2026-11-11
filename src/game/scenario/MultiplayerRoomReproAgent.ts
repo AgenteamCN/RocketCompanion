@@ -37,6 +37,10 @@ export class MultiplayerRoomReproAgent {
   private readonly logState: ReproLogInterceptorState = createReproLogInterceptorState();
   private rawCrossTabJoinedBeforeBridge = false;
   private speedTimerId: ReturnType<typeof setInterval> | null = null;
+  private trajectoryTrackingActive = false;
+  private maxObservedPredictionCount = 0;
+  private prevObservedPredictionCount = 0;
+  private collapseToCatchupCount = 0;
 
   constructor(targetView: ReproProbeRuntimeView, cfg: ReproUrlConfig) {
     this.targetView = targetView;
@@ -45,6 +49,38 @@ export class MultiplayerRoomReproAgent {
 
   private elapsedMs(): number {
     return Math.round(performance.now() - this.startTimeMs);
+  }
+
+  private resetTrajectoryWindow(active: boolean): void {
+    this.trajectoryTrackingActive = active;
+    this.maxObservedPredictionCount = 0;
+    this.prevObservedPredictionCount = 0;
+    this.collapseToCatchupCount = 0;
+  }
+
+  private stepBallTrajectoryPredictorAndObserve(): void {
+    const sim = this.targetView.physics?.sim ?? this.targetView.physics;
+    const btp = this.targetView.ballTrajectoryPredictor;
+    if (!sim || !btp?.update) return;
+    const curTick = sim.getHeaderView?.()?.tickCount ?? 0;
+    btp.update(curTick, this.targetView.arena?.ball?.position, 1280, 720, this.targetView.physics);
+    if (!this.trajectoryTrackingActive) return;
+
+    const bv = sim.getBallStateView?.();
+    const ballZ = bv?.posZ ?? 0;
+    const ballSpeed = Math.hypot(bv?.velX ?? 0, bv?.velY ?? 0, bv?.velZ ?? 0);
+    const count = Number(btp.predictionCount ?? 0);
+    const sampler = (btp as { sampler?: Record<string, unknown> }).sampler;
+    const isCarHitReset = sampler?.lastUpdateKind === 'full-car-hit';
+    if (ballZ > 110 && ballSpeed > 100) {
+      if (this.prevObservedPredictionCount >= 20 && count > 0 && count <= 5 && !isCarHitReset) {
+        this.collapseToCatchupCount++;
+      }
+      if (count > this.maxObservedPredictionCount) {
+        this.maxObservedPredictionCount = count;
+      }
+      this.prevObservedPredictionCount = count;
+    }
   }
 
   private logLifecycle(message: string): void {
@@ -65,7 +101,11 @@ export class MultiplayerRoomReproAgent {
       stage,
       role,
       this.cfg.rosterMode,
-      this.elapsedMs()
+      this.elapsedMs(),
+      {
+        maxObservedPredictionCount: this.maxObservedPredictionCount,
+        collapseToCatchupCount: this.collapseToCatchupCount,
+      }
     );
     this.poseProbes.push(probe);
     emitReproStreamEvent({ type: 'pose_probe', probe });
@@ -87,7 +127,7 @@ export class MultiplayerRoomReproAgent {
       };
     }
 
-    const extraSimTicks = Math.max(3, 3 * this.cfg.speedMultiplier);
+    const extraSimTicks = 3;
     let syntheticNow = performance.now();
     this.speedTimerId = setInterval(() => {
       for (let i = 0; i < extraSimTicks; i++) {
@@ -101,6 +141,7 @@ export class MultiplayerRoomReproAgent {
       syntheticNow += 1000 / 120;
       try {
         this.targetView.renderFrame?.(syntheticNow);
+        this.stepBallTrajectoryPredictorAndObserve();
       } catch (err) {
         console.error(err);
       }
@@ -145,7 +186,8 @@ export class MultiplayerRoomReproAgent {
       finalMatchMode === 'standard' ||
       finalMatchMode === 'match' ||
       finalMatchPhase === 'countdown' ||
-      finalMatchPhase === 'kickoff';
+      finalMatchPhase === 'kickoff' ||
+      finalMatchPhase === 'playing';
 
     const summary: ReproRoleSummaryReport = {
       role,
@@ -189,10 +231,12 @@ export class MultiplayerRoomReproAgent {
       }
     };
 
+    const gameMode =
+      this.cfg.rosterMode === '2p' ? '1v1' : this.cfg.rosterMode === '2p2ai' ? '2v2' : '3v3';
     const hostOk = await this.targetView.matchPort?.hostOnlineWarmup?.({
       roomId: this.cfg.roomCode,
       playerName: 'HostRepro',
-      gameMode: this.cfg.rosterMode === '2p' ? '1v1' : '3v3',
+      gameMode,
       botFillMode: this.cfg.rosterMode === '2p' ? 'empty' : 'auto_fill',
       durationSeconds: 90,
       lobbyMode: true,
@@ -203,7 +247,7 @@ export class MultiplayerRoomReproAgent {
     );
 
     this.recordPoseProbe('host_after_warmup_0ms');
-    await sleepMs(1500);
+    await sleepMs(1000);
     this.recordPoseProbe('host_lobby_1500ms');
 
     if (typeof window !== 'undefined') {
@@ -218,7 +262,7 @@ export class MultiplayerRoomReproAgent {
       if (pendingClientAnswerToken) break;
       await sleepMs(250);
     }
-    await sleepMs(1000);
+    await sleepMs(500);
 
     const preBridgeDiag = inspectChannelHandshakeDiagnostics(this.targetView, 'host');
     this.rawCrossTabJoinedBeforeBridge =
@@ -254,18 +298,44 @@ export class MultiplayerRoomReproAgent {
       }
     }
 
-    await sleepMs(750);
-    if (this.cfg.rosterMode === '3p3ai') {
+    // Allow Client to receive Lobby state + diagnostic probes #6/#7 before starting match
+    await sleepMs(1000);
+    bridgeChannel.postMessage({ type: 'host_lobby_settled' });
+    await sleepMs(400);
+
+    if (this.cfg.rosterMode !== '2p') {
       await ensureExperimentalEngine('ducky');
     }
 
     this.targetView.matchPort?.forceStartOnlineMatch?.(90);
+    bridgeChannel.postMessage({ type: 'host_match_started' });
     this.logLifecycle('Invoked forceStartOnlineMatch(90)');
 
-    await sleepMs(250);
+    await sleepMs(350);
     this.recordPoseProbe('host_match_start_250ms');
-    await sleepMs(3500);
-    this.recordPoseProbe('host_match_running_3750ms');
+
+    // Wait for prepare + 480-tick (4.0s) kickoff countdown to transition to playing phase
+    for (let i = 0; i < 40; i++) {
+      if (this.targetView.match?.state?.phase === 'playing') break;
+      await sleepMs(200);
+    }
+    await sleepMs(250);
+
+    const airborneBallState = {
+      pos: [0, 0, 950],
+      vel: [180, 720, 420],
+      angVel: [0, 0, 0],
+    };
+    this.targetView.networkManager?.sessionCoordinator?.authoritativeServer?.sim?.setBallState?.(
+      airborneBallState
+    );
+    (this.targetView.physics?.sim ?? this.targetView.physics)?.setBallState?.(airborneBallState);
+    this.resetTrajectoryWindow(true);
+    bridgeChannel.postMessage({ type: 'host_ball_launched_in_playing' });
+
+    await sleepMs(1400);
+    this.recordPoseProbe('host_match_playing_trajectory');
+    this.resetTrajectoryWindow(false);
     bridgeChannel.close();
   }
 
@@ -275,6 +345,17 @@ export class MultiplayerRoomReproAgent {
     );
     await sleepMs(250);
     this.recordPoseProbe('client_before_join');
+
+    const bridgeChannel = new BroadcastChannel(`rc_repro_bridge_${this.cfg.roomCode}`);
+    let hostLobbySettled = false;
+    let hostMatchStarted = false;
+    let hostBallLaunched = false;
+    bridgeChannel.onmessage = (ev: MessageEvent) => {
+      const data = ev.data as { type?: string } | null;
+      if (data?.type === 'host_lobby_settled') hostLobbySettled = true;
+      if (data?.type === 'host_match_started') hostMatchStarted = true;
+      if (data?.type === 'host_ball_launched_in_playing') hostBallLaunched = true;
+    };
 
     void this.targetView.matchPort
       ?.joinOnlineWarmup?.({
@@ -294,20 +375,39 @@ export class MultiplayerRoomReproAgent {
     this.logLifecycle(`Client answer generated: answerLen=${answerToken.length}`);
 
     if (answerToken) {
-      const bridgeChannel = new BroadcastChannel(`rc_repro_bridge_${this.cfg.roomCode}`);
       bridgeChannel.postMessage({
         type: 'client_answer_ready',
         answerToken,
       });
-      bridgeChannel.close();
     }
 
-    await sleepMs(500);
-    this.recordPoseProbe('client_after_join_500ms');
-    await sleepMs(2500);
-    this.recordPoseProbe('client_poll_3000ms');
-    await sleepMs(4500);
-    this.recordPoseProbe('client_poll_7500ms');
+    for (let i = 0; i < 20; i++) {
+      if (hostLobbySettled) break;
+      await sleepMs(200);
+    }
+    this.recordPoseProbe('client_lobby_connected');
+
+    for (let i = 0; i < 20; i++) {
+      if (hostMatchStarted) break;
+      await sleepMs(200);
+    }
+    await sleepMs(350);
+    this.recordPoseProbe('client_match_countdown');
+
+    for (let i = 0; i < 60; i++) {
+      const sim = this.targetView.physics?.sim ?? this.targetView.physics;
+      const ballZ = sim?.getBallStateView?.()?.posZ ?? 0;
+      if (hostBallLaunched && this.targetView.match?.state?.phase === 'playing' && ballZ > 600) {
+        break;
+      }
+      await sleepMs(100);
+    }
+
+    this.resetTrajectoryWindow(true);
+    await sleepMs(1400);
+    this.recordPoseProbe('client_match_playing_trajectory');
+    this.resetTrajectoryWindow(false);
+    bridgeChannel.close();
   }
 }
 

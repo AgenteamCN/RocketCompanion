@@ -86,7 +86,7 @@ export class MatchPhaseLifecycleSubController {
     this.host.domain.winner = v;
   }
 
-  private prepareArenaForActiveMatch(): void {
+  private prepareArenaForActiveMatch(skipBotFillIfAlreadyPopulated = false): void {
     const { domain: d, physicsManager: pm, diagnosticsController: dc, roster: r } = this.host;
     d.lobbyPhysicsActive = false;
     pm?.inputBuffer?.setLobbyMode?.(false);
@@ -94,7 +94,9 @@ export class MatchPhaseLifecycleSubController {
       dc.enabled = false;
       if (pm) dc.releasePhysics(pm);
     }
-    r.applyBotFillPolicy();
+    if (!skipBotFillIfAlreadyPopulated || r.players.size < d.maxPlayers) {
+      r.applyBotFillPolicy();
+    }
     r.syncRosterPhysicsEntities();
     pm?.sim?.setUnlimitedBoost?.(false);
     pm?.restoreSolidCollisions?.();
@@ -113,7 +115,7 @@ export class MatchPhaseLifecycleSubController {
   initiateMatchPrepare(sec: number | null = null, timeoutTicks = 240): void {
     const { domain: d, physicsManager: pm, roster: r, commandQueue: cq } = this.host;
     d.beginPrepareOrCountdown('prepare', sec, timeoutTicks);
-    this.prepareArenaForActiveMatch();
+    this.prepareArenaForActiveMatch(false);
     cq.matchSequence = ((cq.matchSequence || 0) + 1) & 0xffff;
     if (pm) {
       pm.resetKickoff(0);
@@ -154,6 +156,7 @@ export class MatchPhaseLifecycleSubController {
     const {
       domain: d,
       physicsManager: pm,
+      sessionManager: sm,
       replayBuffer: rb,
       onClearRetainedReplay,
       roster: r,
@@ -161,11 +164,13 @@ export class MatchPhaseLifecycleSubController {
       goalReplay: gr,
     } = this.host;
     onClearRetainedReplay?.();
+    const wasLobbyPhysicsActive = d.lobbyPhysicsActive;
     const { modeCode, clockDuration, clockSecondsRemaining, blueScore, orangeScore } =
       d.resetForMatchStart(sec);
-    this.prepareArenaForActiveMatch();
+    this.prepareArenaForActiveMatch(!wasLobbyPhysicsActive);
     gr.resetForMatchStart();
     cq.resetForMatchStart();
+    sm?.signalBuffer?.clear?.();
     rb?.configureMode(REPLAY_BUFFER_MODES.COUNTDOWN_MATCH);
     if (pm) {
       pm.isPaused = false;

@@ -366,7 +366,7 @@ export class OnlineMatchReconcilerBinder {
       );
       if (
         (msg?.state === 'lobby' || !msg?.state) &&
-        diagnosticsProbe.diagnosticsFleetController?.enabled
+        diagnosticsProbe.diagnosticsFleetController?.enabled !== false
       ) {
         await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
       }

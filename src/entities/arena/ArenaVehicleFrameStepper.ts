@@ -190,8 +190,7 @@ export function stepArenaVehiclesFrame(
 
     const isLocalCar = carIndex === (arena.playerCarIndex ?? 0);
     if (arena.isLobbyMode) {
-      const isLobbyDiagCar =
-        (carIndex === 6 || carIndex === 7) && Boolean(arena.cars[carIndex]?.visible);
+      const isLobbyDiagCar = carIndex === 6 || carIndex === 7;
       if (!isLocalCar && !isLobbyDiagCar) {
         if (arena.cars[carIndex]) arena.cars[carIndex]!.visible = false;
         arena.supersonicWheelTrailSystem?.updateCar(

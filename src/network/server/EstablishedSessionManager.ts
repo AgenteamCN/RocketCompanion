@@ -117,7 +117,8 @@ export class EstablishedSessionManager {
     if (!session) return;
 
     if (session.entityId >= 0) {
-      if (cacheForRejoin) {
+      const isBotSession = sessionId === 'bot' || String(sessionId).startsWith('bot_');
+      if (cacheForRejoin && !isBotSession) {
         this.disconnectedSlotCache.set(session.playerId || sessionId, {
           entityId: session.entityId,
           playerName: session.playerName,

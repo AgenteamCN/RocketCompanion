@@ -265,7 +265,7 @@ export function drainAndParseServerPacketBatch(
           ctx.onRosterUpdate?.(obj);
           continue;
         } else if (obj.type === 'handshake_response') {
-          if (typeof obj.entityId === 'number' && obj.entityId >= 0) {
+          if (!ctx.hostLobbyMode && typeof obj.entityId === 'number' && obj.entityId >= 0) {
             ctx.setLocalCarIndex(obj.entityId);
           }
           const initSnap = obj.initialSnapshot as ArrayLike<number> | undefined;
@@ -273,7 +273,9 @@ export function drainAndParseServerPacketBatch(
             (typeof obj.serverFrame === 'number' ? obj.serverFrame : undefined) ??
             (typeof obj.matchTick === 'number' ? obj.matchTick : 0);
           if (obj.state === 'lobby') {
-            ctx.setLobbyDualWorldMode(true);
+            if (!ctx.hostLobbyMode) {
+              ctx.setLobbyDualWorldMode(true);
+            }
             if (initSnap) {
               const snap = new Float32Array(initSnap);
               seedBoostPadEdgeTrackerFromSnapshot(boostPadTracker, snap, frame);

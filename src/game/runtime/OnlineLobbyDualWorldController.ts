@@ -143,7 +143,7 @@ export class OnlineLobbyDualWorldController {
     this.configureArenaLobbyFlags(true, false, 1);
     this.configureClientLobbyLocalCar(1, 1, localVisualId, true);
     physics?.setBallState?.({ pos: [0, 0, 93.15], vel: [0, 0, 0], angVel: [0, 0, 0] });
-    if (diagnosticsProbe.diagnosticsFleetController?.enabled) {
+    if (diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
       await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
     }
     this.focusCameraOnCar(1);
@@ -166,7 +166,7 @@ export class OnlineLobbyDualWorldController {
       authoritativeServer?.lastRoomState as { roster?: OnlineRosterSnapshotPayload } | null
     )?.roster;
     if (initialRoster) await applyRosterSnapshot(initialRoster);
-    if (isMatchLobby && diagnosticsProbe.diagnosticsFleetController?.enabled) {
+    if (isMatchLobby && diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
       await diagnosticsProbe.spawnDiagnosticTestFleet();
       networkDiagnosticsStore?.syncZeroGFleetState?.(true);
     }
@@ -308,7 +308,7 @@ export class OnlineLobbyDualWorldController {
     reconciler?.resetTimelineState?.();
 
     if (isHost) {
-      const fleetEnabled = Boolean(diagnosticsProbe.diagnosticsFleetController?.enabled);
+      const fleetEnabled = diagnosticsProbe.diagnosticsFleetController?.enabled !== false;
       if (reconciler) reconciler.hostLobbyMode = true;
       resetLobbyWorldPhysicsPose(physics, 0, localTeam, true);
       if (!fromServerRoster) {
@@ -332,7 +332,7 @@ export class OnlineLobbyDualWorldController {
     } else {
       resetLobbyWorldPhysicsPose(physics, localCarIndex, localTeam, false);
       this.activateClientDualWorld(reconciler, diagnosticsProbe);
-      if (diagnosticsProbe.diagnosticsFleetController?.enabled) {
+      if (diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
         await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
         if (!isStillInLobby()) return false;
       }

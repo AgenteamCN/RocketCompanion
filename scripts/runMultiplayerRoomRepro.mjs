@@ -21,7 +21,7 @@ const DEFAULT_MAX_DURATION_MS = 270_000;
 const PER_MODE_TIMEOUT_MS = 95_000;
 
 function parseCliArgs(argv) {
-  let mode = 'both';
+  let mode = 'all';
   let speed = 1;
   let maxDurationMs = DEFAULT_MAX_DURATION_MS;
   let outPath = DEFAULT_OUT_PATH;
@@ -30,7 +30,9 @@ function parseCliArgs(argv) {
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--mode=')) {
       const val = arg.slice('--mode='.length).trim();
-      if (val === '2p' || val === '3p3ai' || val === 'both') mode = val;
+      if (val === '2p' || val === '2p2ai' || val === '3p3ai' || val === 'both' || val === 'all') {
+        mode = val;
+      }
     } else if (arg.startsWith('--speed=')) {
       speed = Math.max(1, Math.min(8, Number(arg.slice('--speed='.length)) || 1));
     } else if (arg.startsWith('--max-duration-ms=')) {
@@ -45,7 +47,7 @@ function parseCliArgs(argv) {
     }
   }
 
-  const modesToRun = mode === 'both' ? ['2p', '3p3ai'] : [mode];
+  const modesToRun = mode === 'all' || mode === 'both' ? ['2p', '2p2ai', '3p3ai'] : [mode];
   return { mode, modesToRun, speed, maxDurationMs, outPath, bridgeSignaling };
 }
 
@@ -67,7 +69,11 @@ function formatEventStreamLine(evt) {
           `mesh#${m.idx}:${m.preset}(wheelY=[${m.wheelHeightsY.join(',')}],dWheelY=${m.frontRearWheelHeightDeltaY})`
       )
       .join(' | ');
-    return `[Stream][PoseProbe][${p.rosterMode}][${p.role}][${p.stage}] mode=${p.matchMode} phase=${p.matchPhase} tick=${p.simTick}\n    sim:  ${simSummary}\n    mesh: ${meshSummary}`;
+    const tagsSummary = (p.nameTagEntries || []).map((t) => `#${t.carIndex}:${t.name}`).join(', ');
+    const traj = p.ballTrajectory
+      ? `traj(pred=${p.ballTrajectory.predictionCount},max=${p.ballTrajectory.maxObservedPredictionCount},collapses=${p.ballTrajectory.collapseToCatchupCount})`
+      : '';
+    return `[Stream][PoseProbe][${p.rosterMode}][${p.role}][${p.stage}] mode=${p.matchMode} phase=${p.matchPhase} tick=${p.simTick} playerCar=#${p.playerCarIndex ?? 0} ${traj}\n    sim:  ${simSummary}\n    mesh: ${meshSummary}\n    tags: ${tagsSummary}`;
   }
   if (evt.type === 'reconciler_snap') {
     const s = evt.sample;
@@ -98,10 +104,12 @@ async function main() {
 
   const eventsByMode = {
     '2p': [],
+    '2p2ai': [],
     '3p3ai': [],
   };
   const summariesByMode = {
     '2p': { host: null, client: null },
+    '2p2ai': { host: null, client: null },
     '3p3ai': { host: null, client: null },
   };
   const seenEventFingerprints = new Set();
@@ -209,6 +217,7 @@ async function main() {
 
   const workerStarvationsByMode = {
     '2p': [],
+    '2p2ai': [],
     '3p3ai': [],
   };
 
@@ -403,6 +412,15 @@ async function main() {
       console.log(
         `  [Client] readonlyRttTypeErrorCount=${c.readonlyRttTypeErrorCount} | measuredRttGetterOnly=${c.handshakeDiagnostics.measuredRttGetterOnly} | isCrossTab=${c.handshakeDiagnostics.isCrossTab}`
       );
+      const clientAnomalyCount = c.poseProbes.reduce((acc, p) => acc + p.anomalies.length, 0);
+      console.log(
+        `  [Client] poseProbes=${c.poseProbes.length} | detectedPoseAnomalies=${clientAnomalyCount}`
+      );
+      for (const p of c.poseProbes) {
+        for (const a of p.anomalies) {
+          console.log(`           - [${p.stage}] ${a.kind}: ${a.description}`);
+        }
+      }
       if (c.caughtErrors.length > 0) {
         console.log(`  [Client] sampleError: ${c.caughtErrors[0]}`);
       }

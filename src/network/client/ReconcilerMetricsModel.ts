@@ -50,7 +50,10 @@ export interface TelemetrySimPort {
     collideWithCars: boolean
   ) => void;
   saveCompactState?: () => Float32Array;
-  restoreCompactState?: (state: Float32Array, opts?: { preserveEngineTick?: boolean }) => void;
+  restoreCompactState?: (
+    state: Float32Array,
+    opts?: { preserveEngineTick?: boolean; suppressBallWriteMark?: boolean }
+  ) => void;
   setBallState?: (state: Float32Array | Record<string, unknown>) => void;
   setCarState?: (carIndex: number, state: Float32Array | Record<string, unknown>) => void;
   getCarStateView: (carIndex: number) => { posX: number; posY: number; posZ: number } | null;
@@ -62,8 +65,11 @@ export interface TelemetrySimPort {
   removeCar?: (carIndex: number) => boolean;
   saveState?: () => Float32Array;
   saveStateSlot: (slot: number) => void;
-  restoreStateSlot: (slot: number) => boolean | void;
-  restoreState: (snapshot: Float32Array | number[]) => void;
+  restoreStateSlot: (slot: number, opts?: { suppressBallWriteMark?: boolean }) => boolean | void;
+  restoreState: (
+    snapshot: Float32Array | number[],
+    opts?: { preserveEngineTick?: boolean; suppressBallWriteMark?: boolean }
+  ) => void;
 }
 
 export interface TelemetryRecorderPort {

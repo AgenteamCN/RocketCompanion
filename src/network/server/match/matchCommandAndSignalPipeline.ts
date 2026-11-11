@@ -267,12 +267,25 @@ export function createAndRecordMatchSignal(p: {
     }
   }
 
+  if (
+    signalType === MATCH_SIGNALS.PLAYER_JOINED ||
+    signalType === MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED ||
+    signalType === MATCH_SIGNALS.PLAYER_SLOT_UPDATED
+  ) {
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_LEFT}_ent_${param1}`);
+  } else if (signalType === MATCH_SIGNALS.PLAYER_LEFT) {
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_JOINED}_ent_${param1}`);
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED}_ent_${param1}`);
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_SLOT_UPDATED}_ent_${param1}`);
+  }
+
   const mapKey =
     signalType === MATCH_SIGNALS.COMMAND_ACK
       ? `ack_${param1}_${param2}`
       : ENTITY_SCOPED_SIGNALS.has(signalType)
         ? `sig_${signalType}_ent_${param1}`
         : signalType;
+  p.activeSignals.delete(mapKey);
   p.activeSignals.set(mapKey, signalObj);
   return { signal: signalObj, nextSignalId };
 }

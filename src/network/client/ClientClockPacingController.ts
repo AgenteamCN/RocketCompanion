@@ -421,9 +421,20 @@ export class ClientClockPacingController {
     let stepSkip = false;
     const savedLobbyEntities = saveClientLobbyLocalEntities(ctx.sim, ctx.lobbyDualWorldMode);
     if (action === 'skip') {
+      const preSkipTick = currentClientTick;
+      ctx.sim.saveStateSlot?.(preSkipTick % 256);
       updatedClientTick = desiredClientTick;
-      ctx.sim.restoreStateSlot(updatedClientTick % 256);
-      stepSkip = true;
+      const restored = ctx.sim.restoreStateSlot(updatedClientTick % 256, {
+        suppressBallWriteMark: true,
+      });
+      const restoredTick = Math.floor(ctx.sim.getHeaderView?.()?.tickCount ?? -1);
+      if (restored && (restoredTick === -1 || restoredTick === updatedClientTick)) {
+        stepSkip = true;
+      } else {
+        ctx.sim.restoreStateSlot(preSkipTick % 256, { suppressBallWriteMark: true });
+        updatedClientTick = preSkipTick;
+        stepSkip = false;
+      }
     } else if (action === 'catchup') {
       updatedClientTick = ctx.stepForwardTicks(
         currentClientTick,

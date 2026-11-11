@@ -243,25 +243,49 @@ export function collectActiveMatchParticipantMap(
   localIdx: number,
   presets: ReadonlyMap<number, string> | undefined,
   peers: ReadonlyArray<{ carIndex?: number; team?: number | string }>,
-  remotePeerCarMap: ReadonlyMap<string, number> | undefined
+  remotePeerCarMap: ReadonlyMap<string, number> | undefined,
+  lastRosterSnapshot?: {
+    players?: ReadonlyArray<{ entityId?: number; carIndex?: number; team?: number }>;
+  } | null,
+  participantTeams?: ReadonlyMap<number, number>
 ): Map<number, number> {
-  const activeMap = new Map<number, number>([[localIdx, localIdx % 2]]);
+  const localTeam = participantTeams?.get(localIdx) ?? localIdx % 2;
+  const activeMap = new Map<number, number>([[localIdx, localTeam]]);
+  if (Array.isArray(lastRosterSnapshot?.players)) {
+    for (const p of lastRosterSnapshot.players) {
+      const cIdx = typeof p?.entityId === 'number' ? p.entityId : p?.carIndex;
+      if (typeof cIdx === 'number' && cIdx >= 0 && cIdx < 6) {
+        const team =
+          typeof p?.team === 'number'
+            ? p.team === 1
+              ? 1
+              : 0
+            : (participantTeams?.get(cIdx) ?? cIdx % 2);
+        activeMap.set(cIdx, team);
+      }
+    }
+  }
   if (presets instanceof Map) {
     for (const cIdx of presets.keys()) {
       if (typeof cIdx === 'number' && cIdx >= 0 && cIdx < 6 && !activeMap.has(cIdx)) {
-        activeMap.set(cIdx, cIdx % 2);
+        activeMap.set(cIdx, participantTeams?.get(cIdx) ?? cIdx % 2);
       }
     }
   }
   for (const peer of peers) {
     if (typeof peer?.carIndex === 'number' && peer.carIndex >= 0 && peer.carIndex < 6) {
-      activeMap.set(peer.carIndex, typeof peer.team === 'number' ? peer.team : peer.carIndex % 2);
+      activeMap.set(
+        peer.carIndex,
+        typeof peer.team === 'number'
+          ? peer.team
+          : (participantTeams?.get(peer.carIndex) ?? peer.carIndex % 2)
+      );
     }
   }
   if (remotePeerCarMap instanceof Map) {
     for (const cIdx of remotePeerCarMap.values()) {
       if (typeof cIdx === 'number' && cIdx >= 0 && cIdx < 6 && !activeMap.has(cIdx)) {
-        activeMap.set(cIdx, cIdx % 2);
+        activeMap.set(cIdx, participantTeams?.get(cIdx) ?? cIdx % 2);
       }
     }
   }

@@ -210,18 +210,15 @@ export function resolveClientJoinConfig(
   const initialColorPrefs = loadStoredColorPrefs();
   const preferredBlueSlot = getPreferredColorSlot(initialColorPrefs, 0);
   const preferredOrangeSlot = getPreferredColorSlot(initialColorPrefs, 1);
-  const preferredTeam =
-    typeof options.preferredTeam === 'number'
-      ? options.preferredTeam
+  const preferredTeam = typeof options.preferredTeam === 'number' ? options.preferredTeam : null;
+  const fallbackColorTeam =
+    preferredTeam === 0 || preferredTeam === 1
+      ? preferredTeam
       : initialColorPrefs.primaryTeam === 'blue'
         ? 0
         : 1;
   const localColorSlot =
-    options.colorSlot ??
-    getPreferredColorSlot(
-      initialColorPrefs,
-      preferredTeam === 0 || preferredTeam === 1 ? preferredTeam : null
-    );
+    options.colorSlot ?? getPreferredColorSlot(initialColorPrefs, fallbackColorTeam);
   const playerName = options.playerName || 'Player 2';
 
   return {

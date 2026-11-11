@@ -265,7 +265,9 @@ function syncParticipantCarSlotInWorld(
 }
 
 export function syncMatchParticipantsInLocalWorld(
-  port: SignalFocusCarPort & Pick<RuntimeSignalHostPort, 'physics' | 'remotePeerCarMap'>,
+  port: SignalFocusCarPort &
+    Pick<RuntimeSignalHostPort, 'physics' | 'remotePeerCarMap'> &
+    Partial<Pick<RuntimeSignalHostPort, 'getLastRosterSnapshot' | 'getParticipantTeams'>>,
   reconciler: PredictionReconciler | null
 ): void {
   const physics = port?.physics;
@@ -273,11 +275,15 @@ export function syncMatchParticipantsInLocalWorld(
   const presets = reconciler?.carVisualPresets;
   const peers = useAppStore?.getState?.()?.onlineSession?.connectedPeers || [];
   const localIdx = focusLocalPlayerCarInArenaAndCamera(reconciler, port, { alwaysAssign: true });
+  const lastRoster = port.getLastRosterSnapshot?.() ?? null;
+  const participantTeams = port.getParticipantTeams?.();
   const activeMap = collectActiveMatchParticipantMap(
     localIdx,
     presets,
     peers,
-    port.remotePeerCarMap
+    port.remotePeerCarMap,
+    lastRoster,
+    participantTeams
   );
   const arena = port.arena ?? null;
   for (let c = 0; c < 8; c++) {

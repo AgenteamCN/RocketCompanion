@@ -6,129 +6,35 @@
  * real-time reproduction telemetry.
  */
 
+import { captureRuntimeReplayCarEntries } from '../../replay/replayDirectorCarRosterPipeline.ts';
+import { getNameTagRuntimeState } from '../runtimeUiPort.ts';
 import { roundMetric } from './scenarioMetricsPipeline.ts';
 import type {
+  ReproBallTrajectorySample,
   ReproHandshakeDiagnosticSnapshot,
+  ReproInspectableWebRtcChannel,
   ReproMeshCarPoseSample,
+  ReproNameTagSample,
   ReproPoseAnomalyItem,
   ReproPoseProbeSnapshot,
+  ReproProbeBallView,
+  ReproProbeCarView,
+  ReproProbeRuntimeView,
   ReproRole,
   ReproRosterMode,
   ReproSimCarPoseSample,
   ReproStreamEvent,
+  ReproTrajectoryObservationWindow,
   ReproUrlConfig,
 } from './multiplayerRoomReproTypes.ts';
 
-export interface ReproProbeCarView {
-  readonly isActive: boolean;
-  readonly team: number;
-  readonly posX: number;
-  readonly posY: number;
-  readonly posZ: number;
-  readonly velX: number;
-  readonly velY: number;
-  readonly velZ: number;
-  readonly fwdZ: number;
-  readonly upZ: number;
-  readonly quatX: number;
-  readonly quatY: number;
-  readonly quatZ: number;
-  readonly quatW: number;
-  readonly isOnGround: boolean | number;
-  readonly getWheelContact: (wheelIndex: number) => boolean;
-  readonly getWheelSusLength: (wheelIndex: number) => number;
-}
-
-export interface ReproProbeRuntimeView {
-  readonly stop?: () => void;
-  readonly renderFrame?: (timestamp?: number) => boolean;
-  readonly pipeline?: {
-    readonly executeSimulationOnly?: (timestamp: number) => void;
-  } | null;
-  readonly clockScheduler?: { gl?: unknown } | null;
-  readonly renderSubsystem?: { update?: (ctx: { shouldSkipGpuRender?: boolean }) => void } | null;
-  readonly setupAudio?: () => Promise<void>;
-  readonly setupBot?: () => Promise<void>;
-  readonly physics?: {
-    readonly getHeaderView?: () => { readonly tickCount: number };
-    readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
-    readonly sim?: {
-      readonly getHeaderView?: () => { readonly tickCount: number };
-      readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
-    } | null;
-  } | null;
-  readonly arena?: {
-    readonly cars?: ReadonlyArray<{
-      readonly visible?: boolean;
-      readonly position?: { readonly y?: number };
-      readonly rotation?: { readonly x?: number; readonly y?: number; readonly z?: number };
-    } | null>;
-    readonly vehiclePresets?: ReadonlyArray<string | null>;
-    readonly carHitboxes?: ReadonlyArray<{
-      readonly userData?: { readonly hitboxId?: string };
-    } | null>;
-    readonly carWheels?: ReadonlyArray<ReadonlyArray<{
-      readonly steer?: { readonly position?: { readonly y?: number } };
-      readonly mount?: { readonly position?: { readonly y?: number } };
-    } | null> | null>;
-  } | null;
-  readonly match?: {
-    readonly state?: {
-      readonly mode?: string;
-      readonly phase?: string;
-    } | null;
-  } | null;
-  readonly matchPort?: {
-    readonly hostOnlineWarmup?: (opts: {
-      roomId: string;
-      password?: string;
-      playerName?: string;
-      roomType?: string;
-      gameMode?: string;
-      botFillMode?: string;
-      durationSeconds?: number;
-      lobbyMode?: boolean;
-    }) => Promise<boolean>;
-    readonly joinOnlineWarmup?: (opts: {
-      roomId: string;
-      password?: string;
-      playerName?: string;
-    }) => Promise<boolean>;
-    readonly forceStartOnlineMatch?: (durationSeconds?: number) => void;
-  } | null;
-  readonly multiplayerSession?: {
-    readonly hostController?: {
-      readonly offerToken?: string;
-      readonly channel?: ReproInspectableWebRtcChannel | null;
-      readonly peerChannels?: ReadonlyMap<string, ReproInspectableWebRtcChannel>;
-      readonly getConnectedPeerList?: () => ReadonlyArray<unknown>;
-    } | null;
-    readonly clientJoinNegotiator?: {
-      readonly clientController?: {
-        readonly answerToken?: string;
-        readonly channel?: ReproInspectableWebRtcChannel | null;
-      } | null;
-    } | null;
-  } | null;
-  readonly networkReconciler?: {
-    readonly hardSnapCount?: number;
-    readonly correctionCount?: number;
-    readonly lobbyDualWorldMode?: boolean;
-  } | null;
-  readonly networkManager?: {
-    readonly isLobbyDualWorldActive?: () => boolean;
-  } | null;
-}
-
-export interface ReproInspectableWebRtcChannel {
-  readonly role?: string;
-  readonly isHost?: boolean;
-  readonly isCrossTab?: boolean;
-  readonly transportMode?: string;
-  readonly answerToken?: string;
-  readonly dataChannel?: { readonly readyState?: string } | null;
-  readonly acceptAnswerToken?: (answerToken: string) => Promise<boolean>;
-}
+export type {
+  ReproInspectableWebRtcChannel,
+  ReproProbeBallView,
+  ReproProbeCarView,
+  ReproProbeRuntimeView,
+  ReproTrajectoryObservationWindow,
+};
 
 export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
   if (typeof window === 'undefined' || !window.location?.search) {
@@ -145,8 +51,9 @@ export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
   const rawRole = params.get('reproRole');
   const role: ReproRole | null = rawRole === 'host' || rawRole === 'client' ? rawRole : null;
   const rawMode = params.get('reproMode');
-  const rosterMode: ReproRosterMode = rawMode === '2p' ? '2p' : '3p3ai';
-  const defaultRoom = rosterMode === '2p' ? '4816' : '7216';
+  const rosterMode: ReproRosterMode =
+    rawMode === '2p' ? '2p' : rawMode === '2p2ai' ? '2p2ai' : '3p3ai';
+  const defaultRoom = rosterMode === '2p' ? '4816' : rosterMode === '2p2ai' ? '5916' : '7216';
   const roomCode = (params.get('reproRoom') || defaultRoom).trim() || defaultRoom;
   const rawSpeed = Number(params.get('reproSpeed') || 1);
   const speedMultiplier =
@@ -171,10 +78,17 @@ export function sampleSimAndMeshVehiclePose(
   stage: string,
   role: ReproRole,
   rosterMode: ReproRosterMode,
-  elapsedMs: number
+  elapsedMs: number,
+  trajWindow?: ReproTrajectoryObservationWindow
 ): ReproPoseProbeSnapshot {
   const sim = targetView.physics?.sim ?? targetView.physics;
   const simTick = sim?.getHeaderView?.()?.tickCount ?? -1;
+  const matchMode = String(targetView.match?.state?.mode ?? 'unknown');
+  const matchPhase = String(targetView.match?.state?.phase ?? 'unknown');
+  const isLobbyDualWorld = Boolean(targetView.networkManager?.isLobbyDualWorldActive?.());
+  const playerCarIndex = Number(targetView.arena?.playerCarIndex ?? 0);
+  const isStaticPoseStage =
+    !stage.includes('playing') && !stage.includes('trajectory') && matchPhase !== 'playing';
   const simCars: ReproSimCarPoseSample[] = [];
   const meshCars: ReproMeshCarPoseSample[] = [];
   const anomalies: ReproPoseAnomalyItem[] = [];
@@ -183,7 +97,11 @@ export function sampleSimAndMeshVehiclePose(
     const cv = sim?.getCarStateView?.(i);
     if (!cv) continue;
     const isVisibleMesh = Boolean(targetView.arena?.cars?.[i]?.visible);
-    if (!cv.isActive && !isVisibleMesh && i > 1) continue;
+    const isSlotActive =
+      typeof sim?.isCarSlotActive === 'function'
+        ? Boolean(sim.isCarSlotActive(i))
+        : Boolean(cv.isActive ?? isVisibleMesh);
+    if (!isSlotActive && !isVisibleMesh && i > 1) continue;
 
     const sus: [number, number, number, number] = [
       roundMetric(cv.getWheelSusLength(0), 3),
@@ -197,7 +115,7 @@ export function sampleSimAndMeshVehiclePose(
 
     const sample: ReproSimCarPoseSample = {
       idx: i,
-      active: Boolean(cv.isActive),
+      active: isSlotActive,
       team: cv.team,
       pos: [roundMetric(cv.posX, 2), roundMetric(cv.posY, 2), roundMetric(cv.posZ, 3)],
       vel: [roundMetric(cv.velX, 2), roundMetric(cv.velY, 2), roundMetric(cv.velZ, 2)],
@@ -221,17 +139,25 @@ export function sampleSimAndMeshVehiclePose(
     };
     simCars.push(sample);
 
+    const speed = Math.hypot(sample.vel[0], sample.vel[1], sample.vel[2]);
     if (
       i >= 6 &&
-      isVisibleMesh &&
-      (sample.pos[2] > 30 || Math.abs(sample.fwdZ) > 0.2 || sample.upZ < 0.5)
+      !isLobbyDualWorld &&
+      (matchMode === 'standard' || matchMode === 'match') &&
+      isVisibleMesh
     ) {
       anomalies.push({
         carIndex: i,
         kind: 'lobby_ghost_car_suspended_or_tilted',
-        description: `Car #${i} visible in lobby at posZ=${sample.pos[2]}, fwdZ=${sample.fwdZ}, upZ=${sample.upZ}, onGround=${sample.onGround}`,
+        description: `Diagnostic car #${i} remained visible during active match at posZ=${sample.pos[2]}`,
       });
-    } else if (i < 6 && sample.active && Math.abs(sample.fwdZ) >= 0.005) {
+    } else if (
+      i < 6 &&
+      sample.active &&
+      isStaticPoseStage &&
+      speed < 5 &&
+      Math.abs(sample.fwdZ) >= 0.005
+    ) {
       anomalies.push({
         carIndex: i,
         kind: 'chassis_pitch_tilt_on_ground',
@@ -268,11 +194,120 @@ export function sampleSimAndMeshVehiclePose(
       frontRearWheelHeightDeltaY,
     });
 
-    if (Math.abs(frontRearWheelHeightDeltaY) >= 1.0) {
+    const matchingSimCar = simCars.find((sc) => sc.idx === i);
+    const carSpeed = matchingSimCar
+      ? Math.hypot(matchingSimCar.vel[0], matchingSimCar.vel[1], matchingSimCar.vel[2])
+      : 0;
+    if (isStaticPoseStage && i < 6 && carSpeed < 5 && Math.abs(frontRearWheelHeightDeltaY) >= 1.0) {
       anomalies.push({
         carIndex: i,
         kind: 'front_rear_wheel_height_asymmetry',
         description: `Car #${i} (${preset}/${hitbox}) front vs rear wheel mount Y delta=${frontRearWheelHeightDeltaY} UU (wheelHeightsY=[${wheelHeightsY.join(', ')}])`,
+      });
+    }
+  }
+
+  const rawNameTags = getNameTagRuntimeState()?.carEntries ?? [];
+  const nameTagEntries: ReproNameTagSample[] = rawNameTags.map((e) => ({
+    carIndex: Number(e.carIndex ?? -1),
+    name: String(e.name ?? ''),
+    team: Number(e.team ?? 0),
+    isBot: Boolean((e as { isBot?: boolean }).isBot),
+  }));
+
+  const rawReplayEntries = captureRuntimeReplayCarEntries(targetView as never);
+  const replayRosterNames: ReproNameTagSample[] = rawReplayEntries.map((e) => ({
+    carIndex: Number(e.carIndex ?? -1),
+    name: String(e.name ?? ''),
+    team: Number(e.team ?? 0),
+    isBot: Boolean(e.isBot),
+  }));
+
+  const ballView = sim?.getBallStateView?.();
+  const ballPosZ = roundMetric(ballView?.posZ ?? 0, 2);
+  const ballSpeed = roundMetric(
+    Math.hypot(ballView?.velX ?? 0, ballView?.velY ?? 0, ballView?.velZ ?? 0),
+    2
+  );
+  const btp = targetView.ballTrajectoryPredictor;
+  const predictionCount = Number(btp?.predictionCount ?? 0);
+  const ballTrajectory: ReproBallTrajectorySample = {
+    isActive: Boolean(btp?.isActive),
+    predictionCount,
+    maxObservedPredictionCount: Math.max(
+      predictionCount,
+      trajWindow?.maxObservedPredictionCount ?? 0
+    ),
+    collapseToCatchupCount: trajWindow?.collapseToCatchupCount ?? 0,
+    ballPosZ,
+    ballSpeed,
+  };
+
+  if (stage === 'host_lobby_1500ms' || stage === 'client_lobby_connected') {
+    for (const [probeIdx, expectedName] of [
+      [6, 'Boost'],
+      [7, 'Roll'],
+    ] as const) {
+      const hasMesh = meshCars.some((m) => m.idx === probeIdx);
+      const tag = nameTagEntries.find((e) => e.carIndex === probeIdx);
+      if (!hasMesh || !tag || tag.name !== expectedName) {
+        anomalies.push({
+          carIndex: probeIdx,
+          kind: 'lobby_diagnostic_probe_missing_or_misnamed',
+          description: `Lobby probe #${probeIdx} on ${role}: visible=${hasMesh}, nameTag=${JSON.stringify(tag?.name ?? null)} (expected '${expectedName}')`,
+        });
+      }
+    }
+  }
+
+  const isActiveMatchStage = stage.startsWith('host_match_') || stage.startsWith('client_match_');
+  if (isActiveMatchStage) {
+    const expectedLocalCarIdx = role === 'host' ? 0 : 1;
+    if (playerCarIndex !== expectedLocalCarIdx) {
+      anomalies.push({
+        carIndex: playerCarIndex,
+        kind: 'host_car_takeover_or_reassigned',
+        description: `${role} playerCarIndex=${playerCarIndex} (expected ${expectedLocalCarIdx}) during ${stage}`,
+      });
+    }
+
+    const expectedCars = rosterMode === '2p' ? 2 : rosterMode === '2p2ai' ? 4 : 6;
+    for (let cIdx = 0; cIdx < expectedCars; cIdx++) {
+      const simActive = simCars.some((c) => c.idx === cIdx && c.active);
+      const meshVis = meshCars.some((m) => m.idx === cIdx);
+      if (!simActive || !meshVis) {
+        anomalies.push({
+          carIndex: cIdx,
+          kind: 'missing_match_participant_car',
+          description: `${role} missing car #${cIdx} in ${rosterMode} at ${stage} (simActive=${simActive}, meshVisible=${meshVis})`,
+        });
+      }
+      const tag = nameTagEntries.find((e) => e.carIndex === cIdx);
+      const replayEntry = replayRosterNames.find((e) => e.carIndex === cIdx);
+      if (
+        !tag ||
+        /^Car \d+$/.test(tag.name) ||
+        !replayEntry ||
+        /^Car \d+$/.test(replayEntry.name)
+      ) {
+        anomalies.push({
+          carIndex: cIdx,
+          kind: 'fallback_generic_car_name',
+          description: `${role} car #${cIdx} has fallback/missing name (nameTag=${JSON.stringify(tag?.name ?? null)}, replayName=${JSON.stringify(replayEntry?.name ?? null)})`,
+        });
+      }
+    }
+  }
+
+  if (stage.includes('trajectory')) {
+    if (
+      ballTrajectory.maxObservedPredictionCount < 25 ||
+      ballTrajectory.collapseToCatchupCount > 0
+    ) {
+      anomalies.push({
+        carIndex: -1,
+        kind: 'trajectory_prediction_reset_collapse',
+        description: `${role} BallTrajectoryPredictor failed stability check at ${stage}: maxObservedPredictionCount=${ballTrajectory.maxObservedPredictionCount}, collapseToCatchupCount=${ballTrajectory.collapseToCatchupCount}, current=${ballTrajectory.predictionCount}`,
       });
     }
   }
@@ -283,11 +318,15 @@ export function sampleSimAndMeshVehiclePose(
     rosterMode,
     elapsedMs: Math.round(elapsedMs),
     simTick,
-    matchMode: String(targetView.match?.state?.mode ?? 'unknown'),
-    matchPhase: String(targetView.match?.state?.phase ?? 'unknown'),
-    isLobbyDualWorld: Boolean(targetView.networkManager?.isLobbyDualWorldActive?.()),
+    matchMode,
+    matchPhase,
+    isLobbyDualWorld,
+    playerCarIndex,
     simCars,
     meshCars,
+    nameTagEntries,
+    replayRosterNames,
+    ballTrajectory,
     anomalies,
   };
 }

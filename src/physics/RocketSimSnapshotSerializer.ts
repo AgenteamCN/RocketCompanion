@@ -34,6 +34,7 @@ export type {
 export interface RestoreSnapshotOptions {
   overrideTick?: number;
   preserveEngineTick?: boolean;
+  suppressBallWriteMark?: boolean;
 }
 
 export interface ArenaBoostPadDescriptor {

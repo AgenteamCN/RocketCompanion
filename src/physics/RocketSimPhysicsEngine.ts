@@ -216,10 +216,12 @@ export class RocketSimPhysicsEngine extends RocketSimCarMutatorController {
     return mod._physics_saveStateSlot(slot) === 1;
   }
 
-  restoreStateSlot(slot: number): boolean {
+  restoreStateSlot(slot: number, options: RestoreSnapshotOptions = {}): boolean {
     const mod = this.module;
     if (!mod) return false;
-    this._markBallWrite();
+    if (!options.suppressBallWriteMark) {
+      this._markBallWrite();
+    }
     return mod._physics_restoreStateSlot(slot) === 1;
   }
 
@@ -244,7 +246,9 @@ export class RocketSimPhysicsEngine extends RocketSimCarMutatorController {
     options: RestoreSnapshotOptions = {}
   ): boolean {
     if (!this.module || !buffer) return false;
-    this._markBallWrite();
+    if (!options.suppressBallWriteMark) {
+      this._markBallWrite();
+    }
     return restoreWasmSnapshotState(this.module, this, buffer, options);
   }
 
@@ -253,7 +257,9 @@ export class RocketSimPhysicsEngine extends RocketSimCarMutatorController {
     options: RestoreSnapshotOptions = {}
   ): boolean {
     if (!this.module || !buffer) return false;
-    this._markBallWrite();
+    if (!options.suppressBallWriteMark) {
+      this._markBallWrite();
+    }
     return restoreWasmSnapshotState(this.module, this, buffer, options);
   }
 

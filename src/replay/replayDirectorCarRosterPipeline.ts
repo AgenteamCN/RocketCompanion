@@ -13,6 +13,7 @@ import {
   decodeHitboxIndex,
   getCarColorSlotById,
 } from '../ui-core/config/vehicleConstants.ts';
+import { getNameTagRuntimeState } from '../game/runtimeUiPort.ts';
 import type { ReplayCarRosterEntry } from './replayDirectorStateTypes.ts';
 
 export interface NormalizedReplayDirectorCarEntry extends ReplayCarRosterEntry {
@@ -65,6 +66,8 @@ export interface ReplayDirectorRosterRuntimePort {
   selectedHitbox?: string;
   selectedColorSlot?: number | null;
   activeBotName?: string;
+  getLastRosterSnapshot?: () =>
+    { players?: RawReplayCarEntryLike[] } | RawReplayCarEntryLike[] | null;
   physics?: {
     state?: Float32Array | null;
     numCars?: number;
@@ -144,11 +147,19 @@ function toHexColorString(colorVal: unknown): string | null {
 }
 
 function indexEntriesByCar(
-  list: ReadonlyArray<RawReplayCarEntryLike> | unknown
+  list:
+    | ReadonlyArray<RawReplayCarEntryLike>
+    | { players?: ReadonlyArray<RawReplayCarEntryLike> }
+    | unknown
 ): Map<number, RawReplayCarEntryLike> {
   const map = new Map<number, RawReplayCarEntryLike>();
-  if (!Array.isArray(list)) return map;
-  for (const item of list) {
+  const resolvedList = Array.isArray(list)
+    ? list
+    : list && typeof list === 'object' && Array.isArray((list as { players?: unknown }).players)
+      ? (list as { players: ReadonlyArray<RawReplayCarEntryLike> }).players
+      : null;
+  if (!resolvedList) return map;
+  for (const item of resolvedList) {
     if (!item || typeof item !== 'object') continue;
     const cIdx = typeof item.carIndex === 'number' ? item.carIndex : item.entityId;
     if (typeof cIdx === 'number' && cIdx >= 0 && cIdx < MAX_CARS) map.set(cIdx, item);
@@ -262,6 +273,7 @@ export function captureRuntimeReplayCarEntries(
 
   const explicitByCar = indexEntriesByCar(options.explicitEntries);
   const rawRoster =
+    runtime?.getLastRosterSnapshot?.() ||
     runtime?.networkManager?.rosterSyncCoordinator?.lastRosterSnapshot?.players ||
     runtime?.networkManager?.rosterSyncCoordinator?.lastRosterSnapshot ||
     (
@@ -283,7 +295,8 @@ export function captureRuntimeReplayCarEntries(
 
   const ntByCar = indexEntriesByCar(
     runtime?.replayTimelineController?.sessionState?.carEntries ||
-      runtime?.replayTimelineController?.sessionState?.importedCarEntries
+      runtime?.replayTimelineController?.sessionState?.importedCarEntries ||
+      getNameTagRuntimeState?.()?.carEntries
   );
   const playerCarIndex = typeof runtime?.playerCarIndex === 'number' ? runtime.playerCarIndex : 0;
   const entries: NormalizedReplayDirectorCarEntry[] = [];

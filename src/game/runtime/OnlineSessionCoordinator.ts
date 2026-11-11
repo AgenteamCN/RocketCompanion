@@ -96,7 +96,7 @@ export class OnlineSessionCoordinator {
           Boolean(this.networkReconciler?.lobbyDualWorldMode)
         );
         if (needsReturn) await this.returnOnlineMatchToLobby({ fromServerRoster: true });
-        else if (!isHost && this.diagnosticsProbe.diagnosticsFleetController?.enabled) {
+        else if (!isHost && this.diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
           await this.diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
         }
       }

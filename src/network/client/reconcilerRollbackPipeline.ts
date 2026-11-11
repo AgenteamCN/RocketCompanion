@@ -109,7 +109,7 @@ export function executeSyncTimelineStep(
 ): RollbackStepperSyncOutput {
   const { sim, historyBuffer, visualSmoother, metrics, serverSnapshot, serverTick, nowMs } = input;
   const savedLobby = saveClientLobbyLocalEntities(sim, input.lobbyDualWorldMode);
-  if (serverSnapshot) sim.restoreState(serverSnapshot);
+  if (serverSnapshot) sim.restoreState(serverSnapshot, { suppressBallWriteMark: true });
   if (
     typeof sim?.isCarSlotActive === 'function' &&
     (sim.isCarSlotActive(6) || sim.isCarSlotActive(7))
@@ -208,8 +208,11 @@ export function executeReplayAndEvaluateCorrection(
   forceStateRestore = false
 ): RollbackStepState {
   let { skippedCorrections, hardSnapCount, totalCorrections, maxCorrectionDelta } = state;
-  sim.saveStateSlot?.(currentClientTick % 256);
-  historyBuffer.saveTickSnapshot(currentClientTick, sim);
+  const simTickBeforeEval = Math.floor(sim.getHeaderView?.()?.tickCount ?? currentClientTick);
+  if (simTickBeforeEval === currentClientTick) {
+    sim.saveStateSlot?.(currentClientTick % 256);
+    historyBuffer.saveTickSnapshot(currentClientTick, sim);
+  }
   const evalResult = evaluateHistoricalSnapshotDelta(
     packet.stateSnapshot,
     historyBuffer.getTickSnapshot(serverTick),
@@ -225,7 +228,7 @@ export function executeReplayAndEvaluateCorrection(
     }
   );
   if (evalResult.canCompare) {
-    if (evalResult.withinTier1 && !forceStateRestore) {
+    if (evalResult.withinTier1 && !forceStateRestore && simTickBeforeEval === currentClientTick) {
       skippedCorrections = (skippedCorrections || 0) + 1;
       metrics.applyTier1Skip(
         evalResult.localPosDelta,
@@ -240,11 +243,15 @@ export function executeReplayAndEvaluateCorrection(
   const savedLobbyEntities = saveClientLobbyLocalEntities(sim, lobbyDualWorldMode);
   let slotFullState: Float32Array | null = null;
   if (serverTick < currentClientTick && currentClientTick - serverTick < 256) {
-    if (sim.restoreStateSlot?.(serverTick % 256) && typeof sim?.saveState === 'function') {
+    if (
+      sim.restoreStateSlot?.(serverTick % 256, { suppressBallWriteMark: true }) &&
+      Math.floor(sim.getHeaderView?.()?.tickCount ?? serverTick) === serverTick &&
+      typeof sim?.saveState === 'function'
+    ) {
       slotFullState = sim.saveState();
     }
   }
-  sim.restoreState(packet.stateSnapshot);
+  sim.restoreState(packet.stateSnapshot, { suppressBallWriteMark: true });
   if (slotFullState) preserveCarTransientTimersAcrossCompactRestore(sim, slotFullState, numCars);
   if (
     typeof sim?.isCarSlotActive === 'function' &&

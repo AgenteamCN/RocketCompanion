@@ -219,10 +219,11 @@ export function configureLobbyPhysicsArena(params: {
     ...o,
   });
   if (dc) {
-    if (o.enableDiagnosticsFleet === true) {
+    if (o.enableDiagnosticsFleet !== false) {
       dc.enabled = true;
       dc.configurePhysics(pm);
-    } else if (!dc.enabled) {
+    } else {
+      dc.enabled = false;
       dc.releasePhysics(pm);
     }
   }
