@@ -11,7 +11,6 @@ import { preloadKickoffV1BestWeights } from '../../ai/KickoffV2SafeTensorsAgent.
 import { preloadGroundReachabilityLut } from '../../entities/reachability/groundReachabilityLut.ts';
 import { ensureExperimentalEngine } from '../../ai/experimental/ExperimentalBotAgent.ts';
 import { BOTPACK_9700488_POLICIES } from '../../ai/experimental/botpack9700488Specs.ts';
-import { ensureWasmSimdMatVec } from '../../ai/experimental/wasmSimdMatVec.ts';
 import { AuthoritativeServerHost } from '../../network/server/AuthoritativeServerHost.ts';
 import { NEUTRAL_CAR_CONTROLS } from '../../network/client/PredictionHistoryBuffer.ts';
 import { yieldIdleSlice } from '../../loader/frameBudgetScheduler.ts';
@@ -113,8 +112,6 @@ export class RuntimeBotCoordinator {
       }
       report(label);
     };
-
-    await ensureWasmSimdMatVec().catch(() => false);
 
     await runStep(
       () => AuthoritativeServerHost.prewarmWorkers(),

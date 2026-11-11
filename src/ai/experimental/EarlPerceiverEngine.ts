@@ -7,7 +7,7 @@
  * across arbitrary numbers of arena entities (1v1 = 37, 2v2 = 39, 3v3 = 41, up to 8 cars = 43).
  */
 
-import { simdMatVecBias } from './wasmSimdMatVec.ts';
+import { simdMatVecBias } from './botpack9700488Actions.ts';
 import type { SafeTensorEntry } from './SafeTensorsLoader.ts';
 
 const MAX_ENTITIES = 64;

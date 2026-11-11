@@ -2,6 +2,11 @@
 
 use rc_physics_sim::layout::{CarControlsPod, GameStateBufferPod, MAX_CARS, MAX_PADS};
 
+use crate::{
+    layout_and_specs::{FURY_POS_COEF_X, KICKOFF_SPAWN_TEAM0_XY},
+    mlp_obs_standard::{CarPhysSnapshot, SortedCarCandidate},
+};
+
 /// Nexto speed-flip scripted kickoff controller operating directly on `GameStateBufferPod`.
 /// Returns `Some(CarControlsPod)` while the scripted sequence is active, or `None` once handed off to neural policy.
 pub fn nexto_scripted_kickoff_controls(
@@ -90,7 +95,7 @@ pub fn multi_car_heuristic_decide(
         return CarControlsPod::default();
     }
     let self_car = &state.cars[self_car_index];
-    if self_car.is_demoed > 0.5 {
+    if self_car.is_demoed > 0.0 {
         return CarControlsPod::default();
     }
 
@@ -112,7 +117,7 @@ pub fn multi_car_heuristic_decide(
         if idx == self_car_index || (active_car_mask & (1u32 << idx)) == 0 {
             continue;
         }
-        if slot_teams[idx] != self_team || state.cars[idx].is_demoed > 0.5 {
+        if slot_teams[idx] != self_team || state.cars[idx].is_demoed > 0.0 {
             continue;
         }
         let c = &state.cars[idx];
@@ -211,4 +216,111 @@ pub fn multi_car_heuristic_decide(
         boost,
         handbrake,
     }
+}
+
+/// Encodes Fury's 4 kickoff context scalars (kickoff phase, distance to ball, spawn role rank, nearest spawn distance).
+#[allow(clippy::too_many_arguments)]
+pub fn write_fury_kickoff_context_4(
+    obs: &mut [f32],
+    ptr: usize,
+    state: &GameStateBufferPod,
+    self_car_index: usize,
+    norm_self_team: u32,
+    self_phys: &CarPhysSnapshot,
+    teammates: &[SortedCarCandidate; MAX_CARS],
+    tm_len: usize,
+    opp_len: usize,
+    active_car_mask: u32,
+) -> usize {
+    let ball_centered = state.ball.pos[0].abs() <= 10.0
+        && state.ball.pos[1].abs() <= 10.0
+        && (state.ball.pos[2] - 93.15).abs() <= 25.0;
+    let ball_stationary =
+        state.ball.vel[0].powi(2) + state.ball.vel[1].powi(2) + state.ball.vel[2].powi(2) <= 25.0;
+    let is_kickoff_active = ball_centered && ball_stationary;
+
+    let mask = if active_car_mask != 0 {
+        active_car_mask & 0xFF
+    } else {
+        let count = (state.header.num_cars as usize).clamp(1, MAX_CARS);
+        (1u32 << count) - 1
+    };
+    let mut any_car_moving = false;
+    for idx in 0..MAX_CARS {
+        if (mask & (1u32 << idx)) == 0 {
+            continue;
+        }
+        let v = &state.cars[idx].vel;
+        if v[0] * v[0] + v[1] * v[1] + v[2] * v[2] > 225.0 {
+            any_car_moving = true;
+            break;
+        }
+    }
+    obs[ptr] = if is_kickoff_active {
+        if any_car_moving { 2.0 / 3.0 } else { 1.0 / 3.0 }
+    } else {
+        0.0
+    };
+
+    let sc = &state.cars[self_car_index];
+    let dist_to_ball = ((sc.pos[0] - state.ball.pos[0]).powi(2)
+        + (sc.pos[1] - state.ball.pos[1]).powi(2)
+        + (sc.pos[2] - state.ball.pos[2]).powi(2))
+    .sqrt();
+    obs[ptr + 1] = dist_to_ball * FURY_POS_COEF_X;
+
+    let mut role_int = 0i32;
+    if is_kickoff_active && !(tm_len == 0 && opp_len >= 2) {
+        let t_flip = if norm_self_team == 1 { -1.0f32 } else { 1.0f32 };
+        let mut entries = [(0usize, 0.0f32, 0.0f32); 3];
+        let mut team_indices = [self_car_index; 3];
+        let total_team = (1 + tm_len).min(3);
+        for i in 0..tm_len.min(2) {
+            team_indices[i + 1] = teammates[i].car_index;
+        }
+
+        for (entry_idx, &c_idx) in team_indices[..total_team].iter().enumerate() {
+            let cv = &state.cars[c_idx];
+            let mut best_spawn_dist = f32::INFINITY;
+            let mut best_spawn_y = 0.0f32;
+            for sp in &KICKOFF_SPAWN_TEAM0_XY {
+                let (sx, sy) = (sp[0] * t_flip, sp[1] * t_flip);
+                let d = (cv.pos[0] - sx).powi(2) + (cv.pos[1] - sy).powi(2);
+                if d < best_spawn_dist {
+                    best_spawn_dist = d;
+                    best_spawn_y = sy.abs();
+                }
+            }
+            entries[entry_idx] = (c_idx, best_spawn_y, cv.pos[0] * t_flip);
+        }
+
+        entries[..total_team].sort_by(|a, b| {
+            if (a.1 - b.1).abs() > 40.0 {
+                a.1.partial_cmp(&b.1).unwrap_or(core::cmp::Ordering::Equal)
+            } else {
+                b.2.partial_cmp(&a.2).unwrap_or(core::cmp::Ordering::Equal)
+            }
+        });
+
+        let rank = entries[..total_team].iter().position(|e| e.0 == self_car_index).unwrap_or(0);
+        role_int = match rank {
+            0 => 1,
+            1 => 2,
+            _ => 3,
+        };
+    }
+    obs[ptr + 2] = (role_int as f32) / 3.0;
+
+    let mut min_spawn_dist = f32::INFINITY;
+    for sp in &KICKOFF_SPAWN_TEAM0_XY {
+        let d = ((self_phys.pos_x - sp[0]).powi(2)
+            + (self_phys.pos_y - sp[1]).powi(2)
+            + (self_phys.pos_z - 17.0).powi(2))
+        .sqrt();
+        if d < min_spawn_dist {
+            min_spawn_dist = d;
+        }
+    }
+    obs[ptr + 3] = min_spawn_dist * FURY_POS_COEF_X;
+    ptr + 4
 }

@@ -4,7 +4,10 @@
 pub mod bot_director;
 pub mod heuristic_and_kickoff;
 pub mod layout_and_specs;
+pub mod mlp_obs_extended;
+pub mod mlp_obs_standard;
 pub mod safetensors_store;
+pub mod sequential_mlp;
 pub mod simd_math;
 
 pub use bot_director::BotDirector;
@@ -12,4 +15,5 @@ pub use layout_and_specs::{
     BotBatchInferenceOutputPod, BotCarSlotDiagnosticsPod, BotPolicyId, KickoffTimelineBufferPod,
     KickoffTimelineStepPod, MlpPolicyArchSpec,
 };
+
 

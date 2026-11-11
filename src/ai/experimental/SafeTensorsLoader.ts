@@ -11,11 +11,6 @@
 
 import { validateAssetResponse, resolveAssetPath } from '../../utils/AssetResponseValidator.ts';
 import { yieldToNextFrame } from '../../loader/frameBudgetScheduler.ts';
-import {
-  ensureWasmSimdMatVec,
-  preuploadSimdTensors,
-  preuploadSimdTensorsAsync,
-} from './wasmSimdMatVec.ts';
 
 export const EXPERIMENTAL_MODEL_URLS = Object.freeze({
   necto: '/assets/models/experimental/necto_policy.safetensors',
@@ -73,9 +68,12 @@ export interface SafeTensorEntry {
   data: Float32Array | Int32Array;
 }
 
+export type SafeTensorsMap = Record<string, SafeTensorEntry>;
+
 export interface ParsedSafeTensorsModel {
   metadata: Record<string, unknown>;
-  tensors: Record<string, SafeTensorEntry>;
+  tensors: SafeTensorsMap;
+  rawBuffer?: ArrayBuffer;
 }
 
 /**
@@ -143,13 +141,12 @@ export function parseSafeTensorsBuffer(buffer: ArrayBuffer): ParsedSafeTensorsMo
     }
   }
 
-  preuploadSimdTensors(tensors);
-  return { metadata, tensors };
+  return { metadata, tensors, rawBuffer: buffer };
 }
 
 /**
  * Time-sliced async SafeTensors parser that yields to the 120Hz render loop during
- * large F16 -> F32 weight conversions and WASM SIMD linear memory uploads.
+ * large F16 -> F32 weight conversions.
  */
 export async function parseSafeTensorsBufferAsync(
   buffer: ArrayBuffer
@@ -225,8 +222,7 @@ export async function parseSafeTensorsBufferAsync(
     }
   }
 
-  await preuploadSimdTensorsAsync(tensors);
-  return { metadata, tensors };
+  return { metadata, tensors, rawBuffer: buffer };
 }
 
 /**
@@ -253,7 +249,6 @@ export async function loadExperimentalPolicySafeTensors(
 
   const promise = (async () => {
     try {
-      await ensureWasmSimdMatVec();
       if (typeof fetch === 'function') {
         const res = await fetch(url);
         const check = validateAssetResponse(res, url, 'binary');
@@ -282,9 +277,6 @@ export async function loadExperimentalPolicySafeTensors(
  * @param {Object} parsedSafeTensors
  */
 export function registerCachedSafeTensors(modelId, parsedSafeTensors) {
-  if (parsedSafeTensors?.tensors) {
-    preuploadSimdTensors(parsedSafeTensors.tensors);
-  }
   _modelCache.set(modelId, parsedSafeTensors);
 }
 

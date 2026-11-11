@@ -15,8 +15,8 @@
 
 import type { RippleBotpackSpec } from './botpack9700488Specs.ts';
 import type { RippleObservationTensors } from './RippleObsBuilder.ts';
-import type { SafeTensorsMap } from './SequentialMlpEngine.ts';
-import { simdMatVecBias } from './wasmSimdMatVec.ts';
+import type { SafeTensorsMap } from './SafeTensorsLoader.ts';
+import { simdMatVecBias } from './botpack9700488Actions.ts';
 
 const MAX_DIM = 256;
 const MAX_FFN_DIM = 1024;

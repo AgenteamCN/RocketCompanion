@@ -16,53 +16,46 @@ import {
   registerCachedSafeTensors,
 } from './SafeTensorsLoader.ts';
 import { EarlPerceiverEngine } from './EarlPerceiverEngine.ts';
-import { SequentialMlpEngine, selectMaskedArgmax } from './SequentialMlpEngine.ts';
 import { RipplePerceiverEngine } from './RipplePerceiverEngine.ts';
 import {
-  DEFAULT_90_ACTIONS,
-  FURY_380_ACTIONS,
-  computeDefaultAction90Mask,
-  computeFuryAction380Mask,
-  mirrorActionControlsX,
   decodeNextoLogits,
   decodeNectoLogits,
+  selectMaskedArgmax,
   writeControlsToFloat8,
 } from './botpack9700488Actions.ts';
 import {
-  MLP_BOTPACK_SPECS,
   RIPPLE_BOTPACK_SPECS,
   getExperimentalBotPolicyMeta,
   type ExperimentalBotPolicyMeta,
 } from './botpack9700488Specs.ts';
-import {
-  buildChronosObs,
-  buildDiceObs,
-  buildKiraObs,
-  buildRainObs,
-} from './botpack9700488ObsCorePipeline.ts';
-import {
-  buildDuckyObs,
-  buildFuryObs,
-  buildGalactusObs,
-  type BallPredictionEnginePort,
-} from './botpack9700488ObsExtendedPipeline.ts';
+import type { BallPredictionEnginePort } from './botpackSharedBallPredPipeline.ts';
 import { RippleAgentState } from './RippleObsBuilder.ts';
 import { multiCarHeuristicDecide } from './multiCarHeuristicPolicy.ts';
 import {
   DEFAULT_CAR_CONTROLS,
+  decodeCarControls,
   getNextoKickoffControls,
   buildDynamicNextoObs,
   buildDynamicNectoObs,
   type CarControls,
   type BoostPadDescriptor,
 } from './experimentalMultiCarObsPipeline.ts';
-import type { ParsedSafeTensorsModel, SafeTensorEntry } from './SafeTensorsLoader.ts';
+import type { ParsedSafeTensorsModel } from './SafeTensorsLoader.ts';
 
 export type { ExperimentalBotPolicyMeta };
 
+const MLP_WASM_POLICY_IDS: Readonly<Record<string, number>> = Object.freeze({
+  chronos: 5,
+  dice: 6,
+  ducky: 7,
+  fury: 8,
+  galactus: 9,
+  kira: 10,
+  rain: 11,
+});
+
 // Shared zero-GC forward engines (stateless across calls; per-agent state stays on ExperimentalBotAgent)
 const sPerceiverEngine = new EarlPerceiverEngine();
-const sSequentialMlpEngine = new SequentialMlpEngine();
 const sRippleEngine = new RipplePerceiverEngine();
 
 /**
@@ -317,7 +310,7 @@ export class ExperimentalBotAgent {
         writeControlsToFloat8(this.action, this.prevAction8);
       } else {
         const enginePort = typeof physicsEngine === 'object' ? physicsEngine : null;
-        this._decideMlpBotpack9700488(simState, activeCars, enginePort, parsedModel.tensors);
+        this._decideMlpBotpack9700488(simState, boostPads, activeCars, enginePort, parsedModel);
       }
     } catch (err) {
       console.warn(
@@ -341,71 +334,50 @@ export class ExperimentalBotAgent {
 
   _decideMlpBotpack9700488(
     simState: Float32Array,
+    boostPads: ReadonlyArray<BoostPadDescriptor>,
     activeCars: Array<{ carIndex: number; team: number }>,
     physicsEngine: BallPredictionEnginePort | null | undefined,
-    tensors: Record<string, SafeTensorEntry>
+    parsedModel: ParsedSafeTensorsModel
   ): void {
-    const spec = MLP_BOTPACK_SPECS[this.botType] || MLP_BOTPACK_SPECS.rain;
-    let built: ReturnType<typeof buildRainObs>;
-
-    switch (this.botType) {
-      case 'chronos':
-        built = buildChronosObs(simState, this.action, this.carIndex, this.team, activeCars);
-        break;
-      case 'dice':
-        built = buildDiceObs(simState, this.action, this.carIndex, this.team, activeCars);
-        break;
-      case 'ducky':
-        built = buildDuckyObs(
-          simState,
-          this.action,
-          this.carIndex,
-          this.team,
-          activeCars,
-          physicsEngine
-        );
-        break;
-      case 'fury':
-        built = buildFuryObs(
-          simState,
-          this.action,
-          this.carIndex,
-          this.team,
-          activeCars,
-          physicsEngine
-        );
-        break;
-      case 'galactus':
-        built = buildGalactusObs(
-          simState,
-          this.action,
-          this.carIndex,
-          this.team,
-          activeCars,
-          physicsEngine
-        );
-        break;
-      case 'kira':
-        built = buildKiraObs(simState, this.action, this.carIndex, this.team, activeCars);
-        break;
-      case 'rain':
-      default:
-        built = buildRainObs(simState, this.action, this.carIndex, this.team, activeCars);
-        break;
+    const mod = (physicsEngine as { module?: Record<string, any> } | null)?.module;
+    const pid = MLP_WASM_POLICY_IDS[this.botType] ?? 11;
+    if (
+      mod &&
+      typeof mod._physics_isBotPolicyLoaded === 'function' &&
+      typeof mod._physics_stepBotInferenceMask === 'function'
+    ) {
+      if (mod._physics_isBotPolicyLoaded(pid) === 0 && parsedModel.rawBuffer) {
+        const byteLen = parsedModel.rawBuffer.byteLength;
+        const ptr = mod._malloc(byteLen);
+        if (ptr) {
+          mod.HEAPU8.set(new Uint8Array(parsedModel.rawBuffer), ptr);
+          mod._physics_loadBotWeights(pid, ptr, byteLen);
+          mod._free(ptr);
+        }
+      }
+      if (mod._physics_isBotPolicyLoaded(pid) !== 0) {
+        for (const entry of activeCars) {
+          const entryPid = entry.carIndex === this.carIndex ? pid : 0;
+          mod._physics_configureBotSlot(entry.carIndex, entryPid, entry.team, 1);
+        }
+        mod._physics_configureBotSlot(this.carIndex, pid, this.team, 1);
+        const outPtr = mod._physics_stepBotInferenceMask(1 << this.carIndex, 0);
+        if (outPtr) {
+          const baseF32 = (outPtr >> 2) + 4 + this.carIndex * 8;
+          this.action = decodeCarControls(mod.HEAPF32.subarray(baseF32, baseF32 + 8));
+          writeControlsToFloat8(this.action, this.prevAction8);
+          return;
+        }
+      }
     }
 
-    const logits = sSequentialMlpEngine.forward(built.obs, tensors, spec);
-    if (this.botType === 'fury') {
-      const mask = computeFuryAction380Mask(built.selfCarView, this.mask380);
-      const actIdx = selectMaskedArgmax(logits, mask);
-      const rawCtrl = FURY_380_ACTIONS[actIdx] || DEFAULT_CAR_CONTROLS;
-      this.action = { ...rawCtrl };
-    } else {
-      const mask = computeDefaultAction90Mask(built.selfCarView, this.mask90);
-      const actIdx = selectMaskedArgmax(logits, mask);
-      const rawCtrl = DEFAULT_90_ACTIONS[actIdx] || DEFAULT_CAR_CONTROLS;
-      this.action = built.mirrorX ? mirrorActionControlsX(rawCtrl) : { ...rawCtrl };
-    }
+    this.action = multiCarHeuristicDecide(
+      simState,
+      boostPads,
+      this.carIndex,
+      this.team,
+      activeCars
+    );
     writeControlsToFloat8(this.action, this.prevAction8);
   }
 }

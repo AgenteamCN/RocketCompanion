@@ -13,6 +13,7 @@ use crate::{
         KickoffTimelineBufferPod, KickoffTimelineStepPod, KICKOFF_MAX_PRECOMPUTE_STEPS,
     },
     safetensors_store::BotWeightRegistry,
+    sequential_mlp::step_mlp_policy_car,
     simd_math::mat_vec_bias,
 };
 
@@ -194,7 +195,7 @@ impl BotDirector {
                 continue;
             }
 
-            if sim.state_buffer.cars[car_idx].is_demoed > 0.5 {
+            if sim.state_buffer.cars[car_idx].is_demoed > 0.0 {
                 self.demo_timers[car_idx] = (self.demo_timers[car_idx] - (1.0 / 120.0)).max(0.0);
                 let zero_ctrl = CarControlsPod::default();
                 self.output.controls[car_idx] = zero_ctrl;
@@ -202,6 +203,7 @@ impl BotDirector {
                 continue;
             }
 
+            let prev_ctrl = self.output.controls[car_idx];
             let diag = &mut self.output.slot_diagnostics[car_idx];
             let pid = BotPolicyId::from_i32(diag.policy_id as i32);
             let team = self.slot_teams[car_idx];
@@ -213,7 +215,7 @@ impl BotDirector {
 
             if diag.tick_skip_remaining > 0 {
                 diag.tick_skip_remaining -= 1;
-                sim.controls_buffer[car_idx] = self.output.controls[car_idx];
+                sim.controls_buffer[car_idx] = prev_ctrl;
                 continue;
             }
 
@@ -233,9 +235,26 @@ impl BotDirector {
                 }
             }
 
-            // Tier-1 foundation fallback: until Tier-2 sub-branches populate individual Perceiver/MLP forward passes,
-            // fall back cleanly to the multi-car role-aware tactical heuristic so gameplay never stalls.
+            if chosen_ctrl.is_none() {
+                if let Some(weights) = self.weights.get(pid) {
+                    if let Some((mlp_ctrl, act_idx)) = step_mlp_policy_car(
+                        sim,
+                        pid,
+                        weights,
+                        car_idx,
+                        team,
+                        mask,
+                        &self.slot_teams,
+                        prev_ctrl,
+                    ) {
+                        diag.last_action_index = act_idx;
+                        chosen_ctrl = Some(mlp_ctrl);
+                    }
+                }
+            }
+
             let ctrl = chosen_ctrl.unwrap_or_else(|| {
+                diag.last_action_index = -1;
                 multi_car_heuristic_decide(
                     &sim.state_buffer,
                     car_idx,

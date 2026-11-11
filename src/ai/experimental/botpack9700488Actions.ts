@@ -467,3 +467,56 @@ export const RIPPLE_276_ACTIONS: ReadonlyArray<Readonly<CarControls>> = (() => {
 
   return Object.freeze(actions);
 })();
+
+/**
+ * Selects the action index with the highest logit among valid (unmasked) actions.
+ */
+export function selectMaskedArgmax(logits: Float32Array, mask: Uint8Array | null = null): number {
+  let bestIdx = 0;
+  let bestVal = -Infinity;
+  const len = logits.length;
+  for (let i = 0; i < len; i++) {
+    const raw = logits[i];
+    if (!Number.isFinite(raw)) continue;
+    const isValid = !mask || mask[i] !== 0;
+    const val = isValid ? raw : raw - 1e10;
+    if (val > bestVal) {
+      bestVal = val;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+/**
+ * 4-unrolled matrix-vector multiplication with optional bias:
+ *   out[outOffset + o] = sum_i(weight[o * inDim + i] * x[xOffset + i]) + (bias ? bias[o] : 0)
+ */
+export function simdMatVecBias(
+  x: Float32Array,
+  inDim: number,
+  outDim: number,
+  weight: Float32Array,
+  bias: Float32Array | null,
+  out: Float32Array,
+  xOffset = 0,
+  outOffset = 0
+): void {
+  const inDim4 = inDim & ~3;
+  for (let o = 0; o < outDim; o++) {
+    let sum = bias ? bias[o] : 0.0;
+    const wOff = o * inDim;
+    let i = 0;
+    for (; i < inDim4; i += 4) {
+      sum +=
+        weight[wOff + i] * x[xOffset + i] +
+        weight[wOff + i + 1] * x[xOffset + i + 1] +
+        weight[wOff + i + 2] * x[xOffset + i + 2] +
+        weight[wOff + i + 3] * x[xOffset + i + 3];
+    }
+    for (; i < inDim; i++) {
+      sum += weight[wOff + i] * x[xOffset + i];
+    }
+    out[outOffset + o] = sum;
+  }
+}
