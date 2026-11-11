@@ -1,26 +1,18 @@
 /**
  * multiplayerRoomReproPhenomenaPipeline.ts
- * Modular diagnostic probes for reproducing the 4 Multiplayer Online Match &
- * Trajectory Predictor phenomena:
- * - Phenomenon A: Host forced takeover in Online Match (except 1v1) via neutral
- *   localTeam / bot_fill_1 slot 0 takeover and duplicate applyBotFillPolicy.
- * - Phenomenon B: Car names forced to generic 'Car 1..4' during/after Goal Replay
- *   and Host missing Client visibility while Client sees all vehicles normally.
- * - Phenomenon C: Client unable to see Host's Lobby diagnostic probes (#6 & #7)
- *   and Host probe name tags resolving to 'AlphaStriker' & 'Captain Ping' instead
- *   of 'Boost' & 'Roll'.
- * - Phenomenon D: BallTrajectoryPredictor constantly resetting to 5 ticks
- *   ('full-initial' / 'full-deviation') on every network reconciliation frame.
+ * Modular diagnostic probes for reproducing Multiplayer Online Match &
+ * Trajectory Predictor phenomena (Phenomena A, B, C, D) plus the headless
+ * variable-rate simulation pacing controller.
  */
 
 import { getNameTagConfig, getNameTagRuntimeState, useAppStore } from '../runtimeUiPort.ts';
 import { startGoalReplayDirectorSession } from '../runtime/signalWorldTransitionPipeline.ts';
 import type { RuntimeSignalHostPort } from '../runtime/RuntimeGoalReplaySignalSubController.ts';
 import { roundMetric } from './scenarioMetricsPipeline.ts';
+import type { ReproProbeRuntimeView } from './multiplayerRoomReproEdgeCaseTypes.ts';
 import type {
   ReproHostTakeoverDiagnosticSnapshot,
   ReproLobbyProbeDiagnosticSnapshot,
-  ReproProbeRuntimeView,
   ReproRole,
   ReproRosterMode,
   ReproRosterVisibilityAndNameTagSnapshot,
@@ -183,8 +175,6 @@ export async function probeHostTakeoverPhenomenon(
   const activeBotCountInMatch = rosterPlayers.filter((p) => Boolean(p?.isBot)).length;
   const botFillRunsInMode = activeBotCountInMatch > 0;
 
-  // Trigger the UI role-switch call when Host's localTeam is 'neutral' (teamCode=2)
-  // or switches to spectator in an auto_fill room:
   targetView.matchPort?.switchOnlineRoleOrTeam?.('spectator', 2);
   await sleepMs(250);
 
@@ -230,18 +220,13 @@ export async function probeBallTrajectoryPredictorOnlineResets(
     predictor.setSceneContext?.({ isGoalReplayActive: false, isPodiumActive: false });
   }
 
-  // Launch the ball high into mid-air flight so it flies undisturbed without touching anything
   const launchState = {
     pos: [0, 0, 950] as [number, number, number],
     vel: [180, 720, 420] as [number, number, number],
     angVel: [0, 0, 0] as [number, number, number],
   };
-  if (server?.sim?.setBallState) {
-    server.sim.setBallState(launchState);
-  }
-  if (phys?.setBallState) {
-    phys.setBallState(launchState);
-  }
+  server?.sim?.setBallState?.(launchState);
+  phys?.setBallState?.(launchState);
 
   const catchupTicksPerFrame = Number(predictor?.settings?.catchupTicksPerFrame ?? 5);
   const maxPredictionTicks = Number(predictor?.settings?.predictionTicks ?? 600);
@@ -370,11 +355,17 @@ export function createTrajectoryObservationTracker(
   };
 }
 
+export interface ReproHeadlessPacingController {
+  getTargetHz: () => number;
+  setTargetHz: (hz: number) => void;
+  stop: () => void;
+}
+
 export function startHeadlessReproPacingLoop(
   targetView: ReproProbeRuntimeView,
   speedMultiplier: number,
   onFrameStepped: () => void
-): ReturnType<typeof setInterval> {
+): ReproHeadlessPacingController {
   const mutableRuntime = targetView as {
     setupAudio?: () => Promise<void>;
     setupBot?: () => Promise<void>;
@@ -389,9 +380,16 @@ export function startHeadlessReproPacingLoop(
     };
   }
 
-  const extraSimTicks = Math.max(3, 3 * speedMultiplier);
+  let currentTargetHz = Math.max(60, 120 * speedMultiplier);
   let syntheticNow = performance.now();
-  return setInterval(() => {
+  let tickDebt = 0;
+
+  const timerId = setInterval(() => {
+    tickDebt += (currentTargetHz * 33) / 1000;
+    const totalTicks = Math.max(1, Math.floor(tickDebt));
+    tickDebt -= totalTicks;
+    const extraSimTicks = Math.max(0, totalTicks - 1);
+
     for (let i = 0; i < extraSimTicks; i++) {
       syntheticNow += 1000 / 120;
       try {
@@ -408,4 +406,12 @@ export function startHeadlessReproPacingLoop(
       console.error(err);
     }
   }, 33);
+
+  return {
+    getTargetHz: () => currentTargetHz,
+    setTargetHz: (hz: number) => {
+      currentTargetHz = Math.max(60, Math.min(960, hz));
+    },
+    stop: () => clearInterval(timerId),
+  };
 }

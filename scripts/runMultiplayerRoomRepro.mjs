@@ -17,8 +17,8 @@ import fs from 'node:fs';
 import { createServer } from 'vite';
 
 const DEFAULT_OUT_PATH = '/tmp/multiplayer-room-repro-report.json';
-const DEFAULT_MAX_DURATION_MS = 270_000;
-const PER_MODE_TIMEOUT_MS = 95_000;
+const DEFAULT_MAX_DURATION_MS = 285_000;
+const PER_MODE_TIMEOUT_MS = 115_000;
 
 function parseCliArgs(argv) {
   let mode = 'all';
@@ -26,6 +26,10 @@ function parseCliArgs(argv) {
   let maxDurationMs = DEFAULT_MAX_DURATION_MS;
   let outPath = DEFAULT_OUT_PATH;
   let bridgeSignaling = true;
+  let probes = 'all';
+  let latencyMs = 50;
+  let bandwidthKbps = 512;
+  let physicsHz = '60,90,100,120,144';
 
   for (const arg of argv.slice(2)) {
     if (arg.startsWith('--mode=')) {
@@ -35,6 +39,15 @@ function parseCliArgs(argv) {
       }
     } else if (arg.startsWith('--speed=')) {
       speed = Math.max(1, Math.min(8, Number(arg.slice('--speed='.length)) || 1));
+    } else if (arg.startsWith('--probe=') || arg.startsWith('--probes=')) {
+      const eq = arg.indexOf('=');
+      probes = arg.slice(eq + 1).trim() || 'all';
+    } else if (arg.startsWith('--latency-ms=')) {
+      latencyMs = Math.max(0, Math.min(300, Number(arg.slice('--latency-ms='.length)) || 0));
+    } else if (arg.startsWith('--bandwidth-kbps=')) {
+      bandwidthKbps = Math.max(32, Number(arg.slice('--bandwidth-kbps='.length)) || 512);
+    } else if (arg.startsWith('--physics-hz=')) {
+      physicsHz = arg.slice('--physics-hz='.length).trim() || '60,90,100,120,144';
     } else if (arg.startsWith('--max-duration-ms=')) {
       maxDurationMs = Math.max(
         15_000,
@@ -48,7 +61,18 @@ function parseCliArgs(argv) {
   }
 
   const modesToRun = mode === 'all' || mode === 'both' ? ['2p', '2p2ai', '3p3ai'] : [mode];
-  return { mode, modesToRun, speed, maxDurationMs, outPath, bridgeSignaling };
+  return {
+    mode,
+    modesToRun,
+    speed,
+    probes,
+    latencyMs,
+    bandwidthKbps,
+    physicsHz,
+    maxDurationMs,
+    outPath,
+    bridgeSignaling,
+  };
 }
 
 function formatEventStreamLine(evt) {
@@ -79,6 +103,14 @@ function formatEventStreamLine(evt) {
     const d = evt.diag;
     return `[Stream][LobbyProbeDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] fleetEnabled=${d.fleetControllerEnabled} mask=0x${d.serverActiveCarMask.toString(16)} car6Vis=${d.car6MeshVisible}(name=${JSON.stringify(d.car6ResolvedNameTag)},exp=${d.expectedCar6NameTag}) car7Vis=${d.car7MeshVisible}(name=${JSON.stringify(d.car7ResolvedNameTag)},exp=${d.expectedCar7NameTag}) hostMismatch=${d.hostProbeNamesMismatch} clientBlind=${d.clientCannotSeeHostProbes}`;
   }
+  if (evt.type === 'lobby_goal_reset_diag') {
+    const d = evt.diag;
+    return `[Stream][LobbyGoalResetDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] dualWorld=${d.isLobbyDualWorld} maxAbsY=${d.maxObservedAbsBallY} postBallY=${d.postWaitBallPos[1]} resetObserved=${d.ballResetToCenterObserved} stuckInGoal=${d.ballStuckInGoal}`;
+  }
+  if (evt.type === 'network_latency_hud_diag') {
+    const d = evt.diag;
+    return `[Stream][NetLatencyHudDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] injected=${d.injectedUplinkMs}/${d.injectedDownlinkMs}ms rtt=${d.channelMeasuredRttMsAfterPing}ms(rec=${d.reconcilerRttMs}ms) pings=${d.pingsSentDelta}/${d.pongsReceivedDelta} bw=${d.realizedThroughputKbps}kbps hudBlurPing=${d.hudPeerPingDuringPowerSaveMs}ms(droppedTo18=${d.hudDroppedToHardcoded18Ms})`;
+  }
   if (evt.type === 'roster_visibility_probe') {
     const p = evt.probe;
     const names = p.nameTagCarEntries.map((e) => `#${e.carIndex}:${e.name}`).join(', ');
@@ -91,6 +123,15 @@ function formatEventStreamLine(evt) {
   if (evt.type === 'trajectory_diag') {
     const t = evt.summary;
     return `[Stream][TrajectoryDiag][${t.rosterMode}][${t.role}] writeRevDelta=+${t.writeRevisionIncrementsDuringFlight} fullResets=${t.fullResetCountDuringFlight}/${t.samples.length} predCountRange=[${t.minPredictionCountObserved}..${t.maxPredictionCountObserved}]/${t.maxPredictionTicks} catchupBudget=${t.catchupTicksPerFrame} collapsed=${t.trajectoryCollapsedBelow30Ticks}`;
+  }
+  if (evt.type === 'physics_rate_sweep_diag') {
+    const d = evt.diag;
+    const stepStr = d.steps.map((s) => `${s.targetHz}->${s.realizedRateHz}Hz`).join(', ');
+    return `[Stream][PhysicsRateSweepDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] steps=[${stepStr}] snaps=${d.totalHardSnapsAcrossSweep} starvations=${d.totalStarvationsAcrossSweep}`;
+  }
+  if (evt.type === 'goal_replay_kickoff_diag') {
+    const d = evt.diag;
+    return `[Stream][GoalReplayKickoffDiag][${d.rosterMode}][${d.role} +${d.elapsedMs}ms] completed=${d.goalsCompletedToPlaying}/${d.goalsAttempted} tickRegressed=${d.anyTickRegressionDetected} fallbackWarns=${d.totalKickoffFallbackWarnings} clientFrozen=${d.clientFrozenAfterReplay}`;
   }
   if (evt.type === 'reconciler_snap') {
     const s = evt.sample;
@@ -109,7 +150,7 @@ function formatEventStreamLine(evt) {
   }
   if (evt.type === 'role_summary') {
     const s = evt.summary;
-    return `[Stream][RoleSummary][${s.rosterMode}][${s.role}] elapsed=${s.elapsedMs}ms snaps=${s.reconcilerSnapLogCount} starvations=${s.inputStarvationLogCount} rttErrors=${s.readonlyRttTypeErrorCount} enteredMatch=${s.enteredMatch} final=${s.finalMatchMode}/${s.finalMatchPhase}`;
+    return `[Stream][RoleSummary][${s.rosterMode}][${s.role}] elapsed=${s.elapsedMs}ms snaps=${s.reconcilerSnapLogCount} starvations=${s.inputStarvationLogCount} fallbackWarns=${s.kickoffFallbackWarnCount ?? 0} rttErrors=${s.readonlyRttTypeErrorCount} enteredMatch=${s.enteredMatch} final=${s.finalMatchMode}/${s.finalMatchPhase}`;
   }
   return `[Stream] ${JSON.stringify(evt)}`;
 }
@@ -256,12 +297,16 @@ async function main() {
       reproMode: rosterMode,
       reproRoom: roomCode,
       reproSpeed: String(opts.speed),
+      reproProbes: opts.probes,
+      reproLatencyMs: String(opts.latencyMs),
+      reproBandwidthKbps: String(opts.bandwidthKbps),
+      reproPhysicsHz: opts.physicsHz,
       reproBridgeSignaling: opts.bridgeSignaling ? '1' : '0',
     });
 
     const targetUrl = `${protocol}://127.0.0.1:${port}/?${queryParams.toString()}`;
     console.log(
-      `\n[MultiplayerRoomRepro] === Starting scenario ${i + 1}/${opts.modesToRun.length}: mode=${rosterMode} (room=${roomCode}) ===`
+      `\n[MultiplayerRoomRepro] === Starting scenario ${i + 1}/${opts.modesToRun.length}: mode=${rosterMode} (room=${roomCode}, probes=${opts.probes}) ===`
     );
 
     const modeDonePromise = new Promise((resolve) => {
@@ -379,6 +424,10 @@ async function main() {
     totalWallDurationMs: Date.now() - suiteStartMs,
     autoTerminatedByWatchdog,
     configuredModes: opts.modesToRun,
+    configuredProbes: opts.probes,
+    latencyMs: opts.latencyMs,
+    bandwidthKbps: opts.bandwidthKbps,
+    physicsHz: opts.physicsHz,
     speedMultiplier: opts.speed,
     scenarios: opts.modesToRun.map((m) => ({
       rosterMode: m,
@@ -407,7 +456,7 @@ async function main() {
         `  [Host]   reconcilerSnapLogs=${h.reconcilerSnapLogCount} (hardSnaps=${h.handshakeDiagnostics.reconcilerHardSnapCount}, corrections=${h.handshakeDiagnostics.reconcilerCorrections})`
       );
       console.log(
-        `  [Host]   inputStarvationLogs=${h.inputStarvationLogCount} | enteredMatch=${h.enteredMatch} (${h.finalMatchMode}/${h.finalMatchPhase})`
+        `  [Host]   inputStarvationLogs=${h.inputStarvationLogCount} | kickoffFallbackWarns=${h.kickoffFallbackWarnCount ?? 0} | enteredMatch=${h.enteredMatch} (${h.finalMatchMode}/${h.finalMatchPhase})`
       );
       console.log(
         `  [Host]   P2PWebRTCChannel.hasOwnIsHost=${h.handshakeDiagnostics.hasOwnIsHostProperty}, isHost=${String(h.handshakeDiagnostics.channelIsHostValue)}, rawCrossTabJoinedBeforeBridge=${h.rawCrossTabJoinedBeforeBridge}`
@@ -416,6 +465,18 @@ async function main() {
         const lp = h.lobbyProbeDiagnostics;
         console.log(
           `  [Host]   [Phenomenon C: Lobby Probes] car6Name=${JSON.stringify(lp.car6ResolvedNameTag)} (exp="Boost"), car7Name=${JSON.stringify(lp.car7ResolvedNameTag)} (exp="Roll") | mismatch=${lp.hostProbeNamesMismatch}`
+        );
+      }
+      if (h.lobbyGoalResetDiagnostics) {
+        const gr = h.lobbyGoalResetDiagnostics;
+        console.log(
+          `  [Host]   [Edge-Case 1: Lobby Goal Reset] maxAbsY=${gr.maxObservedAbsBallY} -> postY=${gr.postWaitBallPos[1]} | resetObserved=${gr.ballResetToCenterObserved} | stuckInGoal=${gr.ballStuckInGoal}`
+        );
+      }
+      if (h.networkLatencyHudDiagnostics) {
+        const nl = h.networkLatencyHudDiagnostics;
+        console.log(
+          `  [Host]   [Edge-Case 2: 50ms/50ms Latency & HUD] rtt=${nl.channelMeasuredRttMsAfterPing}ms | pings=${nl.pingsSentDelta}/${nl.pongsReceivedDelta} | bw=${nl.realizedThroughputKbps}kbps | hudBlurPing=${nl.hudPeerPingDuringPowerSaveMs}ms (droppedTo18=${nl.hudDroppedToHardcoded18Ms})`
         );
       }
       if (h.hostTakeoverDiagnostics) {
@@ -441,6 +502,18 @@ async function main() {
           `  [Host]   [Phenomenon D: Trajectory] writeRevDelta=+${td.writeRevisionIncrementsDuringFlight} | fullResets=${td.fullResetCountDuringFlight}/${td.samples.length} | predCount=[${td.minPredictionCountObserved}..${td.maxPredictionCountObserved}]/${td.maxPredictionTicks} (catchup=${td.catchupTicksPerFrame}) | collapsed=${td.trajectoryCollapsedBelow30Ticks}`
         );
       }
+      if (h.physicsRateSweepDiagnostics) {
+        const ps = h.physicsRateSweepDiagnostics;
+        console.log(
+          `  [Host]   [Edge-Case 4: Physics Rate Sweep] range=[${ps.minRealizedHz}..${ps.maxRealizedHz}]Hz | snaps=${ps.totalHardSnapsAcrossSweep} | starvations=${ps.totalStarvationsAcrossSweep}`
+        );
+      }
+      if (h.goalReplayKickoffDiagnostics) {
+        const gk = h.goalReplayKickoffDiagnostics;
+        console.log(
+          `  [Host]   [Edge-Case 3: 2-Goal Replay->Kickoff] completed=${gk.goalsCompletedToPlaying}/${gk.goalsAttempted} | tickRegressed=${gk.anyTickRegressionDetected} | fallbackWarns=${gk.totalKickoffFallbackWarnings}`
+        );
+      }
       const anomalyCount = h.poseProbes.reduce((acc, p) => acc + p.anomalies.length, 0);
       console.log(
         `  [Host]   poseProbes=${h.poseProbes.length} | detectedPoseAnomalies=${anomalyCount}`
@@ -460,12 +533,24 @@ async function main() {
         : `stuck at mode=${c.finalMatchMode}, phase=${c.finalMatchPhase}`;
       console.log(`  [Client] enteredMatch=${c.enteredMatch} (${clientStateLabel})`);
       console.log(
-        `  [Client] readonlyRttTypeErrorCount=${c.readonlyRttTypeErrorCount} | measuredRttGetterOnly=${c.handshakeDiagnostics.measuredRttGetterOnly} | isCrossTab=${c.handshakeDiagnostics.isCrossTab}`
+        `  [Client] readonlyRttTypeErrorCount=${c.readonlyRttTypeErrorCount} | kickoffFallbackWarns=${c.kickoffFallbackWarnCount ?? 0} | isCrossTab=${c.handshakeDiagnostics.isCrossTab}`
       );
       if (c.lobbyProbeDiagnostics) {
         const clp = c.lobbyProbeDiagnostics;
         console.log(
           `  [Client] [Phenomenon C: Lobby Probes] serverActiveMask=0x${clp.serverActiveCarMask.toString(16)} (bits6&7=${clp.serverCar6BitActive && clp.serverCar7BitActive}) | car6Vis=${clp.car6MeshVisible}, car7Vis=${clp.car7MeshVisible} | clientBlindToHostProbes=${clp.clientCannotSeeHostProbes}`
+        );
+      }
+      if (c.lobbyGoalResetDiagnostics) {
+        const cgr = c.lobbyGoalResetDiagnostics;
+        console.log(
+          `  [Client] [Edge-Case 1: Lobby Goal Reset] dualWorld=${cgr.isLobbyDualWorld} | maxAbsY=${cgr.maxObservedAbsBallY} -> postY=${cgr.postWaitBallPos[1]} | resetObserved=${cgr.ballResetToCenterObserved} | stuckInGoal=${cgr.ballStuckInGoal}`
+        );
+      }
+      if (c.networkLatencyHudDiagnostics) {
+        const cnl = c.networkLatencyHudDiagnostics;
+        console.log(
+          `  [Client] [Edge-Case 2: 50ms/50ms Latency & HUD] rtt=${cnl.channelMeasuredRttMsAfterPing}ms (rec=${cnl.reconcilerRttMs}ms) | pings=${cnl.pingsSentDelta}/${cnl.pongsReceivedDelta} | bw=${cnl.realizedThroughputKbps}kbps | hudBlurPing=${cnl.hudPeerPingDuringPowerSaveMs}ms (droppedTo18=${cnl.hudDroppedToHardcoded18Ms})`
         );
       }
       if (Array.isArray(c.rosterVisibilityProbes) && c.rosterVisibilityProbes.length > 0) {
@@ -480,6 +565,18 @@ async function main() {
         const ctd = c.trajectoryDiagnostics;
         console.log(
           `  [Client] [Phenomenon D: Trajectory] writeRevDelta=+${ctd.writeRevisionIncrementsDuringFlight} | fullResets=${ctd.fullResetCountDuringFlight}/${ctd.samples.length} | predCount=[${ctd.minPredictionCountObserved}..${ctd.maxPredictionCountObserved}]/${ctd.maxPredictionTicks} | collapsed=${ctd.trajectoryCollapsedBelow30Ticks}`
+        );
+      }
+      if (c.physicsRateSweepDiagnostics) {
+        const cps = c.physicsRateSweepDiagnostics;
+        console.log(
+          `  [Client] [Edge-Case 4: Physics Rate Sweep] range=[${cps.minRealizedHz}..${cps.maxRealizedHz}]Hz | snaps=${cps.totalHardSnapsAcrossSweep} | starvations=${cps.totalStarvationsAcrossSweep}`
+        );
+      }
+      if (c.goalReplayKickoffDiagnostics) {
+        const cgk = c.goalReplayKickoffDiagnostics;
+        console.log(
+          `  [Client] [Edge-Case 3: 2-Goal Replay->Kickoff] completed=${cgk.goalsCompletedToPlaying}/${cgk.goalsAttempted} | tickRegressed=${cgk.anyTickRegressionDetected} | fallbackWarns=${cgk.totalKickoffFallbackWarnings} | clientFrozen=${cgk.clientFrozenAfterReplay}`
         );
       }
       const clientAnomalyCount = c.poseProbes.reduce((acc, p) => acc + p.anomalies.length, 0);

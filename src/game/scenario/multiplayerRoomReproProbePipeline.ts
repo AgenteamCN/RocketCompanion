@@ -1,30 +1,34 @@
 /**
  * multiplayerRoomReproProbePipeline.ts
- * Pure helper pipeline for sampling vehicle physics (CarStateView) and 3D scenegraph
- * (arena.cars & arena.carWheels) poses, detecting entry orientation/wheel anomalies,
- * inspecting P2PWebRTCChannel / PredictionReconciler handshake state, and streaming
- * real-time reproduction telemetry.
+ * Pure helper pipeline for parsing URL probe configuration, sampling vehicle
+ * physics (CarStateView) and 3D scenegraph (arena.cars & arena.carWheels) poses,
+ * detecting entry orientation/wheel anomalies, inspecting P2PWebRTCChannel /
+ * PredictionReconciler handshake state, and streaming reproduction telemetry.
  */
 
 import { captureRuntimeReplayCarEntries } from '../../replay/replayDirectorCarRosterPipeline.ts';
 import { getNameTagRuntimeState } from '../runtimeUiPort.ts';
 import { roundMetric } from './scenarioMetricsPipeline.ts';
+import {
+  ALL_REPRO_PROBE_IDS,
+  type ReproInspectableWebRtcChannel,
+  type ReproProbeBallView,
+  type ReproProbeCarView,
+  type ReproProbeId,
+  type ReproProbeRuntimeView,
+  type ReproTrajectoryObservationWindow,
+} from './multiplayerRoomReproEdgeCaseTypes.ts';
 import type {
   ReproBallTrajectorySample,
   ReproHandshakeDiagnosticSnapshot,
-  ReproInspectableWebRtcChannel,
   ReproMeshCarPoseSample,
   ReproNameTagSample,
   ReproPoseAnomalyItem,
   ReproPoseProbeSnapshot,
-  ReproProbeBallView,
-  ReproProbeCarView,
-  ReproProbeRuntimeView,
   ReproRole,
   ReproRosterMode,
   ReproSimCarPoseSample,
   ReproStreamEvent,
-  ReproTrajectoryObservationWindow,
   ReproUrlConfig,
 } from './multiplayerRoomReproTypes.ts';
 
@@ -36,6 +40,37 @@ export type {
   ReproTrajectoryObservationWindow,
 };
 
+const DEFAULT_PHYSICS_HZ_STEPS: readonly number[] = Object.freeze([60, 90, 100, 120, 144]);
+
+export function parseEnabledProbeList(
+  raw: string | null | undefined,
+  rosterMode: ReproRosterMode = '2p'
+): readonly ReproProbeId[] {
+  const clean = String(raw || 'all')
+    .trim()
+    .toLowerCase();
+  if (clean === 'full') {
+    return ALL_REPRO_PROBE_IDS;
+  }
+  if (!clean || clean === 'all') {
+    return rosterMode === '2p'
+      ? ALL_REPRO_PROBE_IDS
+      : ALL_REPRO_PROBE_IDS.filter((id) => id !== 'goal-replay-kickoff-freeze');
+  }
+  const tokens = clean
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const valid = tokens.filter((t): t is ReproProbeId =>
+    (ALL_REPRO_PROBE_IDS as readonly string[]).includes(t)
+  );
+  return valid.length > 0 ? valid : ALL_REPRO_PROBE_IDS;
+}
+
+export function shouldRunReproProbe(cfg: ReproUrlConfig, probeId: ReproProbeId): boolean {
+  return cfg.enabledProbes.includes(probeId);
+}
+
 export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
   if (typeof window === 'undefined' || !window.location?.search) {
     return {
@@ -45,6 +80,10 @@ export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
       speedMultiplier: 1,
       peerIndex: 1,
       bridgeSignalingAfterProbe: true,
+      enabledProbes: ALL_REPRO_PROBE_IDS,
+      latencyMs: 50,
+      bandwidthKbps: 512,
+      physicsHzSteps: DEFAULT_PHYSICS_HZ_STEPS,
     };
   }
   const params = new URLSearchParams(window.location.search);
@@ -59,9 +98,24 @@ export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
   const speedMultiplier =
     Number.isFinite(rawSpeed) && rawSpeed >= 1 ? Math.min(8, Math.round(rawSpeed)) : 1;
   const rawPeerIdx = Number(params.get('reproPeerIdx') || 1);
-  const peerIndex = Number.isFinite(rawPeerIdx) && rawPeerIdx >= 1 ? Math.round(rawPeerIdx) : 1;
+  const peerIndex =
+    Number(rawPeerIdx) >= 1 && Number.isFinite(rawPeerIdx) ? Math.round(rawPeerIdx) : 1;
   const bridgeParam = params.get('reproBridgeSignaling');
   const bridgeSignalingAfterProbe = bridgeParam !== '0' && bridgeParam !== 'false';
+  const enabledProbes = parseEnabledProbeList(params.get('reproProbes'), rosterMode);
+  const rawLatency = Number(params.get('reproLatencyMs') ?? 50);
+  const latencyMs =
+    Number.isFinite(rawLatency) && rawLatency >= 0 ? Math.min(300, Math.round(rawLatency)) : 50;
+  const rawBw = Number(params.get('reproBandwidthKbps') ?? 512);
+  const bandwidthKbps = Number.isFinite(rawBw) && rawBw >= 32 ? Math.round(rawBw) : 512;
+  const rawHz = params.get('reproPhysicsHz');
+  const parsedHz = rawHz
+    ? rawHz
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n) && n >= 60 && n <= 144)
+    : [];
+  const physicsHzSteps = parsedHz.length > 0 ? parsedHz : DEFAULT_PHYSICS_HZ_STEPS;
 
   return {
     role,
@@ -70,6 +124,10 @@ export function parseMultiplayerRoomReproUrlConfig(): ReproUrlConfig {
     speedMultiplier,
     peerIndex,
     bridgeSignalingAfterProbe,
+    enabledProbes,
+    latencyMs,
+    bandwidthKbps,
+    physicsHzSteps,
   };
 }
 
@@ -109,10 +167,7 @@ export function sampleSimAndMeshVehiclePose(
       roundMetric(cv.getWheelSusLength(2), 3),
       roundMetric(cv.getWheelSusLength(3), 3),
     ];
-    const frontSusAvg = (sus[0] + sus[1]) * 0.5;
-    const rearSusAvg = (sus[2] + sus[3]) * 0.5;
-    const frontRearSusDelta = roundMetric(frontSusAvg - rearSusAvg, 3);
-
+    const frontRearSusDelta = roundMetric((sus[0] + sus[1]) * 0.5 - (sus[2] + sus[3]) * 0.5, 3);
     const sample: ReproSimCarPoseSample = {
       idx: i,
       active: isSlotActive,
@@ -161,7 +216,7 @@ export function sampleSimAndMeshVehiclePose(
       anomalies.push({
         carIndex: i,
         kind: 'chassis_pitch_tilt_on_ground',
-        description: `Car #${i} pitched with fwdZ=${sample.fwdZ}, frontRearSusDelta=${sample.frontRearSusDelta} (sus=[${sample.sus.join(', ')}])`,
+        description: `Car #${i} pitched with fwdZ=${sample.fwdZ}, frontRearSusDelta=${sample.frontRearSusDelta}`,
       });
     }
   }
@@ -202,21 +257,22 @@ export function sampleSimAndMeshVehiclePose(
       anomalies.push({
         carIndex: i,
         kind: 'front_rear_wheel_height_asymmetry',
-        description: `Car #${i} (${preset}/${hitbox}) front vs rear wheel mount Y delta=${frontRearWheelHeightDeltaY} UU (wheelHeightsY=[${wheelHeightsY.join(', ')}])`,
+        description: `Car #${i} (${preset}/${hitbox}) front vs rear wheel Y delta=${frontRearWheelHeightDeltaY} UU`,
       });
     }
   }
 
-  const rawNameTags = getNameTagRuntimeState()?.carEntries ?? [];
-  const nameTagEntries: ReproNameTagSample[] = rawNameTags.map((e) => ({
-    carIndex: Number(e.carIndex ?? -1),
-    name: String(e.name ?? ''),
-    team: Number(e.team ?? 0),
-    isBot: Boolean((e as { isBot?: boolean }).isBot),
-  }));
-
-  const rawReplayEntries = captureRuntimeReplayCarEntries(targetView as never);
-  const replayRosterNames: ReproNameTagSample[] = rawReplayEntries.map((e) => ({
+  const nameTagEntries: ReproNameTagSample[] = (getNameTagRuntimeState()?.carEntries ?? []).map(
+    (e) => ({
+      carIndex: Number(e.carIndex ?? -1),
+      name: String(e.name ?? ''),
+      team: Number(e.team ?? 0),
+      isBot: Boolean((e as { isBot?: boolean }).isBot),
+    })
+  );
+  const replayRosterNames: ReproNameTagSample[] = captureRuntimeReplayCarEntries(
+    targetView as never
+  ).map((e) => ({
     carIndex: Number(e.carIndex ?? -1),
     name: String(e.name ?? ''),
     team: Number(e.team ?? 0),
@@ -224,11 +280,6 @@ export function sampleSimAndMeshVehiclePose(
   }));
 
   const ballView = sim?.getBallStateView?.();
-  const ballPosZ = roundMetric(ballView?.posZ ?? 0, 2);
-  const ballSpeed = roundMetric(
-    Math.hypot(ballView?.velX ?? 0, ballView?.velY ?? 0, ballView?.velZ ?? 0),
-    2
-  );
   const btp = targetView.ballTrajectoryPredictor;
   const predictionCount = Number(btp?.predictionCount ?? 0);
   const ballTrajectory: ReproBallTrajectorySample = {
@@ -239,8 +290,11 @@ export function sampleSimAndMeshVehiclePose(
       trajWindow?.maxObservedPredictionCount ?? 0
     ),
     collapseToCatchupCount: trajWindow?.collapseToCatchupCount ?? 0,
-    ballPosZ,
-    ballSpeed,
+    ballPosZ: roundMetric(ballView?.posZ ?? 0, 2),
+    ballSpeed: roundMetric(
+      Math.hypot(ballView?.velX ?? 0, ballView?.velY ?? 0, ballView?.velZ ?? 0),
+      2
+    ),
   };
 
   if (stage === 'host_lobby_1500ms' || stage === 'client_lobby_connected') {
@@ -254,14 +308,13 @@ export function sampleSimAndMeshVehiclePose(
         anomalies.push({
           carIndex: probeIdx,
           kind: 'lobby_diagnostic_probe_missing_or_misnamed',
-          description: `Lobby probe #${probeIdx} on ${role}: visible=${hasMesh}, nameTag=${JSON.stringify(tag?.name ?? null)} (expected '${expectedName}')`,
+          description: `Lobby probe #${probeIdx} on ${role}: visible=${hasMesh}, nameTag=${JSON.stringify(tag?.name ?? null)}`,
         });
       }
     }
   }
 
-  const isActiveMatchStage = stage.startsWith('host_match_') || stage.startsWith('client_match_');
-  if (isActiveMatchStage) {
+  if (stage.startsWith('host_match_') || stage.startsWith('client_match_')) {
     const expectedLocalCarIdx = role === 'host' ? 0 : 1;
     if (playerCarIndex !== expectedLocalCarIdx) {
       anomalies.push({
@@ -270,7 +323,6 @@ export function sampleSimAndMeshVehiclePose(
         description: `${role} playerCarIndex=${playerCarIndex} (expected ${expectedLocalCarIdx}) during ${stage}`,
       });
     }
-
     const expectedCars = rosterMode === '2p' ? 2 : rosterMode === '2p2ai' ? 4 : 6;
     for (let cIdx = 0; cIdx < expectedCars; cIdx++) {
       const simActive = simCars.some((c) => c.idx === cIdx && c.active);
@@ -279,7 +331,7 @@ export function sampleSimAndMeshVehiclePose(
         anomalies.push({
           carIndex: cIdx,
           kind: 'missing_match_participant_car',
-          description: `${role} missing car #${cIdx} in ${rosterMode} at ${stage} (simActive=${simActive}, meshVisible=${meshVis})`,
+          description: `${role} missing car #${cIdx} in ${rosterMode} at ${stage}`,
         });
       }
       const tag = nameTagEntries.find((e) => e.carIndex === cIdx);
@@ -293,23 +345,21 @@ export function sampleSimAndMeshVehiclePose(
         anomalies.push({
           carIndex: cIdx,
           kind: 'fallback_generic_car_name',
-          description: `${role} car #${cIdx} has fallback/missing name (nameTag=${JSON.stringify(tag?.name ?? null)}, replayName=${JSON.stringify(replayEntry?.name ?? null)})`,
+          description: `${role} car #${cIdx} has fallback/missing name`,
         });
       }
     }
   }
 
-  if (stage.includes('trajectory')) {
-    if (
-      ballTrajectory.maxObservedPredictionCount < 25 ||
-      ballTrajectory.collapseToCatchupCount > 0
-    ) {
-      anomalies.push({
-        carIndex: -1,
-        kind: 'trajectory_prediction_reset_collapse',
-        description: `${role} BallTrajectoryPredictor failed stability check at ${stage}: maxObservedPredictionCount=${ballTrajectory.maxObservedPredictionCount}, collapseToCatchupCount=${ballTrajectory.collapseToCatchupCount}, current=${ballTrajectory.predictionCount}`,
-      });
-    }
+  if (
+    stage.includes('trajectory') &&
+    (ballTrajectory.maxObservedPredictionCount < 25 || ballTrajectory.collapseToCatchupCount > 0)
+  ) {
+    anomalies.push({
+      carIndex: -1,
+      kind: 'trajectory_prediction_reset_collapse',
+      description: `${role} BallTrajectoryPredictor failed stability check at ${stage}`,
+    });
   }
 
   return {
@@ -339,10 +389,8 @@ export function inspectChannelHandshakeDiagnostics(
   const clientCtrl = targetView.multiplayerSession?.clientJoinNegotiator?.clientController;
   const channel: ReproInspectableWebRtcChannel | null =
     role === 'host' ? (hostCtrl?.channel ?? null) : (clientCtrl?.channel ?? null);
-
   const proto = channel ? Object.getPrototypeOf(channel) : null;
   const rttDesc = proto ? Object.getOwnPropertyDescriptor(proto, 'measuredRttMs') : undefined;
-  const measuredRttGetterOnly = Boolean(rttDesc && rttDesc.get && !rttDesc.set);
 
   return {
     role,
@@ -354,7 +402,7 @@ export function inspectChannelHandshakeDiagnostics(
     isCrossTab: Boolean(channel?.isCrossTab),
     transportMode: channel?.transportMode ?? null,
     dataChannelReadyState: channel?.dataChannel?.readyState ?? null,
-    measuredRttGetterOnly,
+    measuredRttGetterOnly: Boolean(rttDesc && rttDesc.get && !rttDesc.set),
     reconcilerHardSnapCount: targetView.networkReconciler?.hardSnapCount ?? 0,
     reconcilerCorrections: targetView.networkReconciler?.correctionCount ?? 0,
     reconcilerLobbyDualWorldMode: Boolean(targetView.networkReconciler?.lobbyDualWorldMode),
@@ -385,11 +433,6 @@ export async function applyHostCrossTabSignalingBridge(
     clientColorHex: '#ff7043',
   });
   await new Promise((resolve) => setTimeout(resolve, 250));
-  const postBridgePeers =
-    targetView.multiplayerSession?.hostController?.getConnectedPeerList?.()?.length ?? 0;
-  logLifecycle(
-    `Post-bridge Host channel state: isCrossTab=${Boolean(sigChan.isCrossTab)}, registeredClientPeers=${postBridgePeers}`
-  );
 }
 
 export function emitReproStreamEvent(event: ReproStreamEvent): void {

@@ -6,8 +6,17 @@
  * signaling & readonly measuredRttMs TypeError, and Client match entry failure).
  */
 
-export type ReproRole = 'host' | 'client';
-export type ReproRosterMode = '2p' | '2p2ai' | '3p3ai';
+import type {
+  ReproGoalReplayKickoffFreezeDiagnosticSnapshot,
+  ReproLobbyGoalResetDiagnosticSnapshot,
+  ReproNetworkLatencyHudDiagnosticSnapshot,
+  ReproPhysicsRateSweepDiagnosticSnapshot,
+  ReproProbeId,
+  ReproRole,
+  ReproRosterMode,
+} from './multiplayerRoomReproEdgeCaseTypes.ts';
+
+export type { ReproRole, ReproRosterMode };
 
 export interface ReproUrlConfig {
   readonly role: ReproRole | null;
@@ -16,6 +25,10 @@ export interface ReproUrlConfig {
   readonly speedMultiplier: number;
   readonly peerIndex: number;
   readonly bridgeSignalingAfterProbe: boolean;
+  readonly enabledProbes: readonly ReproProbeId[];
+  readonly latencyMs: number;
+  readonly bandwidthKbps: number;
+  readonly physicsHzSteps: readonly number[];
 }
 
 export interface ReproSimCarPoseSample {
@@ -215,6 +228,7 @@ export interface ReproRoleSummaryReport {
   readonly reconcilerSnapLogCount: number;
   readonly inputStarvationLogCount: number;
   readonly readonlyRttTypeErrorCount: number;
+  readonly kickoffFallbackWarnCount: number;
   readonly enteredMatch: boolean;
   readonly finalMatchMode: string;
   readonly finalMatchPhase: string;
@@ -222,9 +236,13 @@ export interface ReproRoleSummaryReport {
   readonly bridgedDataChannelOpened: boolean;
   readonly handshakeDiagnostics: ReproHandshakeDiagnosticSnapshot;
   readonly lobbyProbeDiagnostics: ReproLobbyProbeDiagnosticSnapshot | null;
+  readonly lobbyGoalResetDiagnostics: ReproLobbyGoalResetDiagnosticSnapshot | null;
+  readonly networkLatencyHudDiagnostics: ReproNetworkLatencyHudDiagnosticSnapshot | null;
   readonly rosterVisibilityProbes: readonly ReproRosterVisibilityAndNameTagSnapshot[];
   readonly hostTakeoverDiagnostics: ReproHostTakeoverDiagnosticSnapshot | null;
   readonly trajectoryDiagnostics: ReproTrajectoryPredictorDiagnosticSummary | null;
+  readonly goalReplayKickoffDiagnostics: ReproGoalReplayKickoffFreezeDiagnosticSnapshot | null;
+  readonly physicsRateSweepDiagnostics: ReproPhysicsRateSweepDiagnosticSnapshot | null;
   readonly poseProbes: readonly ReproPoseProbeSnapshot[];
   readonly reconcilerSamples: readonly ReproReconcilerDesyncSample[];
   readonly starvationSamples: readonly ReproInputStarvationSample[];
@@ -248,6 +266,14 @@ export type ReproStreamEvent =
       readonly diag: ReproLobbyProbeDiagnosticSnapshot;
     }
   | {
+      readonly type: 'lobby_goal_reset_diag';
+      readonly diag: ReproLobbyGoalResetDiagnosticSnapshot;
+    }
+  | {
+      readonly type: 'network_latency_hud_diag';
+      readonly diag: ReproNetworkLatencyHudDiagnosticSnapshot;
+    }
+  | {
       readonly type: 'roster_visibility_probe';
       readonly probe: ReproRosterVisibilityAndNameTagSnapshot;
     }
@@ -258,6 +284,14 @@ export type ReproStreamEvent =
   | {
       readonly type: 'trajectory_diag';
       readonly summary: ReproTrajectoryPredictorDiagnosticSummary;
+    }
+  | {
+      readonly type: 'goal_replay_kickoff_diag';
+      readonly diag: ReproGoalReplayKickoffFreezeDiagnosticSnapshot;
+    }
+  | {
+      readonly type: 'physics_rate_sweep_diag';
+      readonly diag: ReproPhysicsRateSweepDiagnosticSnapshot;
     }
   | {
       readonly type: 'reconciler_snap';
@@ -289,181 +323,3 @@ export type ReproStreamEvent =
       readonly type: 'role_summary';
       readonly summary: ReproRoleSummaryReport;
     };
-
-export interface ReproProbeCarView {
-  readonly isActive: boolean;
-  readonly team: number;
-  readonly posX: number;
-  readonly posY: number;
-  readonly posZ: number;
-  readonly velX: number;
-  readonly velY: number;
-  readonly velZ: number;
-  readonly fwdZ: number;
-  readonly upZ: number;
-  readonly quatX: number;
-  readonly quatY: number;
-  readonly quatZ: number;
-  readonly quatW: number;
-  readonly isOnGround: boolean | number;
-  readonly getWheelContact: (wheelIndex: number) => boolean;
-  readonly getWheelSusLength: (wheelIndex: number) => number;
-}
-
-export interface ReproProbeBallView {
-  readonly posX: number;
-  readonly posY: number;
-  readonly posZ: number;
-  readonly velX: number;
-  readonly velY: number;
-  readonly velZ: number;
-}
-
-export interface ReproTrajectoryObservationWindow {
-  readonly maxObservedPredictionCount: number;
-  readonly collapseToCatchupCount: number;
-}
-
-export interface ReproInspectableWebRtcChannel {
-  readonly role?: string;
-  readonly isHost?: boolean;
-  readonly isCrossTab?: boolean;
-  readonly transportMode?: string;
-  readonly answerToken?: string;
-  readonly dataChannel?: { readonly readyState?: string } | null;
-  readonly acceptAnswerToken?: (answerToken: string) => Promise<boolean>;
-}
-
-export interface ReproProbePhysicsView {
-  readonly state?: Float32Array | null;
-  readonly ballStateWriteRevision?: number;
-  readonly getActiveCarMask?: () => number;
-  readonly getHeaderView?: () => { readonly tickCount: number };
-  readonly isCarSlotActive?: (carIndex: number) => boolean;
-  readonly getCarStateView?: (carIndex: number) => ReproProbeCarView | null;
-  readonly getBallStateView?: () => ReproProbeBallView | null;
-  readonly setBallState?: (state: Record<string, unknown> | Float32Array | number[]) => unknown;
-  readonly sim?: ReproProbePhysicsView | null;
-}
-
-export interface ReproProbeRuntimeView {
-  readonly stop?: () => void;
-  readonly renderFrame?: (timestamp?: number) => boolean;
-  readonly pipeline?: { readonly executeSimulationOnly?: (timestamp: number) => void } | null;
-  readonly clockScheduler?: { gl?: unknown } | null;
-  readonly renderSubsystem?: { update?: (ctx: { shouldSkipGpuRender?: boolean }) => void } | null;
-  readonly setupAudio?: () => Promise<void>;
-  readonly setupBot?: () => Promise<void>;
-  readonly playerCarIndex?: number;
-  readonly selectedPreset?: string;
-  readonly selectedHitbox?: string | null;
-  readonly selectedColorSlot?: number | null;
-  readonly replayTimelineController?: unknown;
-  readonly ballTrajectoryPredictor?: {
-    forcePredictAnyMovement?: boolean;
-    readonly isActive?: boolean;
-    readonly predictionCount?: number;
-    readonly settings?: {
-      readonly enabled?: boolean;
-      readonly predictionTicks?: number;
-      readonly catchupTicksPerFrame?: number;
-    };
-    readonly sampler?: { readonly lastUpdateKind?: string };
-    readonly updateSettings?: (patch: { enabled?: boolean }) => void;
-    readonly setSceneContext?: (ctx: {
-      isGoalReplayActive?: boolean;
-      isPodiumActive?: boolean;
-    }) => void;
-    readonly update?: (
-      currentTick: number,
-      liveBallPos: unknown,
-      viewportWidth: number,
-      viewportHeight: number,
-      physics: unknown
-    ) => void;
-  } | null;
-  readonly physics?: ReproProbePhysicsView | null;
-  readonly arena?: {
-    readonly playerCarIndex?: number;
-    readonly ball?: { readonly position?: unknown } | null;
-    readonly cars?: ReadonlyArray<{
-      readonly visible?: boolean;
-      readonly position?: { readonly y?: number };
-      readonly rotation?: { readonly x?: number; readonly y?: number; readonly z?: number };
-    } | null>;
-    readonly vehiclePresets?: ReadonlyArray<string | null>;
-    readonly carHitboxes?: ReadonlyArray<{
-      readonly userData?: { readonly hitboxId?: string };
-    } | null>;
-    readonly carWheels?: ReadonlyArray<ReadonlyArray<{
-      readonly steer?: { readonly position?: { readonly y?: number } };
-      readonly mount?: { readonly position?: { readonly y?: number } };
-    } | null> | null>;
-  } | null;
-  readonly match?: {
-    readonly state?: { readonly mode?: string; readonly phase?: string } | null;
-  } | null;
-  readonly matchPort?: {
-    readonly hostOnlineWarmup?: (opts: {
-      roomId: string;
-      password?: string;
-      playerName?: string;
-      roomType?: string;
-      gameMode?: string;
-      botFillMode?: string;
-      durationSeconds?: number;
-      lobbyMode?: boolean;
-    }) => Promise<boolean>;
-    readonly joinOnlineWarmup?: (opts: {
-      roomId: string;
-      password?: string;
-      playerName?: string;
-    }) => Promise<boolean>;
-    readonly forceStartOnlineMatch?: (durationSeconds?: number) => void;
-    readonly switchOnlineRoleOrTeam?: (role?: string, team?: number) => void;
-  } | null;
-  readonly multiplayerSession?: {
-    readonly hostController?: {
-      readonly offerToken?: string;
-      readonly channel?: ReproInspectableWebRtcChannel | null;
-      readonly peerChannels?: ReadonlyMap<string, ReproInspectableWebRtcChannel>;
-      readonly getConnectedPeerList?: () => ReadonlyArray<unknown>;
-    } | null;
-    readonly clientJoinNegotiator?: {
-      readonly clientController?: {
-        readonly answerToken?: string;
-        readonly channel?: ReproInspectableWebRtcChannel | null;
-      } | null;
-    } | null;
-  } | null;
-  readonly networkReconciler?: {
-    readonly hardSnapCount?: number;
-    readonly correctionCount?: number;
-    readonly lobbyDualWorldMode?: boolean;
-  } | null;
-  readonly networkManager?: {
-    readonly isLobbyDualWorldActive?: () => boolean;
-    readonly diagnosticsProbe?: {
-      readonly diagnosticsFleetController?: { readonly enabled?: boolean } | null;
-      readonly spawnDiagnosticTestFleet?: (opts?: {
-        anchorMode?: string | null;
-      }) => Promise<unknown>;
-    } | null;
-    readonly rosterSyncCoordinator?: {
-      readonly lastRosterSnapshot?: {
-        readonly players?: ReadonlyArray<{
-          readonly sessionId?: string;
-          readonly entityId?: number;
-          readonly name?: string;
-          readonly isBot?: boolean;
-          readonly team?: number;
-        }>;
-      } | null;
-    } | null;
-    readonly sessionCoordinator?: {
-      readonly authoritativeServer?: {
-        readonly sim?: ReproProbePhysicsView | null;
-      } | null;
-    } | null;
-  } | null;
-}
