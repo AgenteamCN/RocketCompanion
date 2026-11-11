@@ -366,7 +366,9 @@ export function applyLiveVehicleDescriptorUpdate(
     const extraY = Number(wheelModifierRuntimeConfig.verticalOffsetY) || 0;
     for (let i = 0; i < carWheels.length && i < descriptor.wheelAnchors.length; i++) {
       const [wx, wz, wr] = descriptor.wheelAnchors[i];
-      const restY = (descriptor.suspensionHeights?.[i] ?? wr - 17) + extraY;
+      const customRestY = descriptor.suspensionHeights?.[i];
+      const restYDelta = typeof customRestY === 'number' ? customRestY - (wr - 17) : 0;
+      const restY = -4.5 + restYDelta + extraY;
       if (carWheels[i]?.steer) {
         carWheels[i].steer.position.set(wx, restY, wz);
       }

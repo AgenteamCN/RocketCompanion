@@ -215,7 +215,9 @@ export function buildVehicleWheels(
     const specZ = isThreeWheels && i === 0 ? 0.0 : rawSpecZ;
     const steerGroup = new THREE.Group();
     steerGroup.name = 'car-wheel-steer';
-    const restY = descriptor?.suspensionHeights?.[i] ?? specRadius - 17;
+    const customRestY = descriptor?.suspensionHeights?.[i];
+    const restYDelta = typeof customRestY === 'number' ? customRestY - (specRadius - 17) : 0;
+    const restY = -4.5 + restYDelta;
     steerGroup.position.set(specX, restY, specZ);
     if (isThreeWheels && i === 1) {
       steerGroup.visible = false;
