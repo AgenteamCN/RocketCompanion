@@ -1,4 +1,6 @@
 import { audioConfig, registerAudioDiagnosticsProvider } from '../ui-core/config/audioConfig.ts';
+import { subscribeEngineAudioTuningConfig } from '../ui-core/config/engineAudioConfig.ts';
+import { spatialAttenuationProfiles } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import { getAudioSlotPool, registerAudioEngine } from './audioContext.ts';
 import { VehicleAudioManager, type VehicleAudioUpdateContext } from './VehicleAudioManager.ts';
 import { IncidentAudioEngine } from './IncidentAudioEngine.ts';
@@ -17,6 +19,14 @@ import {
   AudioMenuPreviewPlayer,
   type PreviewAudioBufferOptions,
 } from './AudioMenuPreviewPlayer.ts';
+import {
+  applyWasmBallCueToEmitter,
+  syncWasmAudioDirectorConfig,
+  syncWasmAudioListenerState,
+  type WasmAudioPhysicsModule,
+  type WasmListenerSyncInput,
+} from './WasmAudioDirectorBridge.ts';
+import { dispatchWasmOneShotSlots } from './wasmAudioOneShotDispatcher.ts';
 import type { CameraTransformLike } from './SpatialAudioSource.ts';
 import type { PhysicsImpactAudioEvent } from './WorldImpactAudioHandler.ts';
 import './audioDebug.ts';
@@ -33,6 +43,8 @@ export class GameAudioEngineFacade {
   signalEngine: SignalAudioEngine;
   stadiumSpatialEngine: StadiumSpatialAudioEngine;
   vehicleManager: VehicleAudioManager;
+  private _lastSyncedWasmModule: WasmAudioPhysicsModule | null = null;
+  private _wasmConfigDirty = true;
 
   constructor() {
     const ballEngine = new BallAudioEmitter();
@@ -64,6 +76,7 @@ export class GameAudioEngineFacade {
     });
 
     audioConfig.subscribe(() => {
+      this._wasmConfigDirty = true;
       const spatialEnabled = audioConfig.get('spatialAudio') !== false;
       const panModel: PanningModelType = spatialEnabled
         ? audioConfig.get('spatialPanningModel') || 'equalpower'
@@ -87,6 +100,12 @@ export class GameAudioEngineFacade {
         applyBoostVariationBuffers(this);
         this.previewPlayer.syncBoostBuffers(this.vehicleManager.buffers);
       }
+    });
+    subscribeEngineAudioTuningConfig(() => {
+      this._wasmConfigDirty = true;
+    });
+    spatialAttenuationProfiles.subscribe(() => {
+      this._wasmConfigDirty = true;
     });
   }
 
@@ -113,6 +132,46 @@ export class GameAudioEngineFacade {
       this.loaded = true;
     } finally {
       this.loading = false;
+    }
+  }
+
+  /**
+   * Executes a single zero-copy WASM `_physics_stepAudioDirector` pass for the frame,
+   * binding `HEAPF32` / `HEAPU32` over `AudioFrameCuePod` to update ball loops and
+   * dispatch discrete one-shot cues. Returns the word offset of `AudioFrameCuePod` in `HEAPF32`/`HEAPU32`.
+   */
+  stepWasmAudioDirector(
+    mod: WasmAudioPhysicsModule | null | undefined,
+    dtSec: number,
+    listenerInput: WasmListenerSyncInput
+  ): number {
+    if (!mod || typeof mod._physics_stepAudioDirector !== 'function') return 0;
+
+    if (this._wasmConfigDirty || this._lastSyncedWasmModule !== mod) {
+      syncWasmAudioDirectorConfig(mod);
+      this._lastSyncedWasmModule = mod;
+      this._wasmConfigDirty = false;
+    }
+
+    syncWasmAudioListenerState(mod, listenerInput);
+    const cuePtr = mod._physics_stepAudioDirector(dtSec);
+    if (!cuePtr) return 0;
+
+    const cueWordBase = cuePtr >>> 2;
+    const f32 = mod.HEAPF32;
+    const u32 = mod.HEAPU32;
+
+    applyWasmBallCueToEmitter(this.ballEngine, f32, cueWordBase, listenerInput.isAudibleActive);
+    if (listenerInput.isAudibleActive) {
+      dispatchWasmOneShotSlots(u32, f32, cueWordBase, this.incidentEngine, this.vehicleManager);
+    }
+
+    return cueWordBase;
+  }
+
+  resetWasmAudioDirector(mod: WasmAudioPhysicsModule | null | undefined, activeCarIndex = 0): void {
+    if (mod && typeof mod._physics_resetAudioDirector === 'function') {
+      mod._physics_resetAudioDirector(activeCarIndex);
     }
   }
 
