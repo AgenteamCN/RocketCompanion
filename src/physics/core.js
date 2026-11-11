@@ -195,6 +195,18 @@ async function loadDirectRocketSimWasm(moduleArg = {}) {
   Module['_physics_getCarDemoRespawnTimer'] = wasmExports._physics_getCarDemoRespawnTimer;
   Module['_physics_getCarFlipsRemaining'] = wasmExports._physics_getCarFlipsRemaining;
   Module['_physics_getCarFlipWindowTimer'] = wasmExports._physics_getCarFlipWindowTimer;
+  Module['_physics_loadBotWeights'] = wasmExports._physics_loadBotWeights;
+  Module['_physics_isBotPolicyLoaded'] = wasmExports._physics_isBotPolicyLoaded;
+  Module['_physics_configureBotSlot'] = wasmExports._physics_configureBotSlot;
+  Module['_physics_resetBotDirector'] = wasmExports._physics_resetBotDirector;
+  Module['_physics_overrideBotControls'] = wasmExports._physics_overrideBotControls;
+  Module['_physics_stepBotInferenceMask'] = wasmExports._physics_stepBotInferenceMask;
+  Module['_physics_getBotBatchOutputPtr'] = wasmExports._physics_getBotBatchOutputPtr;
+  Module['_physics_getBotBatchOutputSize'] = wasmExports._physics_getBotBatchOutputSize;
+  Module['_physics_precomputeBotKickoffTimeline'] = wasmExports._physics_precomputeBotKickoffTimeline;
+  Module['_physics_getBotKickoffTimelinePtr'] = wasmExports._physics_getBotKickoffTimelinePtr;
+  Module['_physics_botSimdMatVecBias'] = wasmExports._physics_botSimdMatVecBias;
+
 
   for (const [key, val] of Object.entries(wasmExports)) {
     if (typeof val === 'function' && key.startsWith('_physics_')) {

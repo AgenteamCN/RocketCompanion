@@ -1,11 +1,15 @@
 //! `rc_bot_ai`: Native WASM observation builders (Botpack / Ripple / Kickoff PPO),
 //! SIMD MLP/Perceiver inference, and heuristic multi-car controllers operating directly on `SimInstance`.
 
-use rc_physics_sim::layout::{CarControlsPod, MAX_CARS};
+pub mod bot_director;
+pub mod heuristic_and_kickoff;
+pub mod layout_and_specs;
+pub mod safetensors_store;
+pub mod simd_math;
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct BotBatchInferenceOutputPod {
-    pub active_bot_mask: u32,
-    pub controls: [CarControlsPod; MAX_CARS],
-}
+pub use bot_director::BotDirector;
+pub use layout_and_specs::{
+    BotBatchInferenceOutputPod, BotCarSlotDiagnosticsPod, BotPolicyId, KickoffTimelineBufferPod,
+    KickoffTimelineStepPod, MlpPolicyArchSpec,
+};
+

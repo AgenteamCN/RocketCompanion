@@ -198,6 +198,33 @@ export interface RocketSimWasmModule {
   _physics_getCarDemoRespawnTimer(carIndex: number): number;
   _physics_getCarFlipsRemaining(carIndex: number): number;
   _physics_getCarFlipWindowTimer(carIndex: number): number;
+  _physics_loadBotWeights(policyId: number, dataPtr: number, byteLen: number): number;
+  _physics_isBotPolicyLoaded(policyId: number): number;
+  _physics_configureBotSlot(
+    carIndex: number,
+    policyId: number,
+    team: number,
+    tickSkip: number
+  ): number;
+  _physics_resetBotDirector(carMask: number): void;
+  _physics_overrideBotControls(carIndex: number, controlsPtr: number): number;
+  _physics_stepBotInferenceMask(activeBotMask: number, isKickoff: number): number;
+  _physics_getBotBatchOutputPtr(): number;
+  _physics_getBotBatchOutputSize(): number;
+  _physics_precomputeBotKickoffTimeline(
+    policyId: number,
+    spawnIndex: number,
+    maxSteps: number
+  ): number;
+  _physics_getBotKickoffTimelinePtr(): number;
+  _physics_botSimdMatVecBias(
+    wPtr: number,
+    xPtr: number,
+    bPtr: number,
+    outPtr: number,
+    inDim: number,
+    outDim: number
+  ): void;
 
   // Semantic unprefixed aliases bound by RocketSimWasm.ts
   physics_init: RocketSimWasmModule['_physics_init'];
@@ -313,6 +340,18 @@ export interface RocketSimWasmModule {
   physics_getCarDemoRespawnTimer: RocketSimWasmModule['_physics_getCarDemoRespawnTimer'];
   physics_getCarFlipsRemaining: RocketSimWasmModule['_physics_getCarFlipsRemaining'];
   physics_getCarFlipWindowTimer: RocketSimWasmModule['_physics_getCarFlipWindowTimer'];
+  physics_loadBotWeights: RocketSimWasmModule['_physics_loadBotWeights'];
+  physics_isBotPolicyLoaded: RocketSimWasmModule['_physics_isBotPolicyLoaded'];
+  physics_configureBotSlot: RocketSimWasmModule['_physics_configureBotSlot'];
+  physics_resetBotDirector: RocketSimWasmModule['_physics_resetBotDirector'];
+  physics_overrideBotControls: RocketSimWasmModule['_physics_overrideBotControls'];
+  physics_stepBotInferenceMask: RocketSimWasmModule['_physics_stepBotInferenceMask'];
+  physics_getBotBatchOutputPtr: RocketSimWasmModule['_physics_getBotBatchOutputPtr'];
+  physics_getBotBatchOutputSize: RocketSimWasmModule['_physics_getBotBatchOutputSize'];
+  physics_precomputeBotKickoffTimeline: RocketSimWasmModule['_physics_precomputeBotKickoffTimeline'];
+  physics_getBotKickoffTimelinePtr: RocketSimWasmModule['_physics_getBotKickoffTimelinePtr'];
+  physics_botSimdMatVecBias: RocketSimWasmModule['_physics_botSimdMatVecBias'];
+
 
   [key: string]: any;
 }
