@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *, [data-theme=dark], [data-theme=dark] *));
+
 :root {
   --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-jetbrains: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --ease-apple: cubic-bezier(0.2, 0.8, 0.25, 1);
   --ui-scale: 1;
   --ui-render-width: 1920px;
@@ -30,13 +33,34 @@
   --ui-radius-xl: 16px;
 }
 
-#game-ui-viewport-host {
+#game-ui-viewport-host,
+#tauri-configurator-root {
   font-family: var(--font-apple);
 }
 
-#game-ui-viewport-host * {
+#game-ui-viewport-host *,
+#tauri-configurator-root * {
   font-family: inherit;
   box-sizing: border-box;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.45);
 }
 
 /* Floating Window monospace standard: SF Mono -> JetBrains Mono */
@@ -96,7 +120,8 @@
   box-sizing: border-box;
 }
 
-#game-ui-viewport-host input[type="range"]::-webkit-slider-thumb {
+#game-ui-viewport-host input[type="range"]::-webkit-slider-thumb,
+#tauri-configurator-root input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 14px;
@@ -107,7 +132,8 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-#game-ui-viewport-host input[type="range"]::-moz-range-thumb {
+#game-ui-viewport-host input[type="range"]::-moz-range-thumb,
+#tauri-configurator-root input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border: none;
@@ -139,3 +165,56 @@ button[data-ui-element="car-card"] {
   min-height: 76px;
   box-sizing: border-box;
 }
+
+/*
+ * Game HUD Low-Overhead Visual System:
+ * 1. Never use backdrop-filter / frosted glass (0 GPU framebuffer readback blur over 120Hz 3D scene).
+ * 2. Replace top-down blurred shadows with zero-blur, 360° uniform perimeter outline rings.
+ */
+.backdrop-blur-xs,
+.backdrop-blur-sm,
+.backdrop-blur,
+.backdrop-blur-md,
+.backdrop-blur-lg,
+.backdrop-blur-xl,
+.backdrop-blur-2xl,
+.backdrop-blur-3xl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+:root,
+.light,
+[data-theme="light"] {
+  --hud-perimeter-ring-xs: 0 0 0 1px rgba(115, 115, 115, 0.16);
+  --hud-perimeter-ring-md: 0 0 0 2px rgba(115, 115, 115, 0.18);
+  --hud-perimeter-ring-lg: 0 0 0 3px rgba(115, 115, 115, 0.20);
+}
+
+.dark,
+[data-theme="dark"] {
+  --hud-perimeter-ring-xs: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --hud-perimeter-ring-md: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 0 2px rgba(0, 0, 0, 0.55);
+  --hud-perimeter-ring-lg: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 0 3px rgba(0, 0, 0, 0.65);
+}
+
+.shadow-2xs,
+.shadow-xs,
+.shadow-sm {
+  --tw-shadow: var(--hud-perimeter-ring-xs) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-xs) !important;
+}
+
+.shadow,
+.shadow-md {
+  --tw-shadow: var(--hud-perimeter-ring-md) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-md) !important;
+}
+
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  --tw-shadow: var(--hud-perimeter-ring-lg) !important;
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--hud-perimeter-ring-lg) !important;
+}
+
