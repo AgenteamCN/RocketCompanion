@@ -274,7 +274,10 @@ export class RLRCNetStreamRigidBodyAndBoostExtractor {
             matchState.lastDemolishTime = timeSeconds;
             matchState.lastDemolishSlot = victimSlot;
           }
-        } else if (propertyName.includes(':ReplicatedExplosionData')) {
+        } else if (
+          propertyName.endsWith(':ReplicatedExplosionData') ||
+          propertyName.endsWith(':ReplicatedExplosionDataExtended')
+        ) {
           ballLifecycle.onBallExplosion(actorId, rawAttribute, frameIdx, isKeyframe);
         }
       }

@@ -44,6 +44,24 @@ export class RLRCBitReader {
     return this.totalBits - this.bitPos;
   }
 
+  public saveBitPos(): number {
+    return this.bitPos;
+  }
+
+  public restoreBitPos(savedBitPos: number): void {
+    if (savedBitPos < 0 || savedBitPos > this.totalBits) {
+      throw new RangeError(`Invalid bitPos restore: ${savedBitPos}`);
+    }
+    this.bitPos = savedBitPos;
+  }
+
+  public skipBits(count: number): void {
+    if (count < 0 || this.bitPos + count > this.totalBits) {
+      throw new RangeError('RLRCBitReader out of bounds');
+    }
+    this.bitPos += count;
+  }
+
   public readBit(): number {
     const byteIdx = this.bitPos >>> 3;
     const bitIdx = this.bitPos & 7;
@@ -68,15 +86,14 @@ export class RLRCBitReader {
 
   public readBitsMax(maxVal: number): number {
     if (maxVal <= 1) return 0;
-    const maxBits = 32 - Math.clz32(maxVal - 1);
-    let val = this.readBits(maxBits - 1);
-    const highBit = (1 << (maxBits - 1)) >>> 0;
-    if ((val | highBit) >>> 0 < maxVal >>> 0) {
-      if (this.readBit() === 1) {
-        val = (val | highBit) >>> 0;
-      }
+    const uMax = maxVal >>> 0;
+    const bits = Math.max(32 - Math.clz32(uMax), 1) - 1;
+    let data = this.readBits(bits);
+    const up = (data + (1 << bits)) >>> 0;
+    if (up < uMax && this.readBit() !== 0) {
+      data = up;
     }
-    return val >>> 0;
+    return data >>> 0;
   }
 
   public readU8(): number {
@@ -127,6 +144,16 @@ export class RLRCBitReader {
     return UTF8.decode(this.readBytes(length)).replace(/\0+$/, '');
   }
 
+  public readNullTerminatedString(maxLen = 255): string {
+    let out = '';
+    while (out.length < maxLen) {
+      const b = this.readU8();
+      if (b === 0) break;
+      out += String.fromCharCode(b);
+    }
+    return out;
+  }
+
   public readCompressedVector(maxBits = 22, scale = 1.0): RLRCBitVector3 {
     const numBits = this.readBitsMax(maxBits);
     const bias = 1 << (numBits + 1);
@@ -158,5 +185,14 @@ export class RLRCBitReader {
     if (maxInd === 1) return { x: a, y: missing, z: b, w: c };
     if (maxInd === 2) return { x: a, y: b, z: missing, w: c };
     return { x: a, y: b, z: c, w: missing };
+  }
+
+  public readFixedCompressedQuat(): RLRCBitQuaternion {
+    const inv = 1.0 / 32767.0;
+    const x = (this.readBits(16) - 32768) * inv;
+    const y = (this.readBits(16) - 32768) * inv;
+    const z = (this.readBits(16) - 32768) * inv;
+    const w = Math.sqrt(Math.max(0.0, 1.0 - x * x - y * y - z * z));
+    return { x, y, z, w };
   }
 }

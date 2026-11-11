@@ -226,7 +226,9 @@ export function buildDemolishBookmarkRecord(params: {
     playerTeamByPriId,
     resolveSlotForCar,
   } = params;
-  const demolishData = recAttr(attrRecord?.DemolishExtended ?? attrRecord?.Demolish) ?? attrRecord;
+  const demolishData =
+    recAttr(attrRecord?.DemolishExtended ?? attrRecord?.Demolish ?? attrRecord?.DemolishFx) ??
+    attrRecord;
   const victimCar = demolishData ? extractActorIdFromAttr(demolishData.victim) : actorId;
   const targetCarId = victimCar >= 0 ? victimCar : actorId;
   const victimPriId = carPriById.get(targetCarId) ?? lastPriByCarId.get(targetCarId) ?? -1;
