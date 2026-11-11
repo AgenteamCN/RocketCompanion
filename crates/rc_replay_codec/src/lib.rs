@@ -1,11 +1,17 @@
 //! `rc_replay_codec`: High-speed WASM `.rlrc` / `.replay` binary container codec,
 //! Hermite-Slerp trajectory resampler, inverse control synthesizer, and zero-copy timeline seeker.
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct ReplayStreamHeaderPod {
-    pub frame_count: u32,
-    pub tick_rate_hz: f32,
-    pub duration_seconds: f32,
-    pub active_car_mask: u32,
-}
+pub mod anomaly;
+pub mod codec_workspace;
+pub mod container;
+pub mod delta_transpose;
+pub mod seeker;
+pub mod types;
+
+pub use anomaly::*;
+pub use codec_workspace::*;
+pub use container::*;
+pub use delta_transpose::*;
+pub use seeker::*;
+pub use types::*;
+

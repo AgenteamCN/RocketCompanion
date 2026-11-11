@@ -178,6 +178,22 @@ export interface RocketSimWasmModule {
   _physics_getReplaySignalCount(): number;
   _physics_setReplayRecordingActive(active: number): void;
   _physics_getReplayRecordingActive(): number;
+  _physics_getReplayCodecHeaderPtr(): number;
+  _physics_allocReplayImportBuffer(byteLen: number): number;
+  _physics_decodeImportedReplayStream(
+    byteLen: number,
+    interpolationMode: number,
+    synthesizeControls: number
+  ): number;
+  _physics_encodeReplayExportStream(useDeltaTranspose: number): number;
+  _physics_getReplayExportBufferPtr(): number;
+  _physics_getReplayExportBufferSize(): number;
+  _physics_getReplayRosterPtr(): number;
+  _physics_getReplayBookmarkTrackPtr(): number;
+  _physics_getReplayBookmarkCount(): number;
+  _physics_seekReplayTime(timeSec: number, interpolateMode: number): number;
+  _physics_diffReplayFrameAnomaly(frameIndex: number, posThresholdUu: number): number;
+  _physics_getReplayAnomalyDiffPtr(): number;
   _physics_setCarThreeWheels(carIndex: number, enabled: number): number;
   _physics_getCarThreeWheels(carIndex: number): number;
   _physics_setArenaPreset(presetIndex: number): void;
@@ -299,6 +315,18 @@ export interface RocketSimWasmModule {
   physics_getReplaySignalCount: RocketSimWasmModule['_physics_getReplaySignalCount'];
   physics_setReplayRecordingActive: RocketSimWasmModule['_physics_setReplayRecordingActive'];
   physics_getReplayRecordingActive: RocketSimWasmModule['_physics_getReplayRecordingActive'];
+  physics_getReplayCodecHeaderPtr: RocketSimWasmModule['_physics_getReplayCodecHeaderPtr'];
+  physics_allocReplayImportBuffer: RocketSimWasmModule['_physics_allocReplayImportBuffer'];
+  physics_decodeImportedReplayStream: RocketSimWasmModule['_physics_decodeImportedReplayStream'];
+  physics_encodeReplayExportStream: RocketSimWasmModule['_physics_encodeReplayExportStream'];
+  physics_getReplayExportBufferPtr: RocketSimWasmModule['_physics_getReplayExportBufferPtr'];
+  physics_getReplayExportBufferSize: RocketSimWasmModule['_physics_getReplayExportBufferSize'];
+  physics_getReplayRosterPtr: RocketSimWasmModule['_physics_getReplayRosterPtr'];
+  physics_getReplayBookmarkTrackPtr: RocketSimWasmModule['_physics_getReplayBookmarkTrackPtr'];
+  physics_getReplayBookmarkCount: RocketSimWasmModule['_physics_getReplayBookmarkCount'];
+  physics_seekReplayTime: RocketSimWasmModule['_physics_seekReplayTime'];
+  physics_diffReplayFrameAnomaly: RocketSimWasmModule['_physics_diffReplayFrameAnomaly'];
+  physics_getReplayAnomalyDiffPtr: RocketSimWasmModule['_physics_getReplayAnomalyDiffPtr'];
   physics_setCarThreeWheels: RocketSimWasmModule['_physics_setCarThreeWheels'];
   physics_getCarThreeWheels: RocketSimWasmModule['_physics_getCarThreeWheels'];
   physics_setArenaPreset: RocketSimWasmModule['_physics_setArenaPreset'];
