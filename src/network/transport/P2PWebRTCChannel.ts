@@ -29,7 +29,6 @@ export type ChannelHook<T extends unknown[] = []> = ((...args: T) => void) | nul
 
 export class P2PWebRTCChannel implements HandshakeMetadataState {
   role: string;
-  isHost?: boolean;
   peerId: string | null = null;
   peerRole?: string;
   carIndex?: number;
@@ -242,6 +241,11 @@ export class P2PWebRTCChannel implements HandshakeMetadataState {
   }
   get measuredRttMs(): number {
     return this.simulator.measuredRttMs;
+  }
+  set measuredRttMs(val: number) {
+    if (Number.isFinite(val)) {
+      this.simulator.rttMs = val;
+    }
   }
   get extraUplinkMs(): number {
     return this.simulator.extraUplinkMs;
