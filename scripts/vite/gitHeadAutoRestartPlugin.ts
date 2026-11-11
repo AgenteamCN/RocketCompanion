@@ -1,9 +1,12 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin, ViteDevServer } from 'vite';
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const CRATES_DIR = resolve(ROOT_DIR, 'crates');
+const BUILD_WASM_SCRIPT = resolve(ROOT_DIR, 'scripts/buildPhysicsWasm.mjs');
 
 function resolveWorktreeGitDir(worktreePath: string): string | null {
   try {
@@ -122,7 +125,54 @@ function readWorktreeHeadSnapshot(
   }
 }
 
-function readCompositeGitHeadState(): { signature: string | null; locked: boolean } {
+function computeRustWorkspaceSignature(dirPath: string): string {
+  if (!fs.existsSync(dirPath)) return 'no-crates';
+  let fileCount = 0;
+  let maxMtimeMs = 0;
+  let totalSize = 0;
+
+  const walk = (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name === 'target' || entry.name === '.git') continue;
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (
+        entry.isFile() &&
+        (entry.name.endsWith('.rs') ||
+          entry.name === 'Cargo.toml' ||
+          entry.name === 'Cargo.lock' ||
+          entry.name === 'rocketsim.tree-hash')
+      ) {
+        try {
+          const st = fs.statSync(full);
+          fileCount++;
+          totalSize += st.size;
+          if (st.mtimeMs > maxMtimeMs) {
+            maxMtimeMs = st.mtimeMs;
+          }
+        } catch {
+          // Ignore transient stat error
+        }
+      }
+    }
+  };
+
+  walk(dirPath);
+  return `rs:${fileCount}:${totalSize}:${Math.floor(maxMtimeMs)}`;
+}
+
+function readCompositeGitHeadState(): {
+  gitSignature: string | null;
+  rustSignature: string;
+  locked: boolean;
+} {
   const targets = [
     { label: 'root', path: ROOT_DIR },
     { label: 'public', path: resolve(ROOT_DIR, 'public') },
@@ -131,23 +181,49 @@ function readCompositeGitHeadState(): { signature: string | null; locked: boolea
   for (const t of targets) {
     const snap = readWorktreeHeadSnapshot(t.label, t.path);
     if (snap.locked) {
-      return { signature: null, locked: true };
+      return { gitSignature: null, rustSignature: '', locked: true };
     }
     parts.push(snap.summary);
   }
-  return { signature: parts.join(' | '), locked: false };
+  return {
+    gitSignature: parts.join(' | '),
+    rustSignature: computeRustWorkspaceSignature(CRATES_DIR),
+    locked: false,
+  };
+}
+
+let lastCompiledRustSig = '';
+
+function rebuildRustWasmIfNeeded(rustSig: string, reason: string): boolean {
+  if (!fs.existsSync(CRATES_DIR) || !fs.existsSync(BUILD_WASM_SCRIPT)) return false;
+  if (lastCompiledRustSig === rustSig) return false;
+  lastCompiledRustSig = rustSig;
+  console.log(
+    `\n  [rc-git-auto-restart] Rust workspace change detected (${reason}) -> compiling dev WASM (src/physics/core.wasm)...`
+  );
+  const res = spawnSync(process.execPath, [BUILD_WASM_SCRIPT, '--dev'], {
+    cwd: ROOT_DIR,
+    stdio: 'inherit',
+  });
+  return res.status === 0;
 }
 
 /**
- * Dev-only plugin (`apply: 'serve'`): monitors `.git/HEAD` and active branch refs across
- * the main repository and `public` submodule.
+ * Dev-only plugin (`apply: 'serve'`): monitors `.git/HEAD`, active branch refs, and
+ * `crates/` Rust source tree. Automatically rebuilds `src/physics/core.wasm` only when
+ * `crates/` changes (either via commit/checkout or live `.rs` edit), then restarts Vite.
  */
 export function rcGitHeadAutoRestartPlugin(): Plugin {
   return {
     name: 'rc-git-head-auto-restart',
     apply: 'serve',
     configureServer(server: ViteDevServer) {
-      let baselineSignature = readCompositeGitHeadState().signature;
+      const initial = readCompositeGitHeadState();
+      let baselineGitSig = initial.gitSignature;
+      let baselineRustSig = initial.rustSignature;
+      if (baselineRustSig && !lastCompiledRustSig) {
+        lastCompiledRustSig = baselineRustSig;
+      }
       let isRestarting = false;
       let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -162,27 +238,47 @@ export function rcGitHeadAutoRestartPlugin(): Plugin {
       const pollTimer = setInterval(() => {
         if (isRestarting) return;
         const current = readCompositeGitHeadState();
-        if (current.locked || !current.signature) return;
+        if (current.locked || !current.gitSignature) return;
 
-        if (baselineSignature === null) {
-          baselineSignature = current.signature;
+        if (baselineGitSig === null) {
+          baselineGitSig = current.gitSignature;
+          baselineRustSig = current.rustSignature;
           return;
         }
 
-        if (current.signature !== baselineSignature && !settleTimer) {
-          const previousSignature = baselineSignature;
+        const gitChanged = current.gitSignature !== baselineGitSig;
+        const rustChanged = current.rustSignature !== baselineRustSig;
+
+        if ((gitChanged || rustChanged) && !settleTimer) {
+          const prevGitSig = baselineGitSig;
+          const prevRustSig = baselineRustSig;
           settleTimer = setTimeout(async () => {
             settleTimer = null;
             if (isRestarting) return;
             const settled = readCompositeGitHeadState();
-            if (settled.locked || !settled.signature || settled.signature === previousSignature) {
+            if (
+              settled.locked ||
+              !settled.gitSignature ||
+              (settled.gitSignature === prevGitSig && settled.rustSignature === prevRustSig)
+            ) {
               return;
             }
             isRestarting = true;
-            baselineSignature = settled.signature;
+            const settledGitChanged = settled.gitSignature !== prevGitSig;
+            const settledRustChanged = settled.rustSignature !== prevRustSig;
+            baselineGitSig = settled.gitSignature;
+            baselineRustSig = settled.rustSignature;
             cleanup();
+
+            if (settledRustChanged) {
+              rebuildRustWasmIfNeeded(
+                settled.rustSignature,
+                settledGitChanged ? 'git HEAD + crates/ modified' : 'crates/ source modified'
+              );
+            }
+
             console.log(
-              `\n  [rc-git-auto-restart] Git HEAD switch detected:\n    prev: ${previousSignature}\n    next: ${settled.signature}\n  -> Auto-restarting Vite dev server...`
+              `\n  [rc-git-auto-restart] Workspace change detected:\n    git : ${prevGitSig} -> ${settled.gitSignature}\n    rust: ${settledRustChanged ? 'MODIFIED (rebuilt WASM)' : 'unchanged (skipped WASM build)'}\n  -> Auto-restarting Vite dev server...`
             );
             try {
               server.moduleGraph.invalidateAll();
@@ -192,13 +288,14 @@ export function rcGitHeadAutoRestartPlugin(): Plugin {
               isRestarting = false;
               console.error('[rc-git-auto-restart] Failed to auto-restart Vite server:', err);
             }
-          }, 120);
+          }, 150);
           settleTimer.unref?.();
         }
-      }, 150);
+      }, 200);
 
       pollTimer.unref?.();
       server.httpServer?.once('close', cleanup);
     },
   };
 }
+

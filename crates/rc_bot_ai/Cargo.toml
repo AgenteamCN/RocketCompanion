@@ -1,0 +1,12 @@
+[package]
+name = "rc_bot_ai"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+glam.workspace = true
+rocketsim = { path = "../rocketsim" }
+rc_physics_sim = { path = "../rc_physics_sim" }

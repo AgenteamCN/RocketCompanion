@@ -3,6 +3,10 @@ resolver = "2"
 members = [
     "rocketsim",
     "rc_physics_sim",
+    "rc_trajectory_mesh",
+    "rc_audio_director",
+    "rc_bot_ai",
+    "rc_replay_codec",
     "rocketsim_wasm",
 ]
 

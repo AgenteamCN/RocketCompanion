@@ -1,0 +1,11 @@
+[package]
+name = "rc_replay_codec"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+glam.workspace = true
+rc_physics_sim = { path = "../rc_physics_sim" }

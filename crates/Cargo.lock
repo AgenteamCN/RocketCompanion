@@ -63,11 +63,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc_audio_director"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rc_physics_sim",
+]
+
+[[package]]
+name = "rc_bot_ai"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rc_physics_sim",
+ "rocketsim",
+]
+
+[[package]]
 name = "rc_physics_sim"
 version = "0.3.5"
 dependencies = [
  "glam",
  "rocketsim",
+]
+
+[[package]]
+name = "rc_replay_codec"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rc_physics_sim",
+]
+
+[[package]]
+name = "rc_trajectory_mesh"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rc_physics_sim",
 ]
 
 [[package]]
@@ -89,7 +122,11 @@ name = "rocketsim_wasm"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "rc_audio_director",
+ "rc_bot_ai",
  "rc_physics_sim",
+ "rc_replay_codec",
+ "rc_trajectory_mesh",
  "rocketsim",
 ]
 
