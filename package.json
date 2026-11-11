@@ -6,13 +6,16 @@
   "type": "module",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "predev": "node scripts/syncPrivateProfile.mjs",
+    "predev": "node scripts/syncPrivateProfile.mjs && node scripts/buildPhysicsWasm.mjs --dev --if-missing",
     "dev": "node --experimental-strip-types scripts/devLauncher.ts",
     "dev:entry": "RC_VITE_ROLE=entry vite",
     "dev:rc": "RC_VITE_ROLE=rc-https vite",
     "dev:tuner": "RC_VITE_ROLE=tuner vite",
     "dev:tauri-http": "RC_VITE_ROLE=rc-http vite",
-    "build": "NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build": "node scripts/buildPhysicsWasm.mjs --if-missing && NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build:wasm": "node scripts/buildPhysicsWasm.mjs",
+    "build:wasm:dev": "node scripts/buildPhysicsWasm.mjs --dev",
+    "build:wasm:check": "node scripts/buildPhysicsWasm.mjs --check",
     "preview": "vite preview",
     "sync:profile": "node scripts/syncPrivateProfile.mjs --force",
     "typecheck": "tsc --noEmit",
@@ -22,7 +25,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.{ts,mjs}\"",
     "check": "pnpm run radar && pnpm run typecheck",
     "extract:golden": "node scripts/extractGoldenBaseline65f1538d.mjs",
-    "test:baseline": "node scripts/runScenarioBaseline.mjs",
+    "test:baseline": "node scripts/buildPhysicsWasm.mjs --if-missing && node scripts/runScenarioBaseline.mjs",
     "test:soak": "node scripts/runSoakWatchdog.mjs"
   },
   "dependencies": {

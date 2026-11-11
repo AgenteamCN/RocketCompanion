@@ -178,44 +178,6 @@ export function checkRootConfigAndWasmParity(errors: string[]): void {
     );
   }
 
-  const coreJsPath = path.join(SRC_DIR, 'physics/core.js');
-  const coreDtsPath = path.join(SRC_DIR, 'physics/core.d.ts');
-  if (!fs.existsSync(coreDtsPath)) {
-    errors.push(
-      '[WASM TYPING VIOLATION] src/physics/core.d.ts is missing. Ambient TypeScript declarations for core.js are required.'
-    );
-  } else if (fs.existsSync(coreJsPath)) {
-    const coreJsContent = fs.readFileSync(coreJsPath, 'utf8');
-    const coreDtsContent = fs.readFileSync(coreDtsPath, 'utf8');
-
-    const jsExportSet = new Set<string>();
-    const jsExportRegex = /Module\[['"](_physics_[a-zA-Z0-9_]+)['"]\]\s*=/g;
-    let jsMatch: RegExpExecArray | null;
-    while ((jsMatch = jsExportRegex.exec(coreJsContent)) !== null) {
-      jsExportSet.add(jsMatch[1]);
-    }
-
-    const dtsExportSet = new Set<string>();
-    const dtsExportRegex = /^\s*(_physics_[a-zA-Z0-9_]+)\??\s*\(/gm;
-    let dtsMatch: RegExpExecArray | null;
-    while ((dtsMatch = dtsExportRegex.exec(coreDtsContent)) !== null) {
-      dtsExportSet.add(dtsMatch[1]);
-    }
-
-    const missingInDts = [...jsExportSet].filter((fn) => !dtsExportSet.has(fn));
-    const missingInJs = [...dtsExportSet].filter((fn) => !jsExportSet.has(fn));
-    if (missingInDts.length > 0) {
-      errors.push(
-        `[WASM BRIDGE PARITY] Exported in src/physics/core.js but missing in src/physics/core.d.ts: ${missingInDts.join(', ')}`
-      );
-    }
-    if (missingInJs.length > 0) {
-      errors.push(
-        `[WASM BRIDGE PARITY] Declared in src/physics/core.d.ts but not exported by src/physics/core.js: ${missingInJs.join(', ')}`
-      );
-    }
-  }
-
   try {
     const tsconfigRaw = fs.readFileSync(path.join(ROOT_DIR, 'tsconfig.json'), 'utf8');
     if (/"allowJs"\s*:\s*true/.test(tsconfigRaw)) {

@@ -17,9 +17,11 @@ OLDSTUFFS/
 /myaudio
 public/assets/audio/**/*.wav
 
-# Tauri
+# Tauri & Rust WASM
 src-tauri/target/
 src-tauri/WixTools/
+crates/target/
+src/physics/core.wasm
 
 # Logs
 npm-debug.log*

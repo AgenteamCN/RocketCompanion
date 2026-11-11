@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "rocketsim",
+    "rc_physics_sim",
+    "rocketsim_wasm",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+
+[workspace.dependencies]
+glam = { version = "0.34", features = ["debug-glam-assert"] }
+rustc-hash = "2.1.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev-wasm]
+inherits = "release"
+opt-level = 2
+lto = "thin"
+codegen-units = 16
+panic = "abort"
+

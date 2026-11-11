@@ -1,0 +1,12 @@
+[package]
+name = "rocketsim_wasm"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+glam.workspace = true
+rocketsim = { path = "../rocketsim" }
+rc_physics_sim = { path = "../rc_physics_sim" }

@@ -49,6 +49,7 @@ import {
   checkUiNamingAndRouteAlignment,
   detectCircularDependencies,
 } from './radar/radarUiAndRepoGuards.ts';
+import { checkRustWorkspaceAndWasmGuards } from './radar/radarRustAndWasmGuards.ts';
 
 function runRadarChecks(
   allFiles: string[],
@@ -57,6 +58,7 @@ function runRadarChecks(
   auditFilter?: string | null
 ): RadarScanResult & {
   totalLargeFileCount: number;
+  rustFileCount: number;
   structuralHotspots: FileStructuralMetrics[];
 } {
   const errors: string[] = [];
@@ -304,6 +306,13 @@ function runRadarChecks(
   checkUiNamingAndRouteAlignment(errors);
   detectCircularDependencies(importGraph, errors);
   checkRootConfigAndWasmParity(errors);
+  const { rustFileCount, rustLargeFileCount } = checkRustWorkspaceAndWasmGuards(
+    errors,
+    infos,
+    showAllInfos,
+    modifiedRelSet
+  );
+  totalLargeFileCount += rustLargeFileCount;
   const structuralHotspots = analyzeStructuralCoupling(allFiles, importGraph, errors, auditFilter);
 
   const tsResult = skipTsc
@@ -323,6 +332,7 @@ function runRadarChecks(
     subsystemStats,
     tsResult,
     totalLargeFileCount,
+    rustFileCount,
     structuralHotspots,
   };
 }
@@ -349,7 +359,7 @@ function main(): void {
   console.log(` ROCKET COMPANION GEN-3 SEMANTIC ARCHITECTURE RADAR (${elapsedMs}ms)`);
   console.log('======================================================================');
   console.log(
-    ` TypeScript Coverage : ${result.tsCount}/${totalFiles} files (${tsPercent}% TS | ${result.jsCount} Engine JS remaining)`
+    ` TypeScript & Rust   : ${result.tsCount}/${totalFiles} TS (${tsPercent}% TS) | ${result.rustFileCount} custom Rust files + rocketsim.tree-hash`
   );
   console.log(
     ` TypeScript Strict   : ${
