@@ -12,6 +12,9 @@
     "dev:rc": "RC_VITE_ROLE=rc-https vite",
     "dev:tuner": "RC_VITE_ROLE=tuner vite",
     "dev:tauri-http": "RC_VITE_ROLE=rc-http vite",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "build": "NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "preview": "vite preview",
     "sync:profile": "node scripts/syncPrivateProfile.mjs --force",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
