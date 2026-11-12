@@ -18,7 +18,7 @@ import {
 } from './anthemCatalogConfig';
 
 export type BotPaintFinishOption = 'metallic' | 'matte';
-export type BotBoostVisualOption = 'cartoon' | 'gold-rush';
+export type BotBoostVisualOption = 'light-wave' | 'light-beam';
 export type BotBoostAudioOption = 'standard' | 'rush' | 'flamethrower' | 'plasma';
 export type BotAnthemCategoryOption =
   | 'Aquatic'
@@ -40,8 +40,8 @@ export const PAINT_FINISH_CATALOG: readonly { id: BotPaintFinishOption; name: st
 ];
 
 export const BOOST_VISUAL_CATALOG: readonly { id: BotBoostVisualOption; name: string }[] = [
-  { id: 'cartoon', name: 'Cartoon' },
-  { id: 'gold-rush', name: 'Gold Rush' },
+  { id: 'light-wave', name: 'Light Wave' },
+  { id: 'light-beam', name: 'Light Beam' },
 ];
 
 export const BOOST_AUDIO_CATALOG: readonly { id: BotBoostAudioOption; name: string }[] = [
@@ -56,7 +56,7 @@ export interface BotsLoadoutConfig {
   visualIds: string[];
   /** Multi-select paint finishes (default: ['metallic']) */
   paintFinishes: BotPaintFinishOption[];
-  /** Multi-select boost trail visual effects (default: ['cartoon']) */
+  /** Multi-select boost trail visual effects (default: ['light-wave', 'light-beam']) */
   boostVisuals: BotBoostVisualOption[];
   /** Multi-select boost audio effects (default: ['standard']) */
   boostAudios: BotBoostAudioOption[];
@@ -94,8 +94,8 @@ export const ALL_BOT_PAINT_FINISHES: readonly BotPaintFinishOption[] = Object.fr
 ]);
 
 export const ALL_BOT_BOOST_VISUALS: readonly BotBoostVisualOption[] = Object.freeze([
-  'cartoon',
-  'gold-rush',
+  'light-wave',
+  'light-beam',
 ]);
 
 export const ALL_BOT_BOOST_AUDIOS: readonly BotBoostAudioOption[] = Object.freeze([
@@ -128,7 +128,7 @@ export const ALL_BOT_ANTHEM_CATEGORIES: readonly {
 export const DEFAULT_BOTS_LOADOUT_CONFIG: BotsLoadoutConfig = {
   visualIds: [...DEFAULT_GLB_BOT_VISUAL_IDS], // 8 standard GLB vehicles (excludes player-only TriOctane variants)
   paintFinishes: ['metallic'],
-  boostVisuals: ['cartoon'],
+  boostVisuals: ['light-wave', 'light-beam'],
   boostAudios: ['standard'],
   anthemCategories: ['TrainStation'],
 };
@@ -241,6 +241,46 @@ function pickRandomFromPool<T>(pool: readonly T[], fallback: T): T {
 }
 
 /**
+ * Resolves a bot's boost trail effect according to the same-team bot assignment policy:
+ * - 1st bot on a team uses 'light-wave'
+ * - 2nd bot on the same team uses 'light-beam'
+ * - 3rd+ bot on the same team (when both 'light-wave' and 'light-beam' are already present)
+ *   rolls randomly between 'light-wave' and 'light-beam'.
+ * Human players on the team do not restrict or count toward bot boost choices.
+ */
+export function resolveTeamBotBoostVisual(
+  pool: readonly BotBoostVisualOption[],
+  usedBotBoostVisualsOnTeam?: Iterable<string>
+): BotBoostVisualOption {
+  const validPool =
+    Array.isArray(pool) && pool.length > 0 ? pool : ALL_BOT_BOOST_VISUALS;
+  if (validPool.length === 1) {
+    return validPool[0];
+  }
+  if (!usedBotBoostVisualsOnTeam) {
+    return pickRandomFromPool(validPool, 'light-wave');
+  }
+  const usedSet = new Set<string>(usedBotBoostVisualsOnTeam);
+  const canWave = validPool.includes('light-wave');
+  const canBeam = validPool.includes('light-beam');
+
+  if (canWave && canBeam) {
+    const hasWave = usedSet.has('light-wave');
+    const hasBeam = usedSet.has('light-beam');
+    if (!hasWave && !hasBeam) {
+      return 'light-wave';
+    }
+    if (hasWave && !hasBeam) {
+      return 'light-beam';
+    }
+    if (!hasWave && hasBeam) {
+      return 'light-wave';
+    }
+  }
+  return pickRandomFromPool(validPool, 'light-wave');
+}
+
+/**
  * Resolves the next fallback team color slot from the user's Garage team color priority order
  * (e.g., Blue: [1, 5, 3], Orange: [2, 4, 0]), skipping color slots already occupied on that team.
  */
@@ -271,13 +311,14 @@ export function resolveBotFallbackColorForTeam(
 
 /**
  * Independently rolls each loadout attribute from its selected multi-choice pool.
- * When a category has only 1 selected option (e.g. Paint='metallic', Boost Trail='cartoon',
- * Boost Audio='standard'), picking 1 at random from that pool is deterministic.
+ * For boostVisual, when team bot history (`usedBotBoostVisualsOnTeam`) is supplied,
+ * enforces: 1st bot -> 'light-wave', 2nd bot -> 'light-beam', 3rd+ bot -> random.
  */
 export function rollRandomBotLoadout(
   configOverride?: Partial<BotsLoadoutConfig> | null,
   team?: number,
-  usedSlotsOnTeam?: Iterable<number>
+  usedSlotsOnTeam?: Iterable<number>,
+  usedBotBoostVisualsOnTeam?: Iterable<string>
 ): RolledBotLoadout {
   const cfg = configOverride
     ? normalizeBotsLoadoutConfig(configOverride)
@@ -286,7 +327,10 @@ export function rollRandomBotLoadout(
   const visualId = pickRandomFromPool(cfg.visualIds, 'fennec');
   const hitboxId = resolveVehicleHitboxId(visualId);
   const paintFinish = pickRandomFromPool(cfg.paintFinishes, 'metallic');
-  const boostVisual = pickRandomFromPool(cfg.boostVisuals, 'cartoon');
+  const boostVisual = resolveTeamBotBoostVisual(
+    cfg.boostVisuals,
+    usedBotBoostVisualsOnTeam
+  );
   const boostAudio = pickRandomFromPool(cfg.boostAudios, 'standard');
   const anthemCategory = pickRandomFromPool(cfg.anthemCategories, 'TrainStation');
 

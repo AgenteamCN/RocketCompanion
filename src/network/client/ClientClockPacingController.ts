@@ -376,7 +376,10 @@ export class ClientClockPacingController {
       if (currentDelta > targetDelta + this.skipThresholdOffset) {
         desiredClientTick = Math.max(serverTick, targetClientTick);
         action = 'skip';
-      } else if (currentDelta < targetDelta + this.catchupThresholdOffset) {
+      } else if (
+        currentDelta < targetDelta + this.catchupThresholdOffset ||
+        (isUnimpairedLoopback && currentDelta < targetDelta)
+      ) {
         desiredClientTick = targetClientTick;
         action = 'catchup';
       }
@@ -396,10 +399,18 @@ export class ClientClockPacingController {
           desiredClientTick = boostedTargetClientTick;
           action = 'catchup';
         }
-      } else if (stepOut.requestStepCatchup || currentDelta <= 0) {
+      } else if (
+        stepOut.requestStepCatchup ||
+        currentDelta <= 0 ||
+        currentDelta < targetDelta + this.catchupThresholdOffset ||
+        (isUnimpairedLoopback && currentDelta < targetDelta)
+      ) {
         desiredClientTick = boostedTargetClientTick;
         action = 'catchup';
-      } else if (stepOut.requestStepSkip) {
+      } else if (
+        stepOut.requestStepSkip ||
+        (isUnimpairedLoopback && currentDelta > targetDelta + this.skipThresholdOffset)
+      ) {
         desiredClientTick = Math.max(serverTick, boostedTargetClientTick);
         action = 'skip';
       }
@@ -410,9 +421,20 @@ export class ClientClockPacingController {
     let stepSkip = false;
     const savedLobbyEntities = saveClientLobbyLocalEntities(ctx.sim, ctx.lobbyDualWorldMode);
     if (action === 'skip') {
+      const preSkipTick = currentClientTick;
+      ctx.sim.saveStateSlot?.(preSkipTick % 256);
       updatedClientTick = desiredClientTick;
-      ctx.sim.restoreStateSlot(updatedClientTick % 256);
-      stepSkip = true;
+      const restored = ctx.sim.restoreStateSlot(updatedClientTick % 256, {
+        suppressBallWriteMark: true,
+      });
+      const restoredTick = Math.floor(ctx.sim.getHeaderView?.()?.tickCount ?? -1);
+      if (restored && (restoredTick === -1 || restoredTick === updatedClientTick)) {
+        stepSkip = true;
+      } else {
+        ctx.sim.restoreStateSlot(preSkipTick % 256, { suppressBallWriteMark: true });
+        updatedClientTick = preSkipTick;
+        stepSkip = false;
+      }
     } else if (action === 'catchup') {
       updatedClientTick = ctx.stepForwardTicks(
         currentClientTick,

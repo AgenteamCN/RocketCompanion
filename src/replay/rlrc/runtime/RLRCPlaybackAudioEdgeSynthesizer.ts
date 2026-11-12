@@ -124,6 +124,8 @@ export class RLRCPlaybackAudioEdgeSynthesizer {
   private bookmarks: readonly RLRCBookmarkRecord[] = [];
   private readonly tracker: AudioEdgeTrackerState = {
     lastHitTick: -999,
+    lastWorldHitTick: -999,
+    lastPostHitTick: -999,
     lastGoalTick: -999,
     lastOtTick: -999,
     lastCdNum: 0,
@@ -138,6 +140,8 @@ export class RLRCPlaybackAudioEdgeSynthesizer {
     this.ring.length = 0;
     this.tracker.lastCdNum = 0;
     this.tracker.lastHitTick = -999;
+    this.tracker.lastWorldHitTick = -999;
+    this.tracker.lastPostHitTick = -999;
     this.tracker.lastGoalTick = -999;
     this.tracker.lastOtTick = -999;
     this.tracker.lastBump.fill(-999);
@@ -152,6 +156,11 @@ export class RLRCPlaybackAudioEdgeSynthesizer {
     if (f) {
       this.ring.push(f);
       this.tracker.lastCdNum = f.roundCountdownNumber;
+      const tick = f.frameIndex120Hz;
+      if (tick < this.tracker.lastHitTick) this.tracker.lastHitTick = -999;
+      if (tick < (this.tracker.lastWorldHitTick ?? -999)) this.tracker.lastWorldHitTick = -999;
+      if (tick < (this.tracker.lastPostHitTick ?? -999)) this.tracker.lastPostHitTick = -999;
+      if (tick < this.tracker.lastGoalTick) this.tracker.lastGoalTick = -999;
     }
   }
 

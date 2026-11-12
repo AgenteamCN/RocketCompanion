@@ -113,26 +113,32 @@ export function dispatchOpportunisticPing(
   roomChannel: BroadcastChannel | null,
   isOpen: boolean,
   nowMs: number,
-  rttMs: number
-): void {
-  const pingPayload = JSON.stringify({
-    type: 'ping',
-    sendTime: nowMs,
-    rtt: Math.round(rttMs || 0),
-  });
+  rttMs: number,
+  serializedPing?: string
+): boolean {
+  const pingPayload =
+    serializedPing ??
+    JSON.stringify({
+      type: 'ping',
+      sendTime: nowMs,
+      rtt: Math.round(rttMs || 0),
+    });
   if (dc && dc.readyState === 'open') {
     try {
       dc.send(pingPayload);
+      return true;
     } catch (_err) {
       // Ignore ping error
     }
   } else if (roomChannel && isOpen) {
     try {
       roomChannel.postMessage(pingPayload);
+      return true;
     } catch (_err) {
       // Ignore ping error
     }
   }
+  return false;
 }
 
 export function transmitClonedPayload(

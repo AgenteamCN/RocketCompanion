@@ -108,6 +108,51 @@ export class OnlineMatchReconcilerBinder {
     return reconciler;
   }
 
+  private bindHostLoopbackTimelineAligner(reconciler: PredictionReconciler): void {
+    const origReconcileBatch = reconciler.rollbackStepper.reconcileInboundBatch.bind(
+      reconciler.rollbackStepper
+    );
+    reconciler.rollbackStepper.reconcileInboundBatch = (session, incomingPackets, nowMs) => {
+      const ch = session.channel;
+      const sim = ch?.simulator ?? ch;
+      const isUnimpairedLoopback = Boolean(
+        (ch?.isLoopback || sim?.isLoopback) &&
+        !(
+          (sim?.extraRttMs ??
+            ch?.extraRttMs ??
+            (sim?.extraLatencyMs ?? ch?.extraLatencyMs ?? 0) * 2) > 0
+        ) &&
+        !((sim?.jitterMs ?? ch?.jitterMs ?? 0) > 0) &&
+        !((sim?.packetLossRate ?? ch?.packetLossRate ?? 0) > 0) &&
+        !(sim?.burstDropEnabled ?? ch?.burstDropEnabled)
+      );
+      if (isUnimpairedLoopback) {
+        const prevSyncTimeline = session.syncTimeline.bind(session);
+        const origLog = console.log;
+        session.syncTimeline = (snap, tick = 0, ts = nowMs) => {
+          reconciler.rollbackStepper.syncSessionTimeline(session, snap, tick, ts, false);
+        };
+        console.log = (...args: unknown[]) => {
+          if (
+            typeof args[0] === 'string' &&
+            args[0].includes('[PredictionReconciler] Timeline sync aligned')
+          ) {
+            return;
+          }
+          origLog.apply(console, args);
+        };
+        try {
+          origReconcileBatch(session, incomingPackets, nowMs);
+        } finally {
+          console.log = origLog;
+          session.syncTimeline = prevSyncTimeline;
+        }
+        return;
+      }
+      origReconcileBatch(session, incomingPackets, nowMs);
+    };
+  }
+
   public syncServerTimelineIfReady(
     authoritativeServer: AuthoritativeServerHost | null,
     reconciler: PredictionReconciler | null,
@@ -116,8 +161,15 @@ export class OnlineMatchReconcilerBinder {
     if (!authoritativeServer || !reconciler) return;
     const serverSnapshot = authoritativeServer.sim.saveCompactState();
     const serverTick = Math.floor(authoritativeServer.sim.getHeaderView().tickCount);
-    if (!requireActiveCar || (serverSnapshot && serverSnapshot[2] >= 1)) {
-      reconciler.syncTimeline(serverSnapshot, serverTick);
+    if (!requireActiveCar || (serverSnapshot && serverSnapshot[1] >= 1)) {
+      reconciler.rollbackStepper.syncSessionTimeline(
+        reconciler,
+        serverSnapshot,
+        serverTick,
+        performance.now(),
+        false
+      );
+      this.host.interpolator?.sync?.(performance.now());
     }
   }
 
@@ -188,7 +240,8 @@ export class OnlineMatchReconcilerBinder {
       hostLobbyMode: isMatchLobby,
       isMatchTelemetryActive: true,
     });
-    this.syncServerTimelineIfReady(server, reconciler, isMatchLobby);
+    this.bindHostLoopbackTimelineAligner(reconciler);
+    this.syncServerTimelineIfReady(server, reconciler, false);
     return { server, channel, reconciler };
   }
 
@@ -359,7 +412,10 @@ export class OnlineMatchReconcilerBinder {
         joinCfg.localVisualId,
         false
       );
-      if (msg?.state === 'lobby' || !msg?.state) {
+      if (
+        (msg?.state === 'lobby' || !msg?.state) &&
+        diagnosticsProbe.diagnosticsFleetController?.enabled !== false
+      ) {
         await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
       }
       interpolator?.sync?.(performance.now());

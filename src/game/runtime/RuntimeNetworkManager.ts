@@ -42,6 +42,10 @@ export class RuntimeNetworkManager {
   isLobbyDualWorldActive(
     reconciler: PredictionReconciler | null = this.sessionCoordinator.networkReconciler
   ): boolean {
+    const rosterState = this.sessionCoordinator.latestServerRosterState;
+    if (rosterState && rosterState !== 'lobby') {
+      return false;
+    }
     const snapshot = this.readWorldSnapshot();
     return Boolean(
       reconciler?.lobbyDualWorldMode ||
@@ -92,6 +96,8 @@ export class RuntimeNetworkManager {
     const server = this.sessionCoordinator.authoritativeServer;
     const reconciler = this.sessionCoordinator.networkReconciler;
     if (server) {
+      this.sessionCoordinator.latestServerRosterState = 'match';
+      this.sessionCoordinator.lobbyDualWorld.configureArenaLobbyFlags(false, false);
       this.diagnosticsProbe.despawnDiagnosticTestFleet();
       server.forceStartMatch(durationSeconds);
     } else if (reconciler) {

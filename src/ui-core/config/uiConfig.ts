@@ -133,7 +133,7 @@ export interface VisualMaterialsConfig {
   carPaint: 'cartoon' | 'anodized';
   paintFinish?: 'matte' | 'metallic';
   demolishedEffect: 'shockwave';
-  boostVisual: 'cartoon' | 'gold-rush';
+  boostVisual: 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave' | 'custom';
   boostAudio?: 'rush' | 'standard' | 'flamethrower' | 'plasma';
   boostFlameLuminance: 'balanced' | 'dynamic';
   boostPlumeLuminance: 'min' | 'balanced' | 'dynamic' | 'hdr';

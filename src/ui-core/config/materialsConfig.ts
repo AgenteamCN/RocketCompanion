@@ -14,19 +14,21 @@ export interface MaterialsConfigState {
   carPaint: 'cartoon' | 'anodized';
   paintFinish: 'matte' | 'metallic';
   demolishedEffect: 'shockwave';
-  boostVisual: 'cartoon' | 'gold-rush';
+  boostVisual: 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave' | 'custom';
   boostAudio: 'rush' | 'standard' | 'flamethrower' | 'plasma';
   boostFlameLuminance: 'balanced' | 'dynamic';
   boostPlumeLuminance: 'min' | 'balanced' | 'dynamic' | 'hdr';
   [key: string]: unknown;
 }
 
+const MATERIALS_BOOST_SCHEMA_VERSION = 2;
+
 export const DEFAULT_MATERIALS_CONFIG: MaterialsConfigState = {
   ballStyle: 'football',
   carPaint: 'cartoon',
   paintFinish: 'metallic',
   demolishedEffect: 'shockwave',
-  boostVisual: 'gold-rush',
+  boostVisual: 'light-wave',
   boostAudio: 'rush',
   boostFlameLuminance: 'balanced',
   boostPlumeLuminance: 'min',
@@ -36,10 +38,21 @@ let activeMaterials: MaterialsConfigState = (() => {
   const raw = safeStorage.get(MATERIALS_STORAGE_KEY);
   if (raw) {
     try {
-      const parsed: MaterialsConfigState = { ...DEFAULT_MATERIALS_CONFIG, ...JSON.parse(raw) };
+      const rawObj = JSON.parse(raw) as Record<string, unknown>;
+      const parsed: MaterialsConfigState = { ...DEFAULT_MATERIALS_CONFIG, ...rawObj };
       parsed.demolishedEffect = 'shockwave';
       if (parsed.paintFinish !== 'matte' && parsed.paintFinish !== 'metallic') {
         parsed.paintFinish = 'metallic';
+      }
+      if (
+        rawObj._boostVisualSchemaVersion !== MATERIALS_BOOST_SCHEMA_VERSION ||
+        parsed.boostVisual === 'custom' ||
+        (parsed.boostVisual !== 'cartoon' &&
+          parsed.boostVisual !== 'gold-rush' &&
+          parsed.boostVisual !== 'light-beam' &&
+          parsed.boostVisual !== 'light-wave')
+      ) {
+        parsed.boostVisual = 'light-wave';
       }
       if (!parsed.boostAudio) {
         const audioCfg = getAudioSettings?.();
@@ -83,7 +96,11 @@ export function setMaterialsConfig(
   if (partialConfig && typeof partialConfig.boostAudio === 'string' && partialConfig.boostAudio) {
     setAllBoostAudioVariations(partialConfig.boostAudio);
   }
-  activeMaterials = { ...activeMaterials, ...partialConfig };
+  activeMaterials = {
+    ...activeMaterials,
+    ...partialConfig,
+    _boostVisualSchemaVersion: MATERIALS_BOOST_SCHEMA_VERSION,
+  };
   if (persist) {
     safeStorage.set(MATERIALS_STORAGE_KEY, JSON.stringify(activeMaterials));
   }

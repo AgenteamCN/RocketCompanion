@@ -9,7 +9,6 @@ import {
   type RLRCNetStreamExtractorInput,
   type RLRCTeamIndex,
 } from '../RLRCReplayTypes.ts';
-import type { RLRCPlayerSlotTrackingState } from './RLRCFrameSnapshotAndBookmarkBuilder.ts';
 import {
   decodeReplicatedAxisByte,
   extractActorIdFromAttr,
@@ -17,6 +16,7 @@ import {
   normalizeReplicatedBoostAmount,
   numAttr,
   recAttr,
+  type RLRCPlayerSlotTrackingState,
 } from './RLRCNetStreamAttributeDecoders.ts';
 
 export interface RLRCDecodedBoostAttribute {

@@ -82,40 +82,73 @@ function buildPhaseAlignedKeyframeTimes(
 ): number[] {
   const n = kf.length;
   if (n === 0) return [];
-  const times = new Array<number>(n);
-  times[0] = nfs[kf[0]].timeSeconds;
+  const rawCum = new Float64Array(n);
+  const wallT = new Float64Array(n);
+  rawCum[0] = nfs[kf[0]].timeSeconds;
+  wallT[0] = rawCum[0];
   for (let i = 0; i < n - 1; i++) {
     const k0 = kf[i];
     const k1 = kf[i + 1];
     const tWall1 = nfs[k1].timeSeconds;
+    wallT[i + 1] = tWall1;
     const dtWall = Math.max(RLRC_FIXED_DT, tWall1 - nfs[k0].timeSeconds);
     const rb0 = getRbFromNetworkFrame(nfs[k0], slot);
     const rb1 = getRbFromNetworkFrame(nfs[k1], slot);
+    const same01 = isDupRb(rb0, rb1) && isRest(rb0);
+    const rest0 =
+      isRest(rb0) ||
+      same01 ||
+      (i > 0 && isRest(rb0) && isDupRb(getRbFromNetworkFrame(nfs[kf[i - 1]], slot), rb0));
+    const rest1 =
+      isRest(rb1) ||
+      same01 ||
+      (i + 2 < n && isRest(rb1) && isDupRb(rb1, getRbFromNetworkFrame(nfs[kf[i + 2]], slot)));
     const dtPhys = resolveEffectivePhysicsDt(
       rb0.position,
       rb1.position,
       rb0.linearVelocity,
       rb1.linearVelocity,
       dtWall,
-      isRest(rb0),
-      isRest(rb1)
+      rest0,
+      rest1
     );
-    const candidate = times[i] + dtPhys;
-    const maxPhaseShift = 0.85 * RLRC_FIXED_DT;
-    times[i + 1] = Math.max(
-      times[i] + RLRC_FIXED_DT,
-      clamp(candidate, tWall1 - maxPhaseShift, tWall1 + maxPhaseShift)
-    );
+    rawCum[i + 1] = rawCum[i] + dtPhys;
   }
+  const times = new Array<number>(n);
+  const winHalf = 10;
+  for (let i = 0; i < n; i++) {
+    const lo = Math.max(0, i - winHalf);
+    const hi = Math.min(n - 1, i + winHalf);
+    let sumDiff = 0;
+    for (let j = lo; j <= hi; j++) sumDiff += rawCum[j] - wallT[j];
+    const aligned = rawCum[i] - sumDiff / (hi - lo + 1);
+    times[i] = i === 0 ? wallT[0] : Math.max(times[i - 1] + 0.5 * RLRC_FIXED_DT, aligned);
+  }
+  times[n - 1] = Math.max(times[0], Math.min(wallT[n - 1], times[n - 1]));
   return times;
+}
+
+function isStationaryHoldBoundary(
+  nfs: readonly RLRCSourceNetworkFrame[],
+  prevIdx: number,
+  rbPrev: RLRCRigidBodySample,
+  holdDurationSeconds: number,
+  _slot: number | 'ball'
+): boolean {
+  return (
+    isRest(rbPrev) ||
+    nfs[prevIdx].roundCountdownNumber > 0 ||
+    holdDurationSeconds >= 0.25
+  );
 }
 
 /**
  * Builds keyframe indices for a contiguous entity lifespan.
- * Only inserts `prev` as a stationary hold boundary when the entity is genuinely at rest
- * (`isRest(rbP)`) or had an explicit server `ReplicatedRBState` update at `prev`.
- * Never inserts un-updated `prev` frames during moving/airborne replication gaps (`hDt >= 0.095`),
- * which previously froze flipping cars in mid-air and snapped them in 1 frame.
+ * Inserts `prev` as a stationary hold boundary when the entity is at rest,
+ * is locked in a kickoff countdown, or held an identical state across a prolonged
+ * stationary interval (`hDt >= 0.25`).
+ * Never inserts redundant UE3 keyframe re-replications or un-updated `prev` frames
+ * while an entity has non-zero velocity, preventing mid-air/ground freezes.
  */
 function buildSpan(
   nfs: readonly RLRCSourceNetworkFrame[],
@@ -140,7 +173,7 @@ function buildSpan(
     if (!isDupRb(rbP, rbC)) {
       const prev = raw[r - 1];
       const hDt = nfs[prev].timeSeconds - nfs[p].timeSeconds;
-      if (prev > p && hDt > 1e-5 && (isRest(rbP) || isRbUpdatedOnFrame(nfs[prev], slot) === true)) {
+      if (prev > p && hDt > 1e-5 && isStationaryHoldBoundary(nfs, prev, rbP, hDt, slot)) {
         kf.push(prev);
       }
       kf.push(idx);
@@ -150,7 +183,8 @@ function buildSpan(
   const last = kf[kf.length - 1];
   if (last !== undefined && end > last && nfs[end].timeSeconds > nfs[last].timeSeconds + 1e-5) {
     const rbL = getRbFromNetworkFrame(nfs[last], slot);
-    if (isRest(rbL) || isRbUpdatedOnFrame(nfs[end], slot) === true) {
+    const hDt = nfs[end].timeSeconds - nfs[last].timeSeconds;
+    if (isStationaryHoldBoundary(nfs, end, rbL, hDt, slot)) {
       kf.push(end);
     }
   }
@@ -266,10 +300,21 @@ export function locateEntitySpanBracket(
     ) ??
     spans.find((s) => near >= s.startNetIdx && near <= s.endNetIdx);
   if (!sp) {
-    const spP = spans.find((s) => s.endNetIdx === cur);
-    const spN = spans.find((s) => s.startNetIdx === cur + 1);
-    if (spP && (spN || near === cur)) sp = spP;
-    else if (spN && near === cur + 1) sp = spN;
+    const spP = spans.find((s) => s.endNetIdx === cur || s.endNetIdx === cur - 1);
+    const spN = spans.find((s) => s.startNetIdx === cur + 1 || s.startNetIdx === cur + 2);
+    const isRoundTeardown =
+      !nfs[cur]?.ball.entityActive && !nfs[cur]?.cars.some((c) => c.entityActive);
+    if (spP && spN && isRoundTeardown) {
+      sp = near <= cur ? spP : spN;
+    } else if (
+      spP &&
+      spP.endNetIdx === cur &&
+      ((spN && spN.startNetIdx === cur + 1) || near === cur)
+    ) {
+      sp = spP;
+    } else if (spN && spN.startNetIdx === cur + 1 && near === cur + 1) {
+      sp = spN;
+    }
   }
   if (!sp || !sp.keyframeIndices.length) return null;
   const kf = sp.keyframeIndices;
@@ -278,10 +323,24 @@ export function locateEntitySpanBracket(
     kt && kt.length === kf.length ? kt[idx] : nfs[kf[idx]].timeSeconds;
   const last = kf[kf.length - 1];
   if (kf.length === 1 || t <= getKfTime(0)) {
-    return { k0Idx: kf[0], k1Idx: kf[0], alpha: 0, dt: 0, rest0: false, rest1: false };
+    const k0 = kf[0];
+    const rb0 = getRbFromNetworkFrame(nfs[k0], slot);
+    const rest0 =
+      isRest(rb0) ||
+      nfs[k0].roundCountdownNumber > 0 ||
+      (kf.length > 1 && isRest(rb0) && isDupRb(rb0, getRbFromNetworkFrame(nfs[kf[1]], slot)));
+    return { k0Idx: k0, k1Idx: k0, alpha: 0, dt: 0, rest0, rest1: rest0 };
   }
   if (t >= getKfTime(kf.length - 1)) {
-    return { k0Idx: last, k1Idx: last, alpha: 0, dt: 0, rest0: false, rest1: false };
+    const k0Idx = kf[kf.length - 2];
+    const k1Idx = last;
+    const dt = Math.max(0, getKfTime(kf.length - 1) - getKfTime(kf.length - 2));
+    const rb0 = getRbFromNetworkFrame(nfs[k0Idx], slot);
+    const rb1 = getRbFromNetworkFrame(nfs[k1Idx], slot);
+    const isSameRest = isDupRb(rb0, rb1) && isRest(rb1);
+    const rest0 = isRest(rb0) || isSameRest || nfs[k0Idx].roundCountdownNumber > 0;
+    const rest1 = isRest(rb1) || isSameRest || nfs[k1Idx].roundCountdownNumber > 0;
+    return { k0Idx, k1Idx, alpha: 1, dt, rest0, rest1 };
   }
 
   let lo = 0;
@@ -297,12 +356,21 @@ export function locateEntitySpanBracket(
   const dt = getKfTime(hi) - t0;
   const rb0 = getRbFromNetworkFrame(nfs[k0Idx], slot);
   const rb1 = getRbFromNetworkFrame(nfs[k1Idx], slot);
+  const isSameRest = isDupRb(rb0, rb1) && (isRest(rb0) || isRest(rb1));
   return {
     k0Idx,
     k1Idx,
     alpha: dt > 1e-6 ? clamp((t - t0) / dt, 0, 1) : 0,
     dt,
-    rest0: lo > 0 && isDupRb(getRbFromNetworkFrame(nfs[kf[lo - 1]], slot), rb0),
-    rest1: hi + 1 < kf.length && isDupRb(rb1, getRbFromNetworkFrame(nfs[kf[hi + 1]], slot)),
+    rest0:
+      isRest(rb0) ||
+      isSameRest ||
+      nfs[k0Idx].roundCountdownNumber > 0 ||
+      (lo > 0 && isRest(rb0) && isDupRb(getRbFromNetworkFrame(nfs[kf[lo - 1]], slot), rb0)),
+    rest1:
+      isRest(rb1) ||
+      isSameRest ||
+      nfs[k1Idx].roundCountdownNumber > 0 ||
+      (hi + 1 < kf.length && isRest(rb1) && isDupRb(rb1, getRbFromNetworkFrame(nfs[kf[hi + 1]], slot))),
   };
 }

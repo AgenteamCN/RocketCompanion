@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { StandardSurfaceProps, SurfaceMeta } from '../manifest/surfaceMetaTypes';
 import { PanelContainer, PanelHeader, PanelContent } from '../layout/Panel';
 import { PanelFooter } from '../layout/PanelFooter';
@@ -23,9 +23,10 @@ import {
   GAME_MODE_TO_FORMAT,
 } from './Layer2ManageRoomRecipe';
 import {
-  dispatchOnlineRoomErrorNotification,
+  DEFAULT_HOST_CREATION_STEPS,
   type CreationProgressStatus,
 } from './online/OnlineRoomCreationProgress';
+import { useOnlineRoomProgressController } from './online/useOnlineRoomProgressController';
 import type {
   HostMatchBotPolicy,
   HostMatchConfig,
@@ -159,7 +160,7 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
 
   const hostMask = useSignalingProfileStore((s) => s.hostMask);
   const verifyRelays = useSignalingProfileStore((s) => s.verifyRelays);
-  const { panels, setToken } = useMenuLayoutStore();
+  const { panels } = useMenuLayoutStore();
   const sizing = panels['layer3-host-match'];
 
   const resolvedRoomType: 'match' | 'warmup' =
@@ -227,7 +228,7 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
     if (overrides.config === undefined) {
       setInternalConfig(next);
     }
-    if (next.playerName) {
+    if (patch.playerName !== undefined && next.playerName) {
       setOnlineSession({ playerName: next.playerName });
     }
     overrides.onChange?.(next, patch);
@@ -244,45 +245,32 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
   } = resolvedConfig;
 
   const [hoveredDesc, setHoveredDesc] = useState<string | null>(null);
+  const steps = overrides.steps ?? DEFAULT_HOST_CREATION_STEPS;
 
-  const [internalProgressStatus, setInternalProgressStatus] =
-    useState<CreationProgressStatus>('idle');
-  const [internalCurrentStep, setInternalCurrentStep] = useState<number>(1);
-  const controlledProgressStatus = propProgressStatus ?? overrides.progressStatus;
-  const controlledCurrentStep = propCurrentStep ?? overrides.currentStep;
-  const progressStatus = controlledProgressStatus ?? internalProgressStatus;
-  const currentStep = controlledCurrentStep ?? internalCurrentStep;
-
-  const setProgressStatus = (status: CreationProgressStatus) => {
-    if (controlledProgressStatus === undefined) {
-      setInternalProgressStatus(status);
-    }
-    overrides.onProgressStatusChange?.(status);
-  };
-
-  const setCurrentStep = (stepOrUpdater: number | ((prev: number) => number)) => {
-    const nextStep =
-      typeof stepOrUpdater === 'function' ? stepOrUpdater(currentStep) : stepOrUpdater;
-    if (controlledCurrentStep === undefined) {
-      setInternalCurrentStep(nextStep);
-    }
-    overrides.onCurrentStepChange?.(nextStep);
-  };
-
-  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const clearStepTimer = () => {
-    if (stepTimerRef.current) {
-      clearInterval(stepTimerRef.current);
-      stepTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => () => clearStepTimer(), []);
+  const {
+    progressStatus,
+    currentStep,
+    effectiveSteps,
+    startSequence,
+    cancelSequence,
+  } = useOnlineRoomProgressController({
+    mode: 'host',
+    steps,
+    controlledProgressStatus: propProgressStatus ?? overrides.progressStatus,
+    controlledCurrentStep: propCurrentStep ?? overrides.currentStep,
+    onProgressStatusChange: overrides.onProgressStatusChange,
+    onCurrentStepChange: overrides.onCurrentStepChange,
+  });
 
   const resolvedDurationSeconds =
     durationPreset === 'custom' ? customDurationSeconds : Number(durationPreset);
 
-  const commitHostLaunch = (cleanCode: string) => {
+  const startStepSequence = (willFail: boolean) => {
+    const cleanCode = finalizeHostRoomCode(roomCode, hostMask);
+    if (cleanCode !== roomCode) {
+      updateConfig({ roomCode: cleanCode });
+    }
+
     const cleanName = playerName.trim() || generateDefaultPlayerName();
     saveStoredPlayerName(cleanName);
     const botFillMode =
@@ -304,7 +292,7 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
       customDurationSeconds: resolvedDurationSeconds,
     };
 
-    setOnlineSession({
+    const sessionPatch = {
       playerName: cleanName,
       roomId: cleanCode,
       password: roomKey || undefined,
@@ -312,72 +300,38 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
       gameMode,
       botFillMode,
       matchDurationSeconds: resolvedDurationSeconds,
-    });
+    } as const;
 
-    if (overrides.onStartHost) {
-      overrides.onStartHost(finalConfig);
-      return;
-    }
-
-    if (bridge.onHostOnlineWarmup) {
-      void bridge
-        .onHostOnlineWarmup({
-          roomId: cleanCode,
-          password: roomKey || undefined,
-          playerName: cleanName,
-          roomType: resolvedRoomType,
-          gameMode,
-          botFillMode,
-          durationSeconds: resolvedDurationSeconds,
-          lobbyMode: resolvedRoomType === 'match',
-        })
-        .then((ok) => {
-          if (ok) {
-            setMatchMode('online-warmup');
-            closeMenu();
-          } else {
-            setProgressStatus('error');
+    const hostViaBridge =
+      !overrides.onStartHost && bridge.onHostOnlineWarmup
+        ? () => {
+            setOnlineSession(sessionPatch);
+            return bridge.onHostOnlineWarmup!({
+              roomId: cleanCode,
+              password: roomKey || undefined,
+              playerName: cleanName,
+              roomType: resolvedRoomType,
+              gameMode,
+              botFillMode,
+              durationSeconds: resolvedDurationSeconds,
+              lobbyMode: resolvedRoomType === 'match',
+            });
           }
-        });
-    }
-  };
+        : undefined;
 
-  const startStepSequence = (willFail: boolean) => {
-    clearStepTimer();
-    const cleanCode = finalizeHostRoomCode(roomCode, hostMask);
-    if (cleanCode !== roomCode) {
-      updateConfig({ roomCode: cleanCode });
-    }
-
-    if (controlledProgressStatus !== undefined) {
-      commitHostLaunch(cleanCode);
-      return;
-    }
-
-    setToken('simulateLayer3Error', false);
-    setInternalCurrentStep(1);
-    setProgressStatus('running');
-
-    stepTimerRef.current = setInterval(() => {
-      setInternalCurrentStep((prev) => {
-        const next = prev + 1;
-        overrides.onCurrentStepChange?.(next);
-        if (willFail && next === 3) {
-          clearStepTimer();
-          setProgressStatus('error');
-          setToken('simulateLayer3Error', true);
-          dispatchOnlineRoomErrorNotification();
-          return 3;
-        }
-        if (next >= 5) {
-          clearStepTimer();
-          setProgressStatus('completed');
-          commitHostLaunch(cleanCode);
-          return 5;
-        }
-        return next;
-      });
-    }, 520);
+    startSequence({
+      roomCode: cleanCode,
+      willFail,
+      executeAsyncLaunch: hostViaBridge,
+      onSuccess: () => {
+        setMatchMode('online-warmup');
+        closeMenu();
+      },
+      onPreviewComplete: () => {
+        setOnlineSession(sessionPatch);
+        overrides.onStartHost?.(finalConfig);
+      },
+    });
   };
 
   return (
@@ -397,19 +351,17 @@ export const Layer3HostMatchRecipe: React.FC<Layer3HostMatchRecipeProps> = React
           progress={{
             progressStatus,
             currentStep,
-            steps: overrides.steps,
+            steps: effectiveSteps,
             onLaunchSequence: startStepSequence,
             onRetrySequence: () => {
               overrides.onRetryHost?.();
               startStepSequence(false);
             },
             onCancelSequence: () => {
-              clearStepTimer();
-              setProgressStatus('idle');
-              setCurrentStep(1);
-              setToken('simulateLayer3Error', false);
-              bridge.onLeaveOnlineServer?.();
-              overrides.onCancelHost?.();
+              cancelSequence(() => {
+                bridge.onLeaveOnlineServer?.();
+                overrides.onCancelHost?.();
+              });
             },
           }}
           onHoverDesc={setHoveredDesc}

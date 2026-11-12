@@ -129,6 +129,7 @@ export interface RosterPlayerEntryLike {
   name?: string;
   username?: string;
   anthemId?: string;
+  isBot?: boolean;
 }
 
 function extractRosterPlayers(
@@ -251,11 +252,23 @@ export class RuntimeParticipantAndCombatSignalSubController {
         if (carIdx === playerCarIndex) this.host.selectedColorSlot = slotObj.id;
       }
     }
+    const rosterPlayers = extractRosterPlayers(this.host.getLastRosterSnapshot());
+    const matchedPlayer = rosterPlayers.find(
+      (p) => p && (p.carIndex === carIdx || p.entityId === carIdx)
+    );
+    const isBot =
+      carIdx === playerCarIndex
+        ? false
+        : matchedPlayer?.isBot !== undefined
+          ? Boolean(matchedPlayer.isBot)
+          : undefined;
+
     arena?.vehicleRegistry.setCarLoadout(carIdx, {
       colorHex: colorHex || undefined,
       paintFinish,
       boostVisual,
       boostAudio,
+      ...(isBot !== undefined ? { isBot } : {}),
     });
     const audioEngine = options?.gameAudio || gameAudio;
     audioEngine?.setCarBoostAudioVariation?.(carIdx, boostAudio || 'rush');

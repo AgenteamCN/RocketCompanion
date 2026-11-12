@@ -50,6 +50,7 @@ export interface RollbackStepperSyncInput {
   downlinkTicks: number;
   hardSnapCount: number;
   isRedundant: boolean;
+  countAsHardSnap?: boolean;
   sendOutboundInput: (tick: number, controls: CarControls | null, nowMs: number) => void;
 }
 
@@ -108,11 +109,10 @@ export function executeSyncTimelineStep(
 ): RollbackStepperSyncOutput {
   const { sim, historyBuffer, visualSmoother, metrics, serverSnapshot, serverTick, nowMs } = input;
   const savedLobby = saveClientLobbyLocalEntities(sim, input.lobbyDualWorldMode);
-  if (serverSnapshot) sim.restoreState(serverSnapshot);
+  if (serverSnapshot) sim.restoreState(serverSnapshot, { suppressBallWriteMark: true });
   if (
-    input.lobbyDualWorldMode ||
-    (typeof sim?.isCarSlotActive === 'function' &&
-      (sim.isCarSlotActive(6) || sim.isCarSlotActive(7)))
+    typeof sim?.isCarSlotActive === 'function' &&
+    (sim.isCarSlotActive(6) || sim.isCarSlotActive(7))
   ) {
     configureClientLobbyDiagnosticProbes(sim);
   }
@@ -144,7 +144,8 @@ export function executeSyncTimelineStep(
     );
   }
   const currentClientTick = Math.floor(sim.getHeaderView!().tickCount);
-  const hardSnapCount = (input.hardSnapCount || 0) + 1;
+  const countAsHardSnap = input.countAsHardSnap !== false;
+  const hardSnapCount = countAsHardSnap ? (input.hardSnapCount || 0) + 1 : input.hardSnapCount || 0;
   visualSmoother.reset();
   sim.saveStateSlot(currentClientTick % 256);
   historyBuffer.saveTickSnapshot(currentClientTick, sim);
@@ -203,11 +204,15 @@ export function executeReplayAndEvaluateCorrection(
   kickoffMaskUntilTick: number,
   tolerances: ReconciliationTolerances,
   metrics: ReconcilerMetrics,
-  state: RollbackStepState
+  state: RollbackStepState,
+  forceStateRestore = false
 ): RollbackStepState {
   let { skippedCorrections, hardSnapCount, totalCorrections, maxCorrectionDelta } = state;
-  sim.saveStateSlot?.(currentClientTick % 256);
-  historyBuffer.saveTickSnapshot(currentClientTick, sim);
+  const simTickBeforeEval = Math.floor(sim.getHeaderView?.()?.tickCount ?? currentClientTick);
+  if (simTickBeforeEval === currentClientTick) {
+    sim.saveStateSlot?.(currentClientTick % 256);
+    historyBuffer.saveTickSnapshot(currentClientTick, sim);
+  }
   const evalResult = evaluateHistoricalSnapshotDelta(
     packet.stateSnapshot,
     historyBuffer.getTickSnapshot(serverTick),
@@ -223,7 +228,7 @@ export function executeReplayAndEvaluateCorrection(
     }
   );
   if (evalResult.canCompare) {
-    if (evalResult.withinTier1) {
+    if (evalResult.withinTier1 && !forceStateRestore && simTickBeforeEval === currentClientTick) {
       skippedCorrections = (skippedCorrections || 0) + 1;
       metrics.applyTier1Skip(
         evalResult.localPosDelta,
@@ -238,16 +243,19 @@ export function executeReplayAndEvaluateCorrection(
   const savedLobbyEntities = saveClientLobbyLocalEntities(sim, lobbyDualWorldMode);
   let slotFullState: Float32Array | null = null;
   if (serverTick < currentClientTick && currentClientTick - serverTick < 256) {
-    if (sim.restoreStateSlot?.(serverTick % 256) && typeof sim?.saveState === 'function') {
+    if (
+      sim.restoreStateSlot?.(serverTick % 256, { suppressBallWriteMark: true }) &&
+      Math.floor(sim.getHeaderView?.()?.tickCount ?? serverTick) === serverTick &&
+      typeof sim?.saveState === 'function'
+    ) {
       slotFullState = sim.saveState();
     }
   }
-  sim.restoreState(packet.stateSnapshot);
+  sim.restoreState(packet.stateSnapshot, { suppressBallWriteMark: true });
   if (slotFullState) preserveCarTransientTimersAcrossCompactRestore(sim, slotFullState, numCars);
   if (
-    lobbyDualWorldMode ||
-    (typeof sim?.isCarSlotActive === 'function' &&
-      (sim.isCarSlotActive(6) || sim.isCarSlotActive(7)))
+    typeof sim?.isCarSlotActive === 'function' &&
+    (sim.isCarSlotActive(6) || sim.isCarSlotActive(7))
   ) {
     configureClientLobbyDiagnosticProbes(sim);
   }

@@ -358,12 +358,27 @@ export class WebSocketSignalingClient {
   close(): void {
     this._stopHeartbeat();
     if (this.ws) {
+      const sock = this.ws;
+      this.ws = null;
       try {
-        this.ws.close();
+        sock.onmessage = null;
+        sock.onerror = null;
+        sock.onclose = null;
+        if (sock.readyState === 0) {
+          sock.onopen = () => {
+            try {
+              sock.close(1000, 'Client closed');
+            } catch {
+              // ignore
+            }
+          };
+        } else if (sock.readyState === 1) {
+          sock.onopen = null;
+          sock.close(1000, 'Client closed');
+        }
       } catch (_) {
         // Ignore close error
       }
-      this.ws = null;
     }
     this.isConnected = false;
   }

@@ -1,5 +1,9 @@
 import { MinimumProgressLoader } from './loader/MinimumProgressLoader.ts';
 import { isVerboseLogEnabled } from './loader/ConsoleProgressObserver.ts';
+import {
+  applyCleanStartupFromQueryIfNeeded,
+  isConfiguratorRoute,
+} from './ui-core/config/tauriLaunchConfigBridge.ts';
 
 const MODULE_RETRY_SESSION_KEY = '__rc_bootstrap_module_reload_ts';
 
@@ -44,7 +48,15 @@ async function importWithRetry<T = any>(
 }
 
 async function bootApplication(): Promise<void> {
-  const host = typeof document !== 'undefined' ? document.querySelector('#app') : null;
+  applyCleanStartupFromQueryIfNeeded();
+
+  const host = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('#app') : null;
+  if (isConfiguratorRoute() && host) {
+    const { mountTauriConfigurator } = await import('./ui-system/mountTauriConfigurator.tsx');
+    mountTauriConfigurator(host);
+    return;
+  }
+
   const loader = new MinimumProgressLoader(host);
   loader.mount();
 

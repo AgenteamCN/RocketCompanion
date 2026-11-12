@@ -19,6 +19,10 @@ import {
   type NormalizedReplayTracksPayload,
 } from './RCReplayBinaryEncoder.ts';
 import { deserializeRCReplayBinaryContainerAsync } from './RCReplayBinaryDecoder.ts';
+import {
+  convertRLReplayBufferToRLRC,
+  exportRLRCSessionToBinaryBytes,
+} from '../rlrc/RLReplayToRLRCConverter.ts';
 
 export interface RetainedMatchReplay {
   magic: string;
@@ -247,6 +251,20 @@ export async function decompressAndParseRCReplayFile(
     return (await deserializeRCReplayBinaryContainerAsync(
       rawBuffer
     )) as unknown as ParsedRCReplayResult;
+  }
+
+  const rawU8 = new Uint8Array(rawBuffer);
+  if (rawU8.byteLength >= 32) {
+    const dv = new DataView(rawU8.buffer, rawU8.byteOffset, rawU8.byteLength);
+    const part1Len = dv.getInt32(0, true);
+    const strLen = dv.getInt32(16, true);
+    if (part1Len > 16 && part1Len < rawU8.byteLength && strLen > 4 && strLen < 64) {
+      const converted = convertRLReplayBufferToRLRC(rawU8);
+      const v2Bytes = exportRLRCSessionToBinaryBytes(converted);
+      return (await deserializeRCReplayBinaryContainerAsync(
+        v2Bytes
+      )) as unknown as ParsedRCReplayResult;
+    }
   }
 
   console.warn(

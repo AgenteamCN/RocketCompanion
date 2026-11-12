@@ -16,44 +16,27 @@ import {
 } from '../RLRCReplayTypes.ts';
 import type { RLRCBallFrameSnapshot30Hz } from './RLRCBallLifecycleExtractor.ts';
 import {
-  DEFAULT_ACTIVE_FLAGS,
+  buildSourceFrameCars,
+  createParkedCarRigidBody,
   DEFAULT_CAR_RB,
   extractActorIdFromAttr,
-  NEUTRAL_CONTROLS,
   recAttr,
   RLRC_DEFAULT_SPAWN_BOOST,
-  RLRC_FLIP_EXPIRATION_SECONDS,
-  RLRC_SUPERSONIC_SPEED_UU_S,
+  type RLRCPlayerSlotTrackingState,
 } from './RLRCNetStreamAttributeDecoders.ts';
 
-export interface RLRCPlayerSlotTrackingState {
-  carId: number;
-  entityActive: boolean;
-  isDemolished: boolean;
-  demolishFrameIndex: number;
-  spawnFrameIndex: number;
-  rbUpdated: boolean;
-  rigidBody: RLRCRigidBodySample;
-  boostAmount: number;
-  throttle: number;
-  steer: number;
-  handbrake: boolean;
-  boostActive: boolean;
-  jumpActive: boolean;
-  doubleJumpActive: boolean;
-  dodgeActive: boolean;
-  lastJumpByte: number;
-  lastDoubleJumpByte: number;
-  lastDodgeByte: number;
-  jumpOneShotFrame: number;
-  doubleJumpOneShotFrame: number;
-  dodgeOneShotFrame: number;
-  dodgePitch: number;
-  dodgeYaw: number;
-  dodgeRoll: number;
-  lastJumpTimeSeconds: number;
-  flippedInAir: boolean;
-}
+export const RLRC_POST_GOAL_GAP_THRESHOLD_SECONDS = 0.5;
+export const RLRC_NOMINAL_SOURCE_DT_SECONDS = 1 / 30;
+
+const sourceTimelineShiftBySlots = new WeakMap<
+  readonly RLRCPlayerSlotTrackingState[],
+  {
+    lastFrameIdx: number;
+    lastRawTimeSeconds: number;
+    cumulativeShiftSeconds: number;
+    wasRoundTeardown: boolean;
+  }
+>();
 
 function resetSlotActionState(s: RLRCPlayerSlotTrackingState): void {
   s.boostActive = false;
@@ -72,14 +55,14 @@ function resetSlotActionState(s: RLRCPlayerSlotTrackingState): void {
 }
 
 export function createInitialPlayerSlotTrackingStates(): RLRCPlayerSlotTrackingState[] {
-  return Array.from({ length: RLRC_MAX_PLAYER_SLOTS }, (): RLRCPlayerSlotTrackingState => ({
+  return Array.from({ length: RLRC_MAX_PLAYER_SLOTS }, (_, slotIndex) => ({
     carId: -1,
     entityActive: false,
     isDemolished: false,
     demolishFrameIndex: -1,
     spawnFrameIndex: -2,
     rbUpdated: false,
-    rigidBody: DEFAULT_CAR_RB,
+    rigidBody: createParkedCarRigidBody(slotIndex),
     boostAmount: RLRC_DEFAULT_SPAWN_BOOST,
     throttle: 0,
     steer: 0,
@@ -137,14 +120,11 @@ export function bindCarPawnToSlotState(params: {
     slotState.demolishFrameIndex = -1;
   }
   if (!isNewCarBinding || isHidden) return false;
-
   if (sameFrameRb) {
     slotState.rigidBody = sameFrameRb;
     slotState.spawnFrameIndex = -2;
   } else {
-    if (initLoc) {
-      slotState.rigidBody = { ...DEFAULT_CAR_RB, position: initLoc, rbUpdated: true };
-    }
+    if (initLoc) slotState.rigidBody = { ...DEFAULT_CAR_RB, position: initLoc, rbUpdated: true };
     slotState.spawnFrameIndex = frameIdx;
   }
   slotState.rbUpdated = true;
@@ -229,10 +209,7 @@ export function buildDemolishBookmarkRecord(params: {
   readonly playerNameByPriId: ReadonlyMap<number, string>;
   readonly playerTeamByPriId: ReadonlyMap<number, RLRCTeamIndex>;
   readonly resolveSlotForCar: (carId: number) => number;
-}): {
-  readonly victimSlot: number;
-  readonly bookmark: RLRCBookmarkRecord | null;
-} {
+}): { readonly victimSlot: number; readonly bookmark: RLRCBookmarkRecord | null } {
   const {
     attrRecord,
     actorId,
@@ -249,27 +226,25 @@ export function buildDemolishBookmarkRecord(params: {
     playerTeamByPriId,
     resolveSlotForCar,
   } = params;
-
-  const demolishData = recAttr(attrRecord?.DemolishExtended ?? attrRecord?.Demolish) ?? attrRecord;
+  const demolishData =
+    recAttr(attrRecord?.DemolishExtended ?? attrRecord?.Demolish ?? attrRecord?.DemolishFx) ??
+    attrRecord;
   const victimCar = demolishData ? extractActorIdFromAttr(demolishData.victim) : actorId;
   const targetCarId = victimCar >= 0 ? victimCar : actorId;
   const victimPriId = carPriById.get(targetCarId) ?? lastPriByCarId.get(targetCarId) ?? -1;
   const directCarSlot = resolveSlotForCar(targetCarId);
   const victimSlot = directCarSlot >= 0 ? directCarSlot : (slotByPriId.get(victimPriId) ?? -1);
-
   if (
     isKeyframe ||
     (victimSlot === lastDemolishSlot && Math.abs(timeSeconds - lastDemolishTime) <= 0.5)
   ) {
     return { victimSlot, bookmark: null };
   }
-
   const attackerPriId = demolishData
     ? extractActorIdFromAttr(demolishData.attacker_pri ?? demolishData.attacker)
     : -1;
   const attackerName = playerNameByPriId.get(attackerPriId) ?? 'Player';
   const victimName = playerNameByPriId.get(victimPriId) ?? `Slot ${Math.max(0, victimSlot)}`;
-
   return {
     victimSlot,
     bookmark: {
@@ -282,77 +257,6 @@ export function buildDemolishBookmarkRecord(params: {
       team: playerTeamByPriId.get(victimPriId) ?? -1,
     },
   };
-}
-
-export function buildSourceFrameCars(
-  slots: readonly RLRCPlayerSlotTrackingState[],
-  timeSeconds: number
-): { cars: RLRCCarFrameState120Hz[]; carRbUpdatedMask: number } {
-  let carRbUpdatedMask = 0;
-  const cars = slots.map((slotState, slotIndex): RLRCCarFrameState120Hz => {
-    const rbUpdated = slotState.entityActive && slotState.rbUpdated;
-    const rigidBody = slotState.entityActive
-      ? { ...slotState.rigidBody, rbUpdated }
-      : slotState.isDemolished
-        ? {
-            ...DEFAULT_CAR_RB,
-            position: slotState.rigidBody.position,
-            rotation: slotState.rigidBody.rotation,
-          }
-        : DEFAULT_CAR_RB;
-    const quat = rigidBody.rotation;
-    const vel = rigidBody.linearVelocity;
-    if (rbUpdated) carRbUpdatedMask |= 1 << slotIndex;
-    const isOnGround =
-      slotState.entityActive &&
-      rigidBody.position.z < 21.5 &&
-      Math.abs(vel.z) < 25 &&
-      1 - 2 * (quat.x * quat.x + quat.y * quat.y) >= 0.7;
-    const elapsedSinceJump = isOnGround
-      ? 0
-      : Math.max(
-          0,
-          timeSeconds -
-            (slotState.lastJumpTimeSeconds > -1e8 ? slotState.lastJumpTimeSeconds : timeSeconds)
-        );
-    return {
-      slotIndex,
-      entityActive: slotState.entityActive,
-      rigidBody,
-      rbUpdated,
-      actorId: slotState.entityActive ? slotState.carId : -1,
-      boostAmount: slotState.entityActive ? slotState.boostAmount : 0,
-      isOnGround,
-      isSupersonic:
-        slotState.entityActive && Math.hypot(vel.x, vel.y, vel.z) >= RLRC_SUPERSONIC_SPEED_UU_S,
-      hasFlipOrJump:
-        slotState.entityActive &&
-        (isOnGround ||
-          (!slotState.flippedInAir && elapsedSinceJump <= RLRC_FLIP_EXPIRATION_SECONDS)),
-      airTimeSinceJump: isOnGround ? 0 : Math.min(RLRC_FLIP_EXPIRATION_SECONDS, elapsedSinceJump),
-      activeFlags: slotState.entityActive
-        ? {
-            boostActive: slotState.boostActive,
-            jumpActive: slotState.jumpActive,
-            doubleJumpActive: slotState.doubleJumpActive,
-            dodgeActive: slotState.dodgeActive,
-          }
-        : DEFAULT_ACTIVE_FLAGS,
-      controls: slotState.entityActive
-        ? {
-            throttle: slotState.throttle,
-            steer: slotState.steer,
-            pitch: slotState.dodgeActive ? slotState.dodgePitch : 0,
-            yaw: slotState.dodgeActive ? slotState.dodgeYaw : 0,
-            roll: slotState.dodgeActive ? slotState.dodgeRoll : 0,
-            jump: slotState.jumpActive || slotState.doubleJumpActive || slotState.dodgeActive,
-            boost: slotState.boostActive,
-            handbrake: slotState.handbrake,
-          }
-        : NEUTRAL_CONTROLS,
-    };
-  });
-  return { cars, carRbUpdatedMask };
 }
 
 export function buildSourceNetworkFrameSnapshot(params: {
@@ -380,13 +284,49 @@ export function buildSourceNetworkFrameSnapshot(params: {
     slots,
   } = params;
 
+  const isRoundTeardown = !ballSnapshot.ball.entityActive && !slots.some((s) => s.entityActive);
+  if (isRoundTeardown) {
+    for (const slotState of slots) {
+      slotState.isDemolished = false;
+      slotState.demolishFrameIndex = -1;
+    }
+  }
+
+  let shiftState = sourceTimelineShiftBySlots.get(slots);
+  if (!shiftState || frameIdx <= shiftState.lastFrameIdx) {
+    shiftState = {
+      lastFrameIdx: frameIdx,
+      lastRawTimeSeconds: timeSeconds,
+      cumulativeShiftSeconds: 0,
+      wasRoundTeardown: isRoundTeardown,
+    };
+    sourceTimelineShiftBySlots.set(slots, shiftState);
+  } else {
+    const rawStep = timeSeconds - shiftState.lastRawTimeSeconds;
+    const prevWasTeardown = shiftState.wasRoundTeardown;
+    shiftState.lastFrameIdx = frameIdx;
+    shiftState.lastRawTimeSeconds = timeSeconds;
+    shiftState.wasRoundTeardown = isRoundTeardown;
+    if (rawStep > RLRC_POST_GOAL_GAP_THRESHOLD_SECONDS) {
+      const targetStep = isRoundTeardown ? 0 : RLRC_NOMINAL_SOURCE_DT_SECONDS;
+      shiftState.cumulativeShiftSeconds += rawStep - targetStep;
+    } else if (prevWasTeardown && !isRoundTeardown && rawStep > 0) {
+      shiftState.cumulativeShiftSeconds += rawStep - RLRC_NOMINAL_SOURCE_DT_SECONDS;
+    }
+  }
+
+  const effectiveTimeSeconds = Math.max(0, timeSeconds - shiftState.cumulativeShiftSeconds);
+  const effectiveDeltaSeconds =
+    deltaSeconds > RLRC_POST_GOAL_GAP_THRESHOLD_SECONDS
+      ? RLRC_NOMINAL_SOURCE_DT_SECONDS
+      : deltaSeconds;
   const { cars, carRbUpdatedMask } = buildSourceFrameCars(slots, timeSeconds);
   const ballRbUpdated = ballSnapshot.ballRbUpdated;
 
   return {
     sourceFrame30Hz: frameIdx,
-    timeSeconds,
-    deltaSeconds,
+    timeSeconds: effectiveTimeSeconds,
+    deltaSeconds: effectiveDeltaSeconds,
     secondsRemaining,
     isOvertime,
     roundCountdownNumber,

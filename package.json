@@ -12,6 +12,11 @@
     "dev:rc": "RC_VITE_ROLE=rc-https vite",
     "dev:tuner": "RC_VITE_ROLE=tuner vite",
     "dev:tauri-http": "RC_VITE_ROLE=rc-http vite",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:dev:tray": "RC_TRAY_ONLY=1 tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:icons": "node scripts/generateTauriCrossbarIcons.mjs",
     "build": "NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "preview": "vite preview",
     "sync:profile": "node scripts/syncPrivateProfile.mjs --force",
@@ -23,7 +28,8 @@
     "check": "pnpm run radar && pnpm run typecheck",
     "extract:golden": "node scripts/extractGoldenBaseline65f1538d.mjs",
     "test:baseline": "node scripts/runScenarioBaseline.mjs",
-    "test:soak": "node scripts/runSoakWatchdog.mjs"
+    "test:soak": "node scripts/runSoakWatchdog.mjs",
+    "repro:multiplayer-room": "node scripts/runMultiplayerRoomRepro.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -41,6 +47,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-basic-ssl": "^1.2.0",

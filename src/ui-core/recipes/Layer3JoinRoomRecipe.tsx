@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { Eye, Wifi } from 'lucide-react';
 import type { StandardSurfaceProps, SurfaceMeta } from '../manifest/surfaceMetaTypes';
 import { PanelContainer, PanelHeader, PanelContent } from '../layout/Panel';
@@ -17,17 +17,15 @@ import {
   loadStoredPlayerName,
   saveStoredPlayerName,
 } from '../config/vehiclePresets';
-import {
-  generateRandomRoomCode,
-  parseRoomCode,
-} from '../config/roomCodeConnectivityCodec';
+import { parseRoomCode } from '../config/roomCodeConnectivityCodec';
 import { OnlineRoomIdentityFields } from './online/OnlineRoomIdentityFields';
 import {
+  DEFAULT_JOIN_ROOM_STEPS,
   OnlineRoomCreationProgress,
-  dispatchOnlineRoomErrorNotification,
   type CreationProgressStatus,
   type CreationStepSpec,
 } from './online/OnlineRoomCreationProgress';
+import { useOnlineRoomProgressController } from './online/useOnlineRoomProgressController';
 
 export interface JoinRoomConfig {
   playerName: string;
@@ -121,47 +119,9 @@ export const SURFACE_META: SurfaceMeta = {
   ],
 };
 
-export const DEFAULT_JOIN_ROOM_STEPS: CreationStepSpec[] = [
-  {
-    step: 1,
-    stageTitle: 'Validating Room Code & Key',
-    description: 'Verifying room code checksum and preparing client authentication payload...',
-    errorTitle: 'Invalid Room Code',
-    errorDescription: 'Room code is empty or failed checksum validation. Please enter a valid room code.',
-  },
-  {
-    step: 2,
-    stageTitle: 'Connecting Signaling Relay',
-    description: 'Establishing WebSocket handshake with signaling server (wss://relay.carball.dev)...',
-    errorTitle: 'Signaling Handshake Timed Out',
-    errorDescription: 'Could not reach wss://relay.carball.dev/signaling within 10s (ERR_CONNECTION_TIMED_OUT).',
-  },
-  {
-    step: 3,
-    stageTitle: 'Resolving Host Room Session',
-    description: 'Looking up active host session and verifying room access key...',
-    errorTitle: 'Room Not Found or Key Mismatch',
-    errorDescription: 'No active room matched this code, or the room access key was rejected.',
-  },
-  {
-    step: 4,
-    stageTitle: 'Negotiating WebRTC ICE & DataChannel',
-    description: 'Exchanging SDP offers, probing STUN/TURN candidates, and opening P2P channels...',
-    errorTitle: 'ICE / NAT Traversal Failed',
-    errorDescription: 'Could not establish peer-to-peer or TURN relay transport with the host.',
-  },
-  {
-    step: 5,
-    stageTitle: 'Synchronizing Arena & Joining Lobby',
-    description: 'Receiving initial match snapshot, registering spectating relay preference, and entering lobby...',
-    errorTitle: 'Lobby Sync Aborted',
-    errorDescription: 'Host closed the lobby before initial state synchronization completed.',
-  },
-];
-
 export const DEFAULT_JOIN_ROOM_CONFIG: JoinRoomConfig = {
   playerName: `Player${Math.floor(1000 + Math.random() * 9000)}`,
-  roomCode: generateRandomRoomCode(0x0f),
+  roomCode: '',
   roomKey: '',
   allowSpectating: true,
 };
@@ -195,7 +155,7 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
     bridge,
   } = appState;
 
-  const { panels, simulateLayer3Error, setToken } = useMenuLayoutStore();
+  const { panels, simulateLayer3Error } = useMenuLayoutStore();
   const sizing = panels['layer3-join-room'];
   const { rowGap, paddingX } = useSettingActionRowStore();
   const onBack = propOnBack ?? storeGoBack;
@@ -228,7 +188,7 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
     if (overrides.config === undefined) {
       setInternalConfig(next);
     }
-    if (next.playerName) {
+    if (patch.playerName !== undefined && next.playerName) {
       setOnlineSession({ playerName: next.playerName });
     }
     overrides.onChange?.(next, patch);
@@ -237,120 +197,82 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
   const { playerName, roomCode, roomKey, allowSpectating } = resolvedConfig;
   const [hoveredDesc, setHoveredDesc] = useState<string | null>(null);
 
-  const [internalProgressStatus, setInternalProgressStatus] =
-    useState<CreationProgressStatus>('idle');
-  const [internalCurrentStep, setInternalCurrentStep] = useState<number>(1);
-  const controlledProgressStatus = propProgressStatus ?? overrides.progressStatus;
-  const controlledCurrentStep = propCurrentStep ?? overrides.currentStep;
-  const progressStatus = controlledProgressStatus ?? internalProgressStatus;
-  const currentStep = controlledCurrentStep ?? internalCurrentStep;
+  const {
+    progressStatus,
+    currentStep,
+    totalSteps,
+    effectiveSteps,
+    failAtStep,
+    startSequence,
+    cancelSequence,
+  } = useOnlineRoomProgressController({
+    mode: 'join',
+    steps,
+    controlledProgressStatus: propProgressStatus ?? overrides.progressStatus,
+    controlledCurrentStep: propCurrentStep ?? overrides.currentStep,
+    onProgressStatusChange: overrides.onProgressStatusChange,
+    onCurrentStepChange: overrides.onCurrentStepChange,
+  });
 
-  const setProgressStatus = (status: CreationProgressStatus) => {
-    if (controlledProgressStatus === undefined) {
-      setInternalProgressStatus(status);
+  const startJoinSequence = (willFail: boolean) => {
+    const cleanCode = roomCode.trim();
+    const parsedCode = parseRoomCode(cleanCode);
+    if (!parsedCode) {
+      failAtStep(1, undefined, undefined, cleanCode || undefined);
+      return;
     }
-    overrides.onProgressStatusChange?.(status);
-  };
 
-  const setCurrentStep = (stepOrUpdater: number | ((prev: number) => number)) => {
-    const nextStep =
-      typeof stepOrUpdater === 'function' ? stepOrUpdater(currentStep) : stepOrUpdater;
-    if (controlledCurrentStep === undefined) {
-      setInternalCurrentStep(nextStep);
-    }
-    overrides.onCurrentStepChange?.(nextStep);
-  };
-
-  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const clearStepTimer = () => {
-    if (stepTimerRef.current) {
-      clearInterval(stepTimerRef.current);
-      stepTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => () => clearStepTimer(), []);
-
-  const commitJoinRoom = (cleanCode: string) => {
+    const canonicalCode = parsedCode.canonicalRoomCode;
     const cleanName = playerName.trim() || generateDefaultPlayerName();
     saveStoredPlayerName(cleanName);
+
     const finalConfig: JoinRoomConfig = {
       playerName: cleanName,
-      roomCode: cleanCode,
+      roomCode: canonicalCode,
       roomKey,
       allowSpectating,
     };
 
-    setOnlineSession({
-      playerName: cleanName,
-      roomId: cleanCode,
-      password: roomKey || undefined,
-    });
+    const joinViaBridge =
+      !overrides.onJoinRoom && bridge.onJoinOnlineWarmup
+        ? () =>
+            bridge.onJoinOnlineWarmup!({
+              roomId: canonicalCode,
+              password: roomKey || undefined,
+              playerName: cleanName,
+            })
+        : undefined;
 
-    if (overrides.onJoinRoom) {
-      overrides.onJoinRoom(finalConfig);
-      return;
-    }
-
-    if (bridge.onJoinOnlineWarmup) {
-      void bridge
-        .onJoinOnlineWarmup({
-          roomId: cleanCode,
-          password: roomKey || undefined,
+    startSequence({
+      roomCode: canonicalCode,
+      willFail,
+      executeAsyncLaunch: joinViaBridge,
+      onSuccess: () => {
+        setOnlineSession({
           playerName: cleanName,
-        })
-        .then((ok) => {
-          if (ok) {
-            setMatchMode('online-warmup');
-            closeMenu();
-          } else {
-            setProgressStatus('error');
-          }
+          roomId: canonicalCode,
+          password: roomKey || undefined,
         });
-    }
-  };
-
-  const startJoinSequence = (willFail: boolean) => {
-    clearStepTimer();
-    const cleanCode = roomCode.trim();
-    const parsedCode = parseRoomCode(cleanCode);
-    if (!parsedCode) {
-      setCurrentStep(1);
-      setProgressStatus('error');
-      setToken('simulateLayer3Error', true);
-      dispatchOnlineRoomErrorNotification();
-      return;
-    }
-
-    if (controlledProgressStatus !== undefined) {
-      commitJoinRoom(parsedCode.canonicalRoomCode);
-      return;
-    }
-
-    setToken('simulateLayer3Error', false);
-    setInternalCurrentStep(1);
-    setProgressStatus('running');
-
-    stepTimerRef.current = setInterval(() => {
-      setInternalCurrentStep((prev) => {
-        const next = prev + 1;
-        overrides.onCurrentStepChange?.(next);
-        if (willFail && next === 3) {
-          clearStepTimer();
-          setProgressStatus('error');
-          setToken('simulateLayer3Error', true);
-          dispatchOnlineRoomErrorNotification();
-          return 3;
-        }
-        if (next >= (steps?.length ?? 5)) {
-          clearStepTimer();
-          setProgressStatus('completed');
-          commitJoinRoom(parsedCode.canonicalRoomCode);
-          return steps?.length ?? 5;
-        }
-        return next;
-      });
-    }, 520);
+        setMatchMode('online-warmup');
+        closeMenu();
+      },
+      onFailure: () => {
+        setOnlineSession({
+          roomId: '',
+          signalingConnected: false,
+          connectedPeers: [],
+          pairingCode: undefined,
+        });
+      },
+      onPreviewComplete: () => {
+        setOnlineSession({
+          playerName: cleanName,
+          roomId: canonicalCode,
+          password: roomKey || undefined,
+        });
+        overrides.onJoinRoom?.(finalConfig);
+      },
+    });
   };
 
   const handleNavigateGarageSync =
@@ -411,20 +333,18 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
           {progressStatus !== 'idle' && (
             <OnlineRoomCreationProgress
               currentStep={currentStep}
-              totalSteps={steps?.length ?? 5}
-              steps={steps}
+              totalSteps={totalSteps}
+              steps={effectiveSteps}
               status={progressStatus}
               onRetry={() => {
                 overrides.onRetryJoin?.();
                 startJoinSequence(false);
               }}
               onCancel={() => {
-                clearStepTimer();
-                setProgressStatus('idle');
-                setCurrentStep(1);
-                setToken('simulateLayer3Error', false);
-                bridge.onLeaveOnlineServer?.();
-                overrides.onCancelJoin?.();
+                cancelSequence(() => {
+                  bridge.onLeaveOnlineServer?.();
+                  overrides.onCancelJoin?.();
+                });
               }}
               isLight={isLight}
             />
@@ -435,17 +355,18 @@ export const Layer3JoinRoomRecipe: React.FC<Layer3JoinRoomRecipeProps> = React.m
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={progressStatus === 'running'}
               onClick={() => startJoinSequence(simulateLayer3Error)}
               onMouseEnter={() =>
                 setHoveredDesc('Join Room: Connect to the target peer-to-peer room using the room code and key.')
               }
               onMouseLeave={() => setHoveredDesc(null)}
-              className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+              className="flex-1 py-2.5 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-neutral-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-wait shrink-0"
             >
               <Wifi className="h-3.5 w-3.5" />
               <span>
                 {progressStatus === 'running'
-                  ? `Joining Room (${currentStep}/${steps?.length ?? 5})...`
+                  ? `Joining Room (${currentStep}/${totalSteps})...`
                   : progressStatus === 'completed'
                   ? 'Connected · Reconnect'
                   : 'Join Room'}

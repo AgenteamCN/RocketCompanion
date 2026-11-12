@@ -27,7 +27,7 @@ export const DEFAULT_VISUAL_MATERIALS: VisualMaterialsConfig = {
   ballStyle: 'football',
   carPaint: 'anodized',
   demolishedEffect: 'shockwave',
-  boostVisual: 'gold-rush',
+  boostVisual: 'light-wave',
   boostAudio: 'rush',
   boostFlameLuminance: 'balanced',
   boostPlumeLuminance: 'balanced',
@@ -93,18 +93,22 @@ export const GarageLoadoutTab: React.FC<GarageLoadoutTabProps> = ({
         icon={Sparkles}
         iconColor="text-amber-400"
         title="Boost Trail Effect"
-        value={materials.boostVisual}
+        value={materials.boostVisual === 'custom' ? 'light-wave' : materials.boostVisual}
         onValueChange={(val) =>
-          updateMaterials({ boostVisual: val as 'cartoon' | 'gold-rush' })
+          updateMaterials({
+            boostVisual: val as 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave',
+          })
         }
         options={[
           { value: 'cartoon', label: 'Cartoon' },
           { value: 'gold-rush', label: 'Gold Rush' },
+          { value: 'light-beam', label: 'Light Beam' },
+          { value: 'light-wave', label: 'Light Wave' },
         ]}
         isLight={isLight}
         onMouseEnter={() =>
           setHoveredDesc(
-            'Selects personal rocket booster particle and trail rendering style (Cartoon vs Gold Rush).'
+            'Selects personal rocket booster visual style (Cartoon, Gold Rush, Light Beam, or Light Wave).'
           )
         }
         onMouseLeave={onLeave}

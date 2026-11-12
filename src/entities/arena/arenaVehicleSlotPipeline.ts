@@ -114,6 +114,12 @@ export function applySlotPaintWithFallback(
     activeColor,
     state.carPaintFinishes[slot] || null
   );
+  const emitters = state.carBoosts[slot];
+  if (Array.isArray(emitters)) {
+    for (const emitter of emitters) {
+      emitter.setCarColor(activeColor);
+    }
+  }
 }
 
 export function mountCarIntoRegistrySlot(

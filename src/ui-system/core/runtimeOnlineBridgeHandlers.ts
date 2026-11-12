@@ -1,5 +1,9 @@
 import { useAppStore } from '../../ui-core/stores/appStore.ts';
 import { hudStore } from '../../ui-core/stores/hudStore.ts';
+import {
+  clearOnlineRoomLaunchError,
+  recordOnlineRoomLaunchError,
+} from '../../ui-core/recipes/online/useOnlineRoomProgressController.ts';
 import { ensureSignalingProfileBridge } from './runtimeSignalingProfileBridge.ts';
 import {
   retainCompletedMatchReplayAndNotify,
@@ -155,6 +159,7 @@ export function createOnlineBridgeHandlers(runtimePort: GameRuntimeUiBridgePort)
     async onHostOnlineWarmup(
       opts: HostOnlineWarmupPortOptions & { ghostMode?: 'automatically-enable' | 'manual' }
     ) {
+      clearOnlineRoomLaunchError();
       try {
         const ok = await matchPort.hostOnlineWarmup(opts);
         if (ok && opts.ghostMode !== undefined) {
@@ -162,14 +167,17 @@ export function createOnlineBridgeHandlers(runtimePort: GameRuntimeUiBridgePort)
         }
         return ok;
       } catch (e) {
+        recordOnlineRoomLaunchError(e, opts.roomId);
         console.error('[mountGameUI] Error hosting online warmup', e);
         return false;
       }
     },
     async onJoinOnlineWarmup(opts: JoinOnlineWarmupPortOptions) {
+      clearOnlineRoomLaunchError();
       try {
         return await matchPort.joinOnlineWarmup(opts);
       } catch (e) {
+        recordOnlineRoomLaunchError(e, opts.roomId);
         console.error('[mountGameUI] Error joining online warmup', e);
         return false;
       }

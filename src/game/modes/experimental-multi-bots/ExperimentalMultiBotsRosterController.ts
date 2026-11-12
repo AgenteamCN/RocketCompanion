@@ -207,6 +207,10 @@ export class ExperimentalMultiBotsRosterController {
       0: new Set<number>(),
       1: new Set<number>(),
     };
+    const usedBotBoostVisualsByTeam: Record<0 | 1, Set<string>> = {
+      0: new Set<string>(),
+      1: new Set<string>(),
+    };
 
     for (let i = 0; i < combinedSlots.length; i++) {
       const slot = combinedSlots[i];
@@ -219,7 +223,12 @@ export class ExperimentalMultiBotsRosterController {
       const teamKey: 0 | 1 = slot.team === 1 ? 1 : 0;
       const rolledBot = isPlayer
         ? null
-        : rollRandomBotLoadout(null, teamKey, usedColorSlotsByTeam[teamKey]);
+        : rollRandomBotLoadout(
+            null,
+            teamKey,
+            usedColorSlotsByTeam[teamKey],
+            usedBotBoostVisualsByTeam[teamKey]
+          );
 
       const swatch =
         typeof slot.colorSlot === 'number' && !usedColorSlotsByTeam[teamKey].has(slot.colorSlot)
@@ -237,8 +246,11 @@ export class ExperimentalMultiBotsRosterController {
         ? matCfg?.paintFinish || 'metallic'
         : rolledBot?.paintFinish || slot.paintFinish || 'metallic';
       const boostVisual = isPlayer
-        ? matCfg?.boostVisual || 'cartoon'
-        : rolledBot?.boostVisual || slot.boostVisual || 'cartoon';
+        ? matCfg?.boostVisual || 'light-wave'
+        : rolledBot?.boostVisual || slot.boostVisual || 'light-wave';
+      if (!isPlayer) {
+        usedBotBoostVisualsByTeam[teamKey].add(boostVisual);
+      }
       const boostAudio = isPlayer
         ? matCfg?.boostAudio || 'standard'
         : rolledBot?.boostAudio || slot.boostAudio || 'standard';
@@ -257,6 +269,7 @@ export class ExperimentalMultiBotsRosterController {
           paintFinish,
           boostVisual,
           boostAudio,
+          isBot: !isPlayer,
         });
         if (r.arena.cars?.[carIndex]) {
           r.arena.cars[carIndex].visible = true;

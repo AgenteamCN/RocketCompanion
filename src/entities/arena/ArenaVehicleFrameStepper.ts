@@ -69,7 +69,8 @@ export function updateBoostVisuals(
   playerCarIndex = 0,
   headerView: ArenaHeaderView | null = null,
   currCarView: CarStateView | null = null,
-  carControlsResolver: CarControlsResolver | null = null
+  carControlsResolver: CarControlsResolver | null = null,
+  cameraPos: THREE.Vector3 | null = null
 ): void {
   const header = headerView?.attach(currState);
   const numCars = header ? header.numCars : cars.length;
@@ -109,7 +110,8 @@ export function updateBoostVisuals(
         activeVisuals && (forcePreview || currentThrottle > 0.01),
         carGroup.visible,
         delta,
-        activeVisuals
+        activeVisuals,
+        cameraPos
       );
     }
   }
@@ -188,12 +190,6 @@ export function stepArenaVehiclesFrame(
       continue;
     }
 
-    if (!arena.cars[carIndex]) {
-      const defaultTeam = carIndex === 6 ? 0 : carIndex === 7 ? 1 : carIndex % 2;
-      vr.ensureCar(carIndex, defaultTeam, arena.carVisual || 'fennec');
-    }
-    if (!arena.cars[carIndex]) continue;
-
     const isLocalCar = carIndex === (arena.playerCarIndex ?? 0);
     if (arena.isLobbyMode) {
       const isLobbyDiagCar = carIndex === 6 || carIndex === 7;
@@ -212,6 +208,12 @@ export function stepArenaVehiclesFrame(
         continue;
       }
     }
+
+    if (!arena.cars[carIndex]) {
+      const defaultTeam = carIndex === 6 ? 0 : carIndex === 7 ? 1 : carIndex % 2;
+      vr.ensureCar(carIndex, defaultTeam, arena.carVisual || 'fennec');
+    }
+    if (!arena.cars[carIndex]) continue;
 
     const carControls =
       typeof carControlsResolver === 'function'

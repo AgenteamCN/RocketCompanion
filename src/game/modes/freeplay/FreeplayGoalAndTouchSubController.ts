@@ -16,7 +16,6 @@ import {
   canTriggerFreeplayManualBallExpire,
   computeManualBallExpireMetadata,
   extractFreeplayAcknowledgedCarControls,
-  handleDisabledOrLobbyGoalLatch,
   normalizeFreeplayBallStateView,
   recordGoalScoredAndSyncHud,
   recordManualExpireAndSyncHud,
@@ -27,6 +26,7 @@ import {
 import {
   applyCleanFreeplaySubsystemsReset,
   applyStandaloneViewerKickoffReset,
+  handleDisabledOrLobbyGoalLatch,
   resetFreeplayExtraCarsAndArenaToSingleCar,
   syncFreeplayAuthoritativeServerKickoffState,
   type CleanFreeplayResetOptions,
@@ -208,6 +208,18 @@ export class FreeplayGoalAndTouchSubController {
     const cv = (
       sim.getCarStateView ? sim.getCarStateView(playerCarIndex) : null
     ) as CarStateViewLike | null;
+
+    const isOnlineLobby = Boolean(
+      scenePort.arena?.isLobbyMode || scenePort.networkReconciler?.lobbyDualWorldMode
+    );
+    if (this.goalResetTicks === 0 && isOnlineLobby) {
+      handleDisabledOrLobbyGoalLatch(scenePort, sim, bView);
+      if (bView && bView.posX === 0 && bView.posY === 0 && bView.velX === 0 && bView.velY === 0) {
+        this.prevBallVelX = 0;
+        this.prevBallVelY = 0;
+        this.prevBallVelZ = 0;
+      }
+    }
 
     if (this.goalResetTicks === 0 && detectSingleCarBallTouch(bView, cv, this)) {
       this.lastTouchTick = currentTick;

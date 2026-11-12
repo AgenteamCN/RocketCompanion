@@ -51,6 +51,9 @@ export class RuntimeKickoffSignalSubController {
 
   private resetTelemetryAndReplayForNewMatch(reconciler: PredictionReconciler): void {
     const ctx = this.context;
+    const latchWithResolved = this.latch as RuntimeSignalLatchState & {
+      lastResolvedKickoffTargetFrame?: number;
+    };
     dismissHostLobbyOngoingNotification();
     if (ctx.authoritativeServer) {
       clearRetainedMatchReplayOnMatchStart();
@@ -58,11 +61,15 @@ export class RuntimeKickoffSignalSubController {
     }
     ctx.markNetworkTelemetryNotified(false);
     this.latch.overtimeAudioPlayed = false;
+    this.latch.lastKickoffTargetFrame = -1;
+    this.latch.lastKickoffStartedFrame = -1;
+    latchWithResolved.lastResolvedKickoffTargetFrame = -1;
+    this.latch.latchedKickoffSeconds.clear();
     ctx.despawnDiagnosticTestFleet();
     reconciler.setLobbyDualWorldMode?.(false);
     reconciler.setReplayPlaybackMode?.(false);
     reconciler.setMatchTelemetryActive?.(true, true);
-    reconciler.resetTimelineState?.();
+    reconciler.resetTimelineState?.(true);
   }
 
   public handleSignal(
@@ -156,15 +163,67 @@ export class RuntimeKickoffSignalSubController {
         if (hasKickoffStartInBatch) {
           return { handled: true, currentTick };
         }
+        const latchWithResolved = this.latch as RuntimeSignalLatchState & {
+          lastResolvedKickoffTargetFrame?: number;
+        };
         const targetFrame = sig.param1 ?? 0;
+        const resolvedTargetFrame = latchWithResolved.lastResolvedKickoffTargetFrame ?? -1;
+        if (
+          targetFrame > 0 &&
+          (targetFrame <= resolvedTargetFrame ||
+            (this.latch.lastKickoffStartedFrame > 0 &&
+              targetFrame <= this.latch.lastKickoffStartedFrame))
+        ) {
+          return { handled: true, currentTick };
+        }
         const isOvertimeKickoff = sig.param2 === 1 || Boolean(matchState?.overtime);
         const isNewKickoffPhase =
-          isFirstSeenSignalId || this.latch.lastKickoffTargetFrame !== targetFrame;
+          targetFrame > 0
+            ? this.latch.lastKickoffTargetFrame !== targetFrame
+            : isFirstSeenSignalId || this.latch.lastKickoffTargetFrame !== targetFrame;
+        const effectiveTick =
+          typeof packetServerTick === 'number' && packetServerTick >= 0
+            ? packetServerTick
+            : typeof sig.frameId === 'number' && isNewKickoffPhase
+              ? sig.frameId
+              : currentTick;
+        if (targetFrame > 0 && effectiveTick >= targetFrame) {
+          latchWithResolved.lastResolvedKickoffTargetFrame = Math.max(
+            resolvedTargetFrame,
+            targetFrame
+          );
+          this.latch.lastKickoffTargetFrame = -1;
+          this.latch.latchedKickoffSeconds.clear();
+          reconciler.setKickoffMaskUntilTick?.(-1);
+          if (matchState && matchState.phase !== 'playing') {
+            reconciler.setLobbyDualWorldMode?.(false);
+            reconciler.setReplayPlaybackMode?.(false);
+            teardownSignalReplayAndPodiumSession(ctx, {
+              exitPodium: true,
+              resetCameraIfWasInReplay: true,
+            });
+            exitLobbyDualWorldAndActivateMatchMode(ctx);
+            matchState.mode = 'match';
+            matchState.phase = 'playing';
+            matchState.paused = false;
+            matchState.countdown = 0;
+            if (isOvertimeKickoff) {
+              matchState.overtime = true;
+            }
+            hudStore.getState().setMatchState({
+              matchPhase: 'playing',
+              kickoffCountdown: 0,
+              ...(isOvertimeKickoff ? { isOvertime: true } : {}),
+            });
+          }
+          return { handled: true, currentTick };
+        }
         if (!isNewKickoffPhase && matchState?.phase === 'playing') {
           return { handled: true, currentTick };
         }
+        let wasInReplay = false;
         if (isNewKickoffPhase) {
-          const wasInReplay = isKickoffTransitioningFromReplay(ctx);
+          wasInReplay = isKickoffTransitioningFromReplay(ctx);
           dismissHostLobbyOngoingNotification();
           ctx.despawnDiagnosticTestFleet();
           reconciler.setLobbyDualWorldMode?.(false);
@@ -186,12 +245,6 @@ export class RuntimeKickoffSignalSubController {
         }
         reconciler.setKickoffMaskUntilTick?.(targetFrame);
 
-        const effectiveTick =
-          typeof packetServerTick === 'number' && packetServerTick >= 0
-            ? packetServerTick
-            : typeof sig.frameId === 'number' && isNewKickoffPhase
-              ? sig.frameId
-              : currentTick;
         const remainingTicks = Math.max(0, targetFrame - effectiveTick);
         const rawDisplaySec = Math.max(1, Math.min(3, Math.ceil(remainingTicks / 120)));
         const prevSec =
@@ -219,11 +272,11 @@ export class RuntimeKickoffSignalSubController {
           ...(isOvertimeKickoff ? { isOvertime: true } : {}),
         });
 
-        if (this.latch.lastKickoffTargetFrame !== targetFrame || isFirstSeenSignalId) {
+        if (isNewKickoffPhase) {
           this.latch.lastKickoffTargetFrame = targetFrame;
           this.latch.latchedKickoffSeconds.clear();
           ctx.resetBotKickoffStep();
-          reconciler.resetTimelineState?.();
+          reconciler.resetTimelineState?.(!wasInReplay);
         }
 
         const muteSignalInReplay = isSignalAudioMutedInGoalReplay(ctx);
@@ -280,8 +333,16 @@ export class RuntimeKickoffSignalSubController {
         ctx.resetBotKickoffStep();
 
         const frameId = sig.frameId ?? -1;
+        const latchWithResolved = this.latch as RuntimeSignalLatchState & {
+          lastResolvedKickoffTargetFrame?: number;
+        };
         const isNewKickoffStart =
           this.latch.lastKickoffStartedFrame !== frameId || isFirstSeenSignalId;
+        latchWithResolved.lastResolvedKickoffTargetFrame = Math.max(
+          latchWithResolved.lastResolvedKickoffTargetFrame ?? -1,
+          this.latch.lastKickoffTargetFrame,
+          frameId
+        );
         this.latch.lastKickoffStartedFrame = frameId;
         this.latch.lastKickoffTargetFrame = -1;
         this.latch.latchedKickoffSeconds.clear();

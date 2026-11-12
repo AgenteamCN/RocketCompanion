@@ -34,10 +34,16 @@ export function mergeDiagnosticProbeNameTagEntries(
   const mergedEntries: NameTagCarEntry[] = Array.isArray(existingEntries)
     ? [...existingEntries]
     : [];
-  if (!mergedEntries.some((entry) => entry.carIndex === 6)) {
+  const boostIdx = mergedEntries.findIndex((entry) => entry.carIndex === 6);
+  if (boostIdx >= 0) {
+    mergedEntries[boostIdx] = { carIndex: 6, name: 'Boost', team: 0 };
+  } else {
     mergedEntries.push({ carIndex: 6, name: 'Boost', team: 0 });
   }
-  if (!mergedEntries.some((entry) => entry.carIndex === 7)) {
+  const rollIdx = mergedEntries.findIndex((entry) => entry.carIndex === 7);
+  if (rollIdx >= 0) {
+    mergedEntries[rollIdx] = { carIndex: 7, name: 'Roll', team: 1 };
+  } else {
     mergedEntries.push({ carIndex: 7, name: 'Roll', team: 1 });
   }
   return mergedEntries;
@@ -147,6 +153,17 @@ export class DiagnosticsFleetAndGhostController extends LobbyGhostIsolationContr
         arena.vehicleRegistry.ensureCar(spec.carIndex, spec.team, 'fennec');
         if (arena.cars[spec.carIndex]) arena.cars[spec.carIndex].visible = true;
       }
+    }
+
+    try {
+      const currentNameTags = getNameTagRuntimeState?.();
+      const updatedEntries = mergeDiagnosticProbeNameTagEntries(currentNameTags?.carEntries);
+      setNameTagRuntimeState?.({
+        isMultiplayerOrMultiCarMode: true,
+        carEntries: updatedEntries,
+      });
+    } catch {
+      // Ignore name tag state update errors in headless environments
     }
 
     if (physics) {

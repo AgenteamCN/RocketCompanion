@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions for main and configurator windows",
+  "windows": [
+    "main",
+    "configurator"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}
+

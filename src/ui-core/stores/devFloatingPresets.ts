@@ -324,9 +324,23 @@ export const KEYBOARD_INPUT_OVERLAY_TUNER_PRESET: PresetConfig = makeDevPreset({
   component: 'KeyboardInputOverlayTunerFloatingWindow',
 });
 
+export const PERFORMANCE_BOOST_TUNER_PRESET: PresetConfig = makeDevPreset({
+  id: 'performance-boost-tuner',
+  title: 'Performance Boost Tuner',
+  category: 'PerformanceBoostTuner',
+  width: 480,
+  height: 620,
+  minWidth: 360,
+  minHeight: 220,
+  summary: 'Extreme Performance zero-bloom boost tuner: Pose-Attached Laser Beam vs Trajectory Tube Ribbon, Single Color vs 3-Stop Gradient, and alpha blend expire curves.',
+  menuEntryPath: DEV_ENTRY_PATHS.ACTIVE_TUNERS,
+  component: 'PerformanceBoostTunerFloatingWindow',
+});
+
 export const DEV_PRESET_WINDOWS: PresetConfig[] = [
   DIAGNOSTIC_DUMP_PRESET,
   KEYBOARD_INPUT_OVERLAY_TUNER_PRESET,
+  PERFORMANCE_BOOST_TUNER_PRESET,
   STATIC_TRAINING_BALL_CAM_TUNER_PRESET,
   NAME_TAG_TUNER_PRESET,
   GOAL_VOLUME_TUNER_PRESET,

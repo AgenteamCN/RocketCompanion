@@ -73,7 +73,8 @@ export class ReconcilerRollbackStepper {
     session: ReconcileSessionTarget,
     serverSnapshot: Float32Array | null,
     serverTick = 0,
-    nowMs = performance.now()
+    nowMs = performance.now(),
+    countAsHardSnap = true
   ): void {
     const targets = session.pacingController.evaluateTimelineTargets(
       session.channel,
@@ -100,6 +101,7 @@ export class ReconcilerRollbackStepper {
       downlinkTicks: targets.downlinkTicks,
       hardSnapCount: session.hardSnapCount,
       isRedundant: session.redundantHistoryCount > 1 || Boolean(session.enableRedundantInputs),
+      countAsHardSnap,
       sendOutboundInput: (t, ctrl, ts) =>
         session.controlMessenger.sendOutboundInputForTick(
           session.channel,
@@ -158,7 +160,7 @@ export class ReconcilerRollbackStepper {
       carVisualPresets: session.carVisualPresets,
     });
     if (topology.activeCarMask !== undefined) session.activeCarMask = topology.activeCarMask;
-    if (topology.invalidateTimelineSync) session.isTimelineSynchronized = false;
+    const forceStateRestore = Boolean(topology.invalidateTimelineSync);
     if (topology.shouldAbortReconcile) {
       if (topology.shouldNotifyMetrics) session.notifyMetricsUpdated();
       return;
@@ -171,12 +173,10 @@ export class ReconcilerRollbackStepper {
     const desyncDistance = Math.abs(currentDelta - targetDelta);
     const rollbackDepth = currentClientTick - serverTick;
     const maxRollbackFrames = session.options.maxRollbackFrames ?? 180;
-
     if (
       !session.isTimelineSynchronized ||
       rollbackDepth > maxRollbackFrames ||
-      rollbackDepth < 0 ||
-      desyncDistance > maxRollbackFrames
+      (rollbackDepth >= 0 && desyncDistance > maxRollbackFrames)
     ) {
       const wasSync = session.isTimelineSynchronized;
       if (nowMs - session.lastHardResyncTime > 300 || !wasSync) {
@@ -205,6 +205,12 @@ export class ReconcilerRollbackStepper {
       } else if (topology.shouldNotifyMetrics) {
         session.notifyMetricsUpdated();
       }
+      return;
+    }
+
+    if (rollbackDepth < -16) {
+      this.syncSessionTimeline(session, packet.stateSnapshot, serverTick, nowMs, false);
+      session.interpolator?.sync?.(nowMs);
       return;
     }
 
@@ -278,7 +284,8 @@ export class ReconcilerRollbackStepper {
       kickoffMaskUntilTick,
       session.getReconciliationTolerances(),
       metrics,
-      session
+      session,
+      forceStateRestore
     );
     session.skippedCorrections = nextState.skippedCorrections;
     session.hardSnapCount = nextState.hardSnapCount;

@@ -159,7 +159,7 @@ export function executeReliableClientCommand(p: {
       roster.switchPlayerRoleOrTeam(
         sessionId,
         param1 === 1 || param1 === 2 ? 'spectator' : 'player',
-        param2 === 1 ? 1 : 0
+        param2 === 2 ? 2 : param2 === 1 ? 1 : 0
       );
       break;
     case CLIENT_COMMAND_TYPES.CMD_VOTE_SKIP_REPLAY:

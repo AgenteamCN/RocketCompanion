@@ -218,9 +218,14 @@ export function configureLobbyPhysicsArena(params: {
     ghostOpacity: o.ghostOpacity ?? o.opacity ?? 0.7,
     ...o,
   });
-  if (dc && o.enableDiagnosticsFleet !== false) {
-    dc.enabled = true;
-    dc.configurePhysics(pm);
+  if (dc) {
+    if (o.enableDiagnosticsFleet !== false) {
+      dc.enabled = true;
+      dc.configurePhysics(pm);
+    } else {
+      dc.enabled = false;
+      dc.releasePhysics(pm);
+    }
   }
 }
 

@@ -186,7 +186,12 @@ export function decodeRoleIndex(code: unknown): 'player' | 'spectator' {
 }
 
 export const PAINT_FINISH_IDS: readonly string[] = Object.freeze(['matte', 'metallic']);
-export const BOOST_VISUAL_IDS: readonly string[] = Object.freeze(['gold-rush', 'cartoon']);
+export const BOOST_VISUAL_IDS: readonly string[] = Object.freeze([
+  'gold-rush',
+  'cartoon',
+  'light-beam',
+  'light-wave'
+]);
 export const BOOST_AUDIO_PRESET_IDS: readonly string[] = Object.freeze([
   'rush',
   'standard',
@@ -211,16 +216,30 @@ export function decodePaintFinishIndex(index: unknown): 'matte' | 'metallic' {
 
 export function encodeBoostVisualIndex(boostVisual: unknown): number {
   if (typeof boostVisual === 'number' && Number.isFinite(boostVisual)) {
-    return (boostVisual & 1);
+    return boostVisual & 0x03;
   }
-  return boostVisual === 'cartoon' ? 1 : 0;
+  if (boostVisual === 'cartoon') return 1;
+  if (boostVisual === 'light-beam') return 2;
+  if (boostVisual === 'light-wave' || boostVisual === 'custom') return 3;
+  if (boostVisual === 'gold-rush') return 0;
+  return 3;
 }
 
-export function decodeBoostVisualIndex(index: unknown): 'gold-rush' | 'cartoon' {
+export function decodeBoostVisualIndex(
+  index: unknown
+): 'gold-rush' | 'cartoon' | 'light-beam' | 'light-wave' | 'custom' {
   if (typeof index === 'string') {
-    return index === 'cartoon' ? 'cartoon' : 'gold-rush';
+    if (index === 'custom') return 'custom';
+    if (index === 'light-beam') return 'light-beam';
+    if (index === 'light-wave') return 'light-wave';
+    if (index === 'cartoon') return 'cartoon';
+    if (index === 'gold-rush') return 'gold-rush';
   }
-  return (Number(index) & 1) === 1 ? 'cartoon' : 'gold-rush';
+  const idx = Number(index) & 0x03;
+  if (idx === 1) return 'cartoon';
+  if (idx === 2) return 'light-beam';
+  if (idx === 3) return 'light-wave';
+  return 'gold-rush';
 }
 
 export function encodeBoostAudioIndex(boostAudio: unknown): number {
@@ -278,9 +297,16 @@ export function packLoadoutSignalParam2(
     return base16 >>> 0;
   }
   const paintBit = encodePaintFinishIndex(extraLoadout.paintFinish) & 0x01;
-  const boostVisBit = encodeBoostVisualIndex(extraLoadout.boostVisual) & 0x01;
+  const boostVisIdx = encodeBoostVisualIndex(extraLoadout.boostVisual) & 0x03;
+  const boostVisLow = boostVisIdx & 0x01;
+  const boostVisHigh = (boostVisIdx >>> 1) & 0x01;
   const boostAudBits = encodeBoostAudioIndex(extraLoadout.boostAudio) & 0x07;
-  const extBits = (1 << 21) | (boostAudBits << 18) | (boostVisBit << 17) | (paintBit << 16);
+  const extBits =
+    (boostVisHigh << 22) |
+    (1 << 21) |
+    (boostAudBits << 18) |
+    (boostVisLow << 17) |
+    (paintBit << 16);
   return (base16 | extBits) >>> 0;
 }
 
@@ -296,7 +322,9 @@ export function unpackLoadoutSignalParam2(param2: number | null | undefined) {
   const hitboxId = decodeHitboxIndex(hitboxIndex);
   const hasExtended = ((raw >>> 21) & 0x01) !== 0;
   const paintFinishIndex = hasExtended ? ((raw >>> 16) & 0x01) : 1;
-  const boostVisualIndex = hasExtended ? ((raw >>> 17) & 0x01) : 0;
+  const boostVisualIndex = hasExtended
+    ? (((raw >>> 17) & 0x01) | (((raw >>> 22) & 0x01) << 1))
+    : 3;
   const boostAudioIndex = hasExtended ? ((raw >>> 18) & 0x07) : 0;
   return {
     visualIndex,
@@ -367,9 +395,18 @@ export function packLoadoutCommandParam2(
     return safeColor;
   }
   const paintBit = encodePaintFinishIndex(extraLoadout.paintFinish) & 0x01;
-  const boostVisBit = encodeBoostVisualIndex(extraLoadout.boostVisual) & 0x01;
+  const boostVisIdx = encodeBoostVisualIndex(extraLoadout.boostVisual) & 0x03;
+  const boostVisLow = boostVisIdx & 0x01;
+  const boostVisHigh = (boostVisIdx >>> 1) & 0x01;
   const boostAudBits = encodeBoostAudioIndex(extraLoadout.boostAudio) & 0x07;
-  return (0x8000 | (boostAudBits << 10) | (boostVisBit << 9) | (paintBit << 8) | safeColor) & 0xFFFF;
+  return (
+    0x8000 |
+    (boostVisHigh << 13) |
+    (boostAudBits << 10) |
+    (boostVisLow << 9) |
+    (paintBit << 8) |
+    safeColor
+  ) & 0xFFFF;
 }
 
 export function unpackLoadoutCommandParam2(param2: number | null | undefined) {
@@ -377,7 +414,9 @@ export function unpackLoadoutCommandParam2(param2: number | null | undefined) {
   const colorSlot = raw & 0xFF;
   const hasExtended = (raw & 0x8000) !== 0;
   const paintFinishIndex = hasExtended ? ((raw >>> 8) & 0x01) : 1;
-  const boostVisualIndex = hasExtended ? ((raw >>> 9) & 0x01) : 0;
+  const boostVisualIndex = hasExtended
+    ? (((raw >>> 9) & 0x01) | (((raw >>> 13) & 0x01) << 1))
+    : 3;
   const boostAudioIndex = hasExtended ? ((raw >>> 10) & 0x07) : 0;
   return {
     colorSlot,

@@ -87,6 +87,32 @@ export class SignalEventBuffer {
       signalInput.signalType === MATCH_SIGNALS.KICKOFF_START
     ) {
       this.retireByType(MATCH_SIGNALS.KICKOFF_WILL_START);
+    } else if (
+      signalInput.signalType === MATCH_SIGNALS.PLAYER_JOINED ||
+      signalInput.signalType === MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED ||
+      signalInput.signalType === MATCH_SIGNALS.PLAYER_SLOT_UPDATED
+    ) {
+      const targetEntityId = signalInput.param1 ?? 0;
+      for (const [id, existing] of this.entries.entries()) {
+        if (
+          existing.signalType === MATCH_SIGNALS.PLAYER_LEFT &&
+          existing.param1 === targetEntityId
+        ) {
+          this.entries.delete(id);
+        }
+      }
+    } else if (signalInput.signalType === MATCH_SIGNALS.PLAYER_LEFT) {
+      const targetEntityId = signalInput.param1 ?? 0;
+      for (const [id, existing] of this.entries.entries()) {
+        if (
+          (existing.signalType === MATCH_SIGNALS.PLAYER_JOINED ||
+            existing.signalType === MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED ||
+            existing.signalType === MATCH_SIGNALS.PLAYER_SLOT_UPDATED) &&
+          existing.param1 === targetEntityId
+        ) {
+          this.entries.delete(id);
+        }
+      }
     } else if (signalInput.signalType === MATCH_SIGNALS.COMMAND_ACK) {
       const targetCmdId = (signalInput.param1 ?? 0) >>> 0;
       const targetCmdType = (signalInput.param2 ?? 0) >>> 0;

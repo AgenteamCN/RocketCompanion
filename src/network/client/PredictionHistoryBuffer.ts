@@ -133,9 +133,8 @@ export class LocalClientInputBuffer {
       }
     }
 
-    for (let i = 0; i < safeCount; i++) {
-      const t = fromTick - i;
-      if (t < 0) break;
+    const startTick = Math.max(0, earliest);
+    for (let t = startTick; t <= fromTick; t++) {
       const entry = this.getAtTick(t);
       if (entry && entry.carIndex === carIndex) {
         lastValidControls = entry.controls;
@@ -298,6 +297,7 @@ export class PredictionHistoryBuffer {
         if (c === localCarIndex) {
           committedLocalCtrl = ctrl;
           this.lastLocalControls = { ...ctrl };
+          this.clientInputRingBuffer.record(t, localCarIndex, ctrl);
         }
         sim.setControls(c, ctrl);
       }

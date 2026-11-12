@@ -179,6 +179,18 @@ export function updateSuspensionUnitSpring(susUnit, knucklePos) {
   }
 }
 
+export function getWheelRestHeight(vehiclePreset: string, wheelIndex = 0): number {
+  const baseRestHeight = getCarRestHeight(vehiclePreset);
+  if (wheelIndex < 2) return baseRestHeight;
+  const canonical = normalizeVisualId(vehiclePreset);
+  const desc = hasVehicleDescriptor(canonical) ? getVehicleDescriptor(canonical) : null;
+  const preset = desc?.hitboxPreset || canonical;
+  const physicsSpecs = getPhysicsWheelSpecsForHitbox(preset, Boolean(desc?.threeWheels));
+  const frontRadius = physicsSpecs[0]?.[2] ?? 12.5;
+  const rearRadius = physicsSpecs[wheelIndex]?.[2] ?? frontRadius;
+  return baseRestHeight - (rearRadius - frontRadius);
+}
+
 /**
  * Solves and animates the 4-wheel (or 3-wheel Tricycle) suspension, steering angle, and tire rotation for a vehicle.
  */
@@ -194,7 +206,6 @@ export function updateCarSuspensionAndSteering(
 ) {
   if (!wheels || !wheelSpecs || !spin || !currCar) return;
   const forwardSpeed = currCar.forwardSpeed !== undefined ? currCar.forwardSpeed : 0;
-  const restHeight = getCarRestHeight(vehiclePreset);
 
   // Detect 3-wheel mode from descriptor or WASM state (in 3-wheel mode, WASM has 3 wheels [0=front-center, 1=back-L, 2=back-R] and slot 3 is 0)
   const desc = hasVehicleDescriptor(vehiclePreset) ? getVehicleDescriptor(vehiclePreset) : null;
@@ -240,12 +251,13 @@ export function updateCarSuspensionAndSteering(
       susLength *= 50.0;
     }
 
-    // Default resting height places wheels resting on the ground (-6.0 UU under chassis origin)
-    const effectiveSusLength = susLength > 0 ? susLength : restHeight + 6.0;
+    const wheelRestHeight = getWheelRestHeight(vehiclePreset, wheelIndex);
+    // Default resting height places wheels resting on the ground (-4.5 UU under chassis origin)
+    const effectiveSusLength = susLength > 0 ? susLength : wheelRestHeight + 4.5;
     const extraY = Number(wheelModifierRuntimeConfig.verticalOffsetY) || 0;
     const customRestY = desc?.suspensionHeights?.[wheelIndex];
     const restYDelta = typeof customRestY === 'number' ? customRestY - (wheelRadius - 17) : 0;
-    const mountY = restHeight - effectiveSusLength + extraY + restYDelta;
+    const mountY = wheelRestHeight - effectiveSusLength + extraY + restYDelta;
 
     if (wheels[wheelIndex].steer) {
       wheels[wheelIndex].steer.position.set(specX, mountY, specZ);

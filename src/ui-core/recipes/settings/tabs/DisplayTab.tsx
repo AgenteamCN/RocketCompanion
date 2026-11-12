@@ -19,6 +19,13 @@ import { useViewportStore, viewportStore } from '../../../stores/viewportStore';
 import { useScopedStore } from '../../../stores/storeSnapshotScope';
 import type { SurfaceVariantMeta } from '../../../manifest/surfaceMetaTypes';
 import { calculateSettingsSafeScale } from '../../../config/uiConfig';
+import {
+  detectClientPlatformTag,
+  getTauriLaunchState,
+  isTauriRuntime,
+  setTauriDisplayWindowMode,
+  type TauriWindowMode,
+} from '../../../config/tauriLaunchConfigBridge';
 
 export type MenuPowerSaveOption = 'extreme' | '15' | '30' | 'disable' | 'freeze' | 'match';
 export type FpsTargetOption = '30' | '60' | '75' | '90' | '120' | '240' | 'unlimited' | 'custom' | string;
@@ -246,6 +253,32 @@ export const DisplayTab: React.FC<DisplayTabProps> = ({
       : undefined;
 
   const { rowGap } = useSettingActionRowStore();
+  const isTauri = isTauriRuntime();
+  const [tauriPlatform, setTauriPlatform] = useState(() => detectClientPlatformTag());
+  const [tauriWindowMode, setTauriWindowMode] = useState<TauriWindowMode>('windowed');
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let mounted = true;
+    void getTauriLaunchState().then((state) => {
+      if (!mounted) return;
+      setTauriPlatform(state.platform);
+      setTauriWindowMode(state.config.windowMode);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [isTauri]);
+
+  const isMacOs = tauriPlatform === 'macos';
+
+  const handleWindowModeChange = (val: string) => {
+    const mode = val as TauriWindowMode;
+    setTauriWindowMode(mode);
+    void setTauriDisplayWindowMode(mode).then((applied) => {
+      setTauriWindowMode(applied);
+    });
+  };
 
   return (
     <div
@@ -253,6 +286,33 @@ export const DisplayTab: React.FC<DisplayTabProps> = ({
       className="flex flex-col w-full"
       style={{ gap: `${rowGap}px` }}
     >
+      {isTauri && (
+        <SettingSegmentedRow
+          icon={Monitor}
+          label="Window Mode"
+          subtitle={
+            isMacOs
+              ? 'macOS native fullscreen space or desktop window (Borderless disabled on macOS)'
+              : 'Switch between Fullscreen, Borderless, and Windowed desktop display modes'
+          }
+          value={isMacOs && tauriWindowMode === 'borderless' ? 'windowed' : tauriWindowMode}
+          onChange={handleWindowModeChange}
+          options={[
+            { value: 'fullscreen', label: 'Fullscreen' },
+            { value: 'borderless', label: 'Borderless', disabled: isMacOs },
+            { value: 'windowed', label: 'Windowed' },
+          ]}
+          hoverDescription={
+            isMacOs
+              ? 'Select Fullscreen or Windowed mode (Borderless is disabled on macOS).'
+              : 'Select Fullscreen, Borderless (top-left offset without titlebar), or Windowed mode.'
+          }
+          onHover={(desc) => desc && onHover(desc)}
+          onLeave={onLeave}
+          isLight={isLight}
+        />
+      )}
+
       <SettingPresetCustomRow
         icon={Maximize2}
         label="UI Scaling"

@@ -225,7 +225,9 @@ export class PredictionReconciler
 
   setLobbyDualWorldMode(enabled: boolean): void {
     const next = Boolean(enabled);
-    if (this.lobbyDualWorldMode !== next) this.resetTimelineState();
+    if (this.lobbyDualWorldMode !== next) {
+      this.resetTimelineState(this.isTimelineSynchronized);
+    }
     this.lobbyDualWorldMode = next;
   }
 
@@ -239,17 +241,29 @@ export class PredictionReconciler
     this.replayPlaybackMode = next;
   }
 
-  resetTimelineState(): void {
-    const initialTick = Math.max(-1, Math.floor(this.sim?.getHeaderView?.()?.tickCount || 0) - 1);
-    this.lastAckedServerTick = -1;
+  resetTimelineState(preserveTimelineSync = false): void {
+    const keepSync = Boolean(
+      preserveTimelineSync && this.isTimelineSynchronized && this.lastAckedServerTick >= 0
+    );
+    const initialTick = keepSync
+      ? Math.max(
+          this.lastServerRecordedInputTick,
+          Math.floor(this.sim?.getHeaderView?.()?.tickCount || 0) - 1
+        )
+      : Math.max(-1, Math.floor(this.sim?.getHeaderView?.()?.tickCount || 0) - 1);
+    if (!keepSync) {
+      this.lastAckedServerTick = -1;
+      this.isTimelineSynchronized = false;
+      this.lastHardResyncTime = 0;
+      if (this.metrics) this.metrics.serverTick = 0;
+    }
     this.lastServerRecordedInputTick = initialTick;
-    this.isTimelineSynchronized = false;
     this.shouldSkipLocalStep = false;
-    this.lastHardResyncTime = 0;
     this.controlMessenger.resetTimelineCounters(initialTick);
-    if (this.metrics) this.metrics.serverTick = 0;
     this.telemetryCollector.pacingControllerState = { initialized: false };
-    this.historyBuffer.clear();
+    if (!keepSync) {
+      this.historyBuffer.clear();
+    }
     this.visualSmoother.reset();
     this.boostPadEdgeTracker = createBoostPadEdgeTracker();
   }

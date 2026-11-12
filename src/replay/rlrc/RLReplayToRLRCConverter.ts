@@ -110,8 +110,14 @@ export function buildRLRCSessionFromParserOutput(
     for (let f = 0; f < count120; f++) {
       timestamps[f] = Math.min(tEnd, t0 + f * RLRC_FIXED_DT);
     }
+    const alignedPadEvents = parserOutput.boostPadEvents.map((ev) => {
+      const nf = nfs[ev.sourceFrame30Hz];
+      return nf && Math.abs(nf.timeSeconds - ev.timeSeconds) > 1e-4
+        ? { ...ev, timeSeconds: nf.timeSeconds }
+        : ev;
+    });
     boostPadCooldownsByFrame120Hz = buildBoostPadCooldownTimeline120Hz(
-      parserOutput.boostPadEvents,
+      alignedPadEvents,
       timestamps
     );
   }

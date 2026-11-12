@@ -18,6 +18,7 @@ import {
 } from '../vehicle/customGlbImporter.ts';
 import { createCarHitboxWireframe } from './ArenaMath.ts';
 import type { VehicleBoostEmitter } from '../vehicle/boost/vehicleBoostEmitter.ts';
+import type { PerformanceBoostColorParams } from '../../ui-core/config/performanceBoostConfig.ts';
 
 export interface VehicleWheelRig {
   steer: THREE.Group;
@@ -33,6 +34,8 @@ export interface CarLoadoutConfig {
   colorHex?: string | number | null;
   boostVisual?: string | null;
   boostAudio?: string | null;
+  isBot?: boolean;
+  boostColorParams?: PerformanceBoostColorParams | null;
 }
 
 export interface VehicleLoadoutTarget {
@@ -112,10 +115,22 @@ export class ArenaVehicleLoadoutManager {
       activeColor,
       this.carPaintFinishes[slot] || null
     );
+    const emitters = this.registry.carBoosts?.[slot];
+    if (Array.isArray(emitters)) {
+      for (const emitter of emitters) {
+        emitter?.setCarColor?.(activeColor);
+      }
+    }
   }
 
   public setCarColor(carIndex: number, colorVal: string | number | null | undefined): void {
     const num = typeof colorVal === 'string' ? parseInt(colorVal.replace('#', ''), 16) : colorVal;
+    const emitters = this.registry.carBoosts?.[carIndex];
+    if (Array.isArray(emitters)) {
+      for (const emitter of emitters) {
+        emitter?.setCarColor?.(num);
+      }
+    }
     if (this.carColors[carIndex] === num) return;
     this.carColors[carIndex] = num;
     const carRoot = this.registry.cars[carIndex];
@@ -149,7 +164,13 @@ export class ArenaVehicleLoadoutManager {
   public setCarBoostVisual(carIndex: number, boostVisual: string | null): void {
     if (typeof carIndex !== 'number' || carIndex < 0) return;
     const normalized =
-      boostVisual === 'cartoon' || boostVisual === 'gold-rush' ? boostVisual : null;
+      boostVisual === 'cartoon' ||
+      boostVisual === 'gold-rush' ||
+      boostVisual === 'light-beam' ||
+      boostVisual === 'light-wave' ||
+      boostVisual === 'custom'
+        ? boostVisual
+        : null;
     this.carBoostVisuals[carIndex] = normalized;
     const emitters = this.registry.carBoosts?.[carIndex];
     if (Array.isArray(emitters)) {
@@ -175,6 +196,22 @@ export class ArenaVehicleLoadoutManager {
     }
     if (loadout.colorHex !== undefined && loadout.colorHex !== null) {
       this.setCarColor(carIndex, loadout.colorHex);
+    }
+    if (loadout.isBot !== undefined) {
+      const emitters = this.registry.carBoosts?.[carIndex];
+      if (Array.isArray(emitters)) {
+        for (const emitter of emitters) {
+          emitter?.setIsBot?.(Boolean(loadout.isBot));
+        }
+      }
+    }
+    if (loadout.boostColorParams !== undefined) {
+      const emitters = this.registry.carBoosts?.[carIndex];
+      if (Array.isArray(emitters)) {
+        for (const emitter of emitters) {
+          emitter?.setBoostColorParams?.(loadout.boostColorParams);
+        }
+      }
     }
     if (loadout.boostVisual !== undefined) {
       this.setCarBoostVisual(carIndex, loadout.boostVisual);

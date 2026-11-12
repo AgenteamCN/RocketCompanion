@@ -1,7 +1,101 @@
+import {
+  BALL_REST_Z,
+  BALL_STATE_STRIDE,
+  SIM_OFFSETS,
+} from '../../../physics/RocketSimConstants.ts';
+import {
+  evaluateGoalScoredFromBallView,
+  type BallStateViewLike,
+} from '../shared/goalAndBallTouchPipeline.ts';
 import type {
   FreeplayGoalAndTouchRuntimePort,
   FreeplayGoalMetadataTargetPort,
+  FreeplayPhysicsEnginePort,
 } from './freeplayTouchAndGoalPipeline.ts';
+
+const _lobbyCenterBallResetState = new Float32Array([
+  0,
+  0,
+  BALL_REST_Z,
+  1,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+]);
+
+export function handleDisabledOrLobbyGoalLatch(
+  scenePort: FreeplayGoalAndTouchRuntimePort,
+  sim: FreeplayPhysicsEnginePort,
+  bView: BallStateViewLike | null
+): boolean {
+  const isOnlineLobby = Boolean(
+    scenePort.arena?.isLobbyMode || scenePort.networkReconciler?.lobbyDualWorldMode
+  );
+  if (!scenePort.trainingOptions?.disableGoalReset && !isOnlineLobby) {
+    return false;
+  }
+  if (
+    isOnlineLobby &&
+    !scenePort.authoritativeServer &&
+    scenePort.networkReconciler?.lobbyDualWorldMode
+  ) {
+    const headerGoalScored = (sim.getHeaderView?.()?.goalScoredFlag ?? 0) !== 0;
+    const polledGoalScored = sim.pollGoal ? Number(sim.pollGoal() || 0) !== 0 : false;
+    const ballViewGoalScored = evaluateGoalScoredFromBallView(sim, bView).scored;
+    if (headerGoalScored || polledGoalScored || ballViewGoalScored) {
+      if (sim.resetGoalLatch) sim.resetGoalLatch();
+      if (sim.setBallState) {
+        sim.setBallState(_lobbyCenterBallResetState);
+      }
+      const currentTick = Math.floor(sim.getHeaderView?.()?.tickCount ?? 0);
+      sim.saveStateSlot?.(currentTick % 256);
+      const reconcilerWithHistory = scenePort.networkReconciler as {
+        historyBuffer?: { saveTickSnapshot?: (tick: number, sim: unknown) => unknown } | null;
+      };
+      reconcilerWithHistory.historyBuffer?.saveTickSnapshot?.(currentTick, sim);
+      const ballSliceEnd = SIM_OFFSETS.BALL + BALL_STATE_STRIDE;
+      if (sim.state && sim.state.length >= ballSliceEnd) {
+        const ballSlice = sim.state.subarray(SIM_OFFSETS.BALL, ballSliceEnd);
+        if (
+          scenePort.interpolator?.prevState &&
+          scenePort.interpolator.prevState.length >= ballSliceEnd
+        ) {
+          scenePort.interpolator.prevState.set(ballSlice, SIM_OFFSETS.BALL);
+        }
+        if (
+          scenePort.interpolator?.currState &&
+          scenePort.interpolator.currState.length >= ballSliceEnd
+        ) {
+          scenePort.interpolator.currState.set(ballSlice, SIM_OFFSETS.BALL);
+        }
+      }
+      if (bView) {
+        bView.posX = 0;
+        bView.posY = 0;
+        bView.posZ = BALL_REST_Z;
+        bView.velX = 0;
+        bView.velY = 0;
+        bView.velZ = 0;
+      }
+    } else if (sim.resetGoalLatch) {
+      sim.resetGoalLatch();
+    }
+  } else if (sim.resetGoalLatch) {
+    sim.resetGoalLatch();
+  }
+  return true;
+}
 
 export interface CleanFreeplayResetOptions {
   standaloneReplayViewer?: {

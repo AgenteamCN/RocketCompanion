@@ -182,10 +182,9 @@ export function executeAuthoritativePhysicsTickStep(state: AuthoritativeTickStep
     lobbyGhostCoordinator: state.lobbyGhostCoordinator,
   });
 
-  const nextTick = readSimCurrentTick(state.sim);
   const stepEval = evaluatePostStepIncidentsAndGoalLatch({
     sim: state.sim,
-    currentTick: nextTick,
+    currentTick: state.currentTick,
     isRecordingFullReplay: state.isRecordingFullReplay,
     goalLatched: state.goalLatched,
     goalScoredAtTick: state.goalScoredAtTick,
@@ -194,6 +193,7 @@ export function executeAuthoritativePhysicsTickStep(state: AuthoritativeTickStep
     lastBallTouchTick: state.lastBallTouchTick,
   });
 
+  const nextTick = readSimCurrentTick(state.sim);
   const output: AuthoritativePhysicsStepOutput = {
     tick: nextTick,
     activeCarMask: computeActiveCarMask(state.sim, state.activeCarIndices),

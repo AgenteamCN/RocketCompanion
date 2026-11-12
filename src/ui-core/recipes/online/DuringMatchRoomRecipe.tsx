@@ -50,14 +50,6 @@ export interface DuringMatchRoomRecipeProps {
   isLight?: boolean;
 }
 
-const INITIAL_MATCH_PLAYERS: ActiveMatchPlayer[] = [
-  { id: 'b-1', name: 'Player_01 (Host)', pingMs: 0, pairId: '1A0F', team: 'blue', isHost: true },
-  { id: 'b-2', name: 'Aerial_Vortex', pingMs: 28, pairId: '4D1E', team: 'blue' },
-  { id: 'b-3', name: 'Nexto_Bot_1', pingMs: 0, team: 'blue', isBot: true },
-  { id: 'o-1', name: 'OctaneMain_99', pingMs: 22, pairId: '9B2C', team: 'orange' },
-  { id: 'o-2', name: 'FlipReset_Pro', pingMs: 0, pairId: '5E7A', team: 'orange', noInput: true },
-];
-
 export const DuringMatchRoomRecipe: React.FC<DuringMatchRoomRecipeProps> = React.memo(({
   role,
   signalingState: controlledSignaling,
@@ -87,7 +79,7 @@ export const DuringMatchRoomRecipe: React.FC<DuringMatchRoomRecipeProps> = React
   } = roomConfig ?? {};
   const isHost = role === 'host';
   const [internalSignaling, setInternalSignaling] = useState<SignalingHealthState>('green');
-  const [internalPlayers, setInternalPlayers] = useState<ActiveMatchPlayer[]>(INITIAL_MATCH_PLAYERS);
+  const [internalPlayers, setInternalPlayers] = useState<ActiveMatchPlayer[]>([]);
   const [showPairId, setShowPairId] = useState<boolean>(isHost);
 
   const [internalClientJoinTeam, setInternalClientJoinTeam] = useState<LobbyTeamAssignment>('neutral');
@@ -107,6 +99,8 @@ export const DuringMatchRoomRecipe: React.FC<DuringMatchRoomRecipeProps> = React
   const setSignalingState = setInternalSignaling;
   const players = controlledPlayers ?? internalPlayers;
 
+  const slotsPerSide = teamFormat === 'duel' ? 1 : teamFormat === 'doubles' ? 2 : 3;
+  const maxPlayers = slotsPerSide * 2;
   const bluePlayers = players.filter((p) => p.team === 'blue');
   const orangePlayers = players.filter((p) => p.team === 'orange');
   const humanPlayersCount = players.filter((p) => !p.isBot).length;
@@ -155,12 +149,14 @@ export const DuringMatchRoomRecipe: React.FC<DuringMatchRoomRecipeProps> = React
             />
             <span>{isBlue ? 'BLUE TEAM' : 'ORANGE TEAM'}</span>
           </span>
-          <span>{teamPlayers.length} / 3</span>
+          <span>
+            {teamPlayers.length} / {slotsPerSide}
+          </span>
         </div>
 
         <div className="flex flex-col gap-1">
           {teamPlayers.map((p) => {
-            const isSelfRow = isHost && p.isHost;
+            const isSelfRow = (isHost && p.isHost) || p.id === 'self';
             const canSelectForReplace = !isHost && !p.isHost && !p.isBot && Boolean(p.noInput);
             const isSelectedForReplace = canSelectForReplace && selectedReplaceId === p.id;
 
@@ -313,7 +309,7 @@ export const DuringMatchRoomRecipe: React.FC<DuringMatchRoomRecipeProps> = React
           <div className="flex items-center gap-2">
             <span>PLAYERS IN MATCH</span>
             <span className={isLight ? 'text-black font-bold' : 'text-white font-bold'}>
-              {humanPlayersCount} / 6
+              {humanPlayersCount} / {maxPlayers}
             </span>
           </div>
 

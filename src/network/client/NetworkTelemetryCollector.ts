@@ -105,12 +105,16 @@ export function restoreClientLobbyLocalEntities(
 
   if (saved.compactState && sim.state && sim.state.length >= CAR_BASE_OFFSET + 6 * CAR_STRIDE) {
     const copyEnd = CAR_BASE_OFFSET + 6 * CAR_STRIDE;
+    sim.state[2] = Math.max(sim.state[2] || 0, saved.compactState[2] || 0, localIdx + 1);
     sim.state.subarray(BALL_OFFSET, copyEnd).set(saved.compactState.subarray(BALL_OFFSET, copyEnd));
     if (sim.state.length >= 440 && saved.compactState.length >= 440) {
       sim.state.subarray(416, 416 + 6 * 4).set(saved.compactState.subarray(416, 416 + 6 * 4));
     }
     if (typeof sim.restoreCompactState === 'function') {
-      sim.restoreCompactState(sim.state, { preserveEngineTick: true });
+      sim.restoreCompactState(sim.state, {
+        preserveEngineTick: true,
+        suppressBallWriteMark: true,
+      });
     } else {
       sim.setBallState?.(saved.compactState.subarray(BALL_OFFSET, CAR_BASE_OFFSET));
       if (localIdx >= 0 && localIdx < 6) {
@@ -178,9 +182,7 @@ export function syncClientCarTopology(input: TopologySyncInput): TopologySyncRes
     )
   );
   const serverHasLobbyProbes =
-    typeof packet.activeCarMask !== 'number' ||
-    packet.activeCarMask === 0 ||
-    (packet.activeCarMask & 0xc0) !== 0;
+    typeof packet.activeCarMask === 'number' && (packet.activeCarMask & 0xc0) !== 0;
 
   if (
     !lobbyDualWorldMode &&
@@ -207,7 +209,7 @@ export function syncClientCarTopology(input: TopologySyncInput): TopologySyncRes
   ) {
     let targetMask = packet.activeCarMask & 0xff;
     if (lobbyDualWorldMode) {
-      const diagMask = packet.activeCarMask & 0xc0 || 0xc0;
+      const diagMask = packet.activeCarMask & 0xc0;
       const localBit = localCarIndex >= 0 && localCarIndex < 8 ? 1 << localCarIndex : 0;
       targetMask = diagMask | localBit;
     } else if (localCarIndex >= 0 && localCarIndex < 8) {
@@ -242,17 +244,7 @@ export function syncClientCarTopology(input: TopologySyncInput): TopologySyncRes
     }
   }
 
-  if (lobbyDualWorldMode) {
-    configureClientLobbyDiagnosticProbes(sim);
-    if (!serverHasLobbyProbes) {
-      return {
-        shouldAbortReconcile: true,
-        shouldNotifyMetrics: true,
-        invalidateTimelineSync: true,
-        activeCarMask,
-      };
-    }
-  } else if (typeof packet.activeCarMask === 'number' && (packet.activeCarMask & 0xc0) !== 0) {
+  if (serverHasLobbyProbes) {
     configureClientLobbyDiagnosticProbes(sim);
   }
 

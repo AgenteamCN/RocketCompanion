@@ -97,6 +97,13 @@ export class ClientJoinNegotiationSubController {
         if (this.settled) return;
         this.settled = true;
         this.clearJoinTimer();
+        if (
+          this.signalingHandler &&
+          (!allowSpectatorRelay || !this.signalingHandler.remoteHostPeerId)
+        ) {
+          this.signalingHandler.cleanup();
+          this.signalingHandler = null;
+        }
         resolve(true);
       };
 
@@ -156,6 +163,7 @@ export class ClientJoinNegotiationSubController {
             const activeRelayLabel = (handler ? handler.getActiveRelayLabel() : null) || undefined;
             callbacks.updateSessionStatus({
               signalingConnected: true,
+              roomId: cleanRoomId,
               pairingCode: resolvedPairingCode,
               activeRelayLabel,
               connectedPeers: [
@@ -207,8 +215,6 @@ export class ClientJoinNegotiationSubController {
       const signalingCallbacks: SignalingProtocolCallbacks = {
         handleOpen: ({ relayLabel }) => {
           callbacks.updateSessionStatus({
-            signalingConnected: true,
-            roomId: cleanRoomId,
             activeRelayLabel: relayLabel,
           });
         },

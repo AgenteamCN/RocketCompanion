@@ -84,7 +84,7 @@ export class OnlineLobbyDualWorldController {
 
   public isolateNonLocalLobbyCars(localCarIndex: number): void {
     const { physics, arena } = this.world;
-    for (let slotIndex = 0; slotIndex < 6; slotIndex++) {
+    for (let slotIndex = 0; slotIndex < 8; slotIndex++) {
       if (slotIndex !== localCarIndex) {
         if (physics?.isCarSlotActive?.(slotIndex)) physics.removeCar?.(slotIndex);
         if (arena?.cars?.[slotIndex]) arena.cars[slotIndex].visible = false;
@@ -143,7 +143,9 @@ export class OnlineLobbyDualWorldController {
     this.configureArenaLobbyFlags(true, false, 1);
     this.configureClientLobbyLocalCar(1, 1, localVisualId, true);
     physics?.setBallState?.({ pos: [0, 0, 93.15], vel: [0, 0, 0], angVel: [0, 0, 0] });
-    await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
+    if (diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
+      await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
+    }
     this.focusCameraOnCar(1);
     interpolator?.sync?.(performance.now());
   }
@@ -164,7 +166,7 @@ export class OnlineLobbyDualWorldController {
       authoritativeServer?.lastRoomState as { roster?: OnlineRosterSnapshotPayload } | null
     )?.roster;
     if (initialRoster) await applyRosterSnapshot(initialRoster);
-    if (isMatchLobby) {
+    if (isMatchLobby && diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
       await diagnosticsProbe.spawnDiagnosticTestFleet();
       networkDiagnosticsStore?.syncZeroGFleetState?.(true);
     }
@@ -306,13 +308,14 @@ export class OnlineLobbyDualWorldController {
     reconciler?.resetTimelineState?.();
 
     if (isHost) {
+      const fleetEnabled = diagnosticsProbe.diagnosticsFleetController?.enabled !== false;
       if (reconciler) reconciler.hostLobbyMode = true;
       resetLobbyWorldPhysicsPose(physics, 0, localTeam, true);
       if (!fromServerRoster) {
         authoritativeServer?.enterLobbyMode?.({
           ghostCars: true,
           hostInteractsWithBall: true,
-          enableDiagnosticsFleet: true,
+          enableDiagnosticsFleet: fleetEnabled,
         });
       }
       reconciler?.setMatchTelemetryActive?.(true, true);
@@ -320,15 +323,19 @@ export class OnlineLobbyDualWorldController {
         hostInteractsWithBall: true,
         syncServerLobby: !fromServerRoster,
       });
-      await diagnosticsProbe.spawnDiagnosticTestFleet();
-      if (!isStillInLobby()) return false;
-      networkDiagnosticsStore?.syncZeroGFleetState?.(true);
+      if (fleetEnabled) {
+        await diagnosticsProbe.spawnDiagnosticTestFleet();
+        if (!isStillInLobby()) return false;
+        networkDiagnosticsStore?.syncZeroGFleetState?.(true);
+      }
       syncHostLobbyNotification();
     } else {
       resetLobbyWorldPhysicsPose(physics, localCarIndex, localTeam, false);
       this.activateClientDualWorld(reconciler, diagnosticsProbe);
-      await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
-      if (!isStillInLobby()) return false;
+      if (diagnosticsProbe.diagnosticsFleetController?.enabled !== false) {
+        await diagnosticsProbe.ensureClientLobbyDiagnosticProbes();
+        if (!isStillInLobby()) return false;
+      }
     }
 
     camera?.setFocusedCarIndex?.(localCarIndex);

@@ -115,12 +115,19 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({ className = '' }) => {
     if (!shouldPollTelemetry || !perfSnap || (perfSnap.fps <= 0 && perfSnap.frameMs <= 0)) {
       return;
     }
+    const channelRtt = netSnap.channelRef?.rttMs;
+    const resolvedRtt =
+      typeof netSnap.metrics?.rttMs === 'number' && netSnap.metrics.rttMs > 0
+        ? netSnap.metrics.rttMs
+        : typeof channelRtt === 'number' && Number.isFinite(channelRtt) && channelRtt > 0
+          ? channelRtt
+          : 0;
     hudChannel.setTelemetry({
       fps: Math.round(perfSnap.fps || 120),
       refreshHz: Math.round(perfSnap.refreshHz || 120),
       renderScalePct: Math.round(renderScale || 100),
       physicsRateHz: Math.round(perfSnap.sim?.physicsRateHz || 120),
-      baseLatencyMs: isOnline ? Math.round(netSnap.metrics?.rttMs || 0) : 0,
+      baseLatencyMs: isOnline ? Math.round(resolvedRtt) : 0,
       extraLatencyMs: 0,
     });
   }, [
@@ -129,6 +136,39 @@ export const InGameHUD: React.FC<InGameHUDProps> = ({ className = '' }) => {
     isOnline,
     renderScale,
     perfSnap,
+    netSnap.channelRef,
+    netSnap.metrics?.rttMs,
+  ]);
+
+  useEffect(() => {
+    if (!telemetryEnabled || shouldPollTelemetry) {
+      return;
+    }
+    const syncThrottledNetworkRtt = () => {
+      const channelRtt = netSnap.channelRef?.rttMs;
+      const resolvedRtt =
+        typeof channelRtt === 'number' && Number.isFinite(channelRtt) && channelRtt > 0
+          ? channelRtt
+          : (netSnap.metrics?.rttMs || 0);
+      hudChannel.setTelemetry({
+        renderScalePct: Math.round(renderScale || 100),
+        baseLatencyMs: isOnline ? Math.round(resolvedRtt) : 0,
+        extraLatencyMs: 0,
+      });
+    };
+    syncThrottledNetworkRtt();
+    if (!isOnline) {
+      return;
+    }
+    const timer = setInterval(syncThrottledNetworkRtt, 1000);
+    return () => clearInterval(timer);
+  }, [
+    hudChannel,
+    telemetryEnabled,
+    shouldPollTelemetry,
+    isOnline,
+    renderScale,
+    netSnap.channelRef,
     netSnap.metrics?.rttMs,
   ]);
 

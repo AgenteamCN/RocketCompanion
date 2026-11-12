@@ -36,6 +36,7 @@ import { useAppStore } from '../../../stores/appStore';
 import { useCloudProfileSyncStore } from '../../../stores/cloudProfileSyncStore';
 import { useNameTagTunerStore } from '../../../stores/nameTagTunerStore';
 import type { NameTagAnonymizeMode } from '../../../config/nameTagConfig';
+import { openTauriConfigurator } from '../../../config/tauriLaunchConfigBridge';
 import { useScopedStore } from '../../../stores/storeSnapshotScope';
 import type { SurfaceVariantMeta } from '../../../manifest/surfaceMetaTypes';
 
@@ -219,6 +220,22 @@ export const AdvancedTab: React.FC<AdvancedTabProps> = ({
         showButtonArrow={false}
         bordered={resolvedBordered}
         onAction={handleExportBackup}
+        onHover={onHover}
+        onLeave={onLeave}
+        isLight={isLight}
+      />
+
+      <SettingActionRow
+        icon={Sliders}
+        title="Desktop Launch Configurator"
+        description="Configure Window Mode, startup query parameters, and System Tray default launch"
+        hoverDescription="Desktop Launch Configurator: Open the pre-launch Configurator window to modify Window Mode, additional launch parameters, or default tray startup."
+        actionLabel="Configurator"
+        showButtonArrow={false}
+        bordered={resolvedBordered}
+        onAction={() => {
+          void openTauriConfigurator();
+        }}
         onHover={onHover}
         onLeave={onLeave}
         isLight={isLight}

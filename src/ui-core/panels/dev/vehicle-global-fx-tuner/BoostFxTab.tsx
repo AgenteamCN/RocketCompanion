@@ -5,8 +5,10 @@ import { ToggleSwitch } from '../../../primitives/ToggleSwitch';
 import type { BoostParticleRuntimeConfig } from '../../../config/vehicleTunerConfig';
 
 export interface BoostFxTabProps {
-  boostVisual?: 'cartoon' | 'gold-rush';
-  onBoostVisualChange?: (mode: 'cartoon' | 'gold-rush') => void;
+  boostVisual?: 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave' | 'custom';
+  onBoostVisualChange?: (
+    mode: 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave' | 'custom'
+  ) => void;
   particleConfig: BoostParticleRuntimeConfig;
   applyParticlePatch?: (patch: Partial<BoostParticleRuntimeConfig>) => void;
   isLight: boolean;
@@ -36,11 +38,17 @@ export const BoostFxTab: React.FC<BoostFxTabProps> = ({
         <div className="flex flex-col gap-1">
           <span className="font-semibold text-[11px]">Active Boost Visual Style</span>
           <SegmentedSwitch
-            value={boostVisual ?? 'gold-rush'}
-            onChange={(val) => onBoostVisualChange?.(val as 'cartoon' | 'gold-rush')}
+            value={boostVisual === 'custom' ? 'light-wave' : (boostVisual ?? 'light-wave')}
+            onChange={(val) =>
+              onBoostVisualChange?.(
+                val as 'cartoon' | 'gold-rush' | 'light-beam' | 'light-wave'
+              )
+            }
             options={[
               { value: 'cartoon', label: 'Cartoon' },
               { value: 'gold-rush', label: 'Gold Rush' },
+              { value: 'light-beam', label: 'Light Beam' },
+              { value: 'light-wave', label: 'Light Wave' },
             ]}
             size="sm"
             fullWidth

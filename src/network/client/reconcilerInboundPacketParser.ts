@@ -144,8 +144,17 @@ export function drainAndParseServerPacketBatch(
           }
           measuredRtt = (baseMeasuredRtt || 0) + extraRtt;
           if (ctx.channel && Number.isFinite(measuredRtt)) {
-            if (typeof ctx.channel.rttMs !== 'undefined') {
-              ctx.channel.measuredRttMs = measuredRtt;
+            if (ctx.channel.simulator) {
+              ctx.channel.simulator.measuredRttMs = Math.max(0, measuredRtt);
+              ctx.channel.simulator.baseMeasuredRttMs = Math.max(0, baseMeasuredRtt || 0);
+            } else {
+              const desc = Object.getOwnPropertyDescriptor(
+                Object.getPrototypeOf(ctx.channel) ?? ctx.channel,
+                'measuredRttMs'
+              );
+              if (!desc || desc.writable || typeof desc.set === 'function') {
+                ctx.channel.measuredRttMs = measuredRtt;
+              }
             }
           }
         }
@@ -256,7 +265,7 @@ export function drainAndParseServerPacketBatch(
           ctx.onRosterUpdate?.(obj);
           continue;
         } else if (obj.type === 'handshake_response') {
-          if (typeof obj.entityId === 'number' && obj.entityId >= 0) {
+          if (!ctx.hostLobbyMode && typeof obj.entityId === 'number' && obj.entityId >= 0) {
             ctx.setLocalCarIndex(obj.entityId);
           }
           const initSnap = obj.initialSnapshot as ArrayLike<number> | undefined;
@@ -264,7 +273,9 @@ export function drainAndParseServerPacketBatch(
             (typeof obj.serverFrame === 'number' ? obj.serverFrame : undefined) ??
             (typeof obj.matchTick === 'number' ? obj.matchTick : 0);
           if (obj.state === 'lobby') {
-            ctx.setLobbyDualWorldMode(true);
+            if (!ctx.hostLobbyMode) {
+              ctx.setLobbyDualWorldMode(true);
+            }
             if (initSnap) {
               const snap = new Float32Array(initSnap);
               seedBoostPadEdgeTrackerFromSnapshot(boostPadTracker, snap, frame);

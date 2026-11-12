@@ -207,17 +207,30 @@ export class DataChannelTransport {
           return;
         }
         if (control.kind === 'ping') {
-          this.sendPong(control.sendTime);
-          if (control.rtt !== null) {
-            sim.measuredRttMs = control.rtt;
-            sim.baseMeasuredRttMs = Math.max(0, control.rtt - (sim.extraRttMs || 0));
-            sim.rttMs = control.rtt;
+          const accepted = sim.receivePayload(
+            data,
+            (delivered) => {
+              this.sendPong(control.sendTime);
+              this.emitPacket(delivered);
+            },
+            now
+          );
+          if (accepted && sim.inboundQueue.length > 0) {
+            sim.inboundQueue.pop();
           }
-          this.emitPacket(data);
           return;
         }
         if (control.kind === 'pong') {
-          sim.handlePong(control.sendTime);
+          const accepted = sim.receivePayload(
+            data,
+            () => {
+              sim.handlePong(control.sendTime);
+            },
+            now
+          );
+          if (accepted && sim.inboundQueue.length > 0) {
+            sim.inboundQueue.pop();
+          }
           return;
         }
       }
@@ -233,22 +246,23 @@ export class DataChannelTransport {
     );
   }
 
-  sendPong(sendTime: number): void {
-    const dc = this.resolveActiveDataChannel();
-    const roomChannel = this.signaling.roomBroadcastChannel;
+  sendPong(sendTime: number, nowMs = performance.now()): void {
     const pongMsg = JSON.stringify({ type: 'pong', sendTime });
-    if (dc && dc.readyState === 'open') {
-      dc.send(pongMsg);
-    } else if (roomChannel) {
-      roomChannel.postMessage({ type: 'pong', sendTime });
-    }
+    this.simulator.scheduleSend(
+      pongMsg,
+      (clonedPacket) =>
+        transmitClonedPayload(
+          this.resolveActiveDataChannel(),
+          this.signaling.roomBroadcastChannel,
+          this.resolveIsChannelOpen() || Boolean(this.signaling.roomBroadcastChannel),
+          clonedPacket
+        ),
+      nowMs
+    );
   }
 
   send(packet: SimulatedPayload, nowMs = performance.now()): boolean {
     const sim = this.simulator;
-    const dc = this.resolveActiveDataChannel();
-    const roomChannel = this.signaling.roomBroadcastChannel;
-    const isOpen = this.resolveIsChannelOpen();
 
     if (
       (packet instanceof Uint8Array || packet instanceof ArrayBuffer) &&
@@ -256,7 +270,24 @@ export class DataChannelTransport {
     ) {
       sim.lastPingSentTime = nowMs;
       sim.stats.pingsSent++;
-      dispatchOpportunisticPing(dc, roomChannel, isOpen, nowMs, sim.rttMs);
+      const pingPayload = JSON.stringify({
+        type: 'ping',
+        sendTime: nowMs,
+        rtt: Math.round(sim.rttMs || 0),
+      });
+      sim.scheduleSend(
+        pingPayload,
+        (clonedPing) =>
+          dispatchOpportunisticPing(
+            this.resolveActiveDataChannel(),
+            this.signaling.roomBroadcastChannel,
+            this.resolveIsChannelOpen() || Boolean(this.signaling.roomBroadcastChannel),
+            nowMs,
+            sim.rttMs,
+            typeof clonedPing === 'string' ? clonedPing : pingPayload
+          ),
+        nowMs
+      );
     }
     return sim.scheduleSend(
       packet,

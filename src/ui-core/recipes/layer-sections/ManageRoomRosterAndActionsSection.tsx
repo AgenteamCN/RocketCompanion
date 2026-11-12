@@ -280,6 +280,66 @@ export const ManageRoomRosterAndActionsSection: React.FC<
   const onTogglePause =
     overrides.onTogglePause ?? (() => bridge.onPauseOnlineMatch?.(!isMatchPaused, 3));
 
+  const isHostRole = activeSpec.role === 'host';
+  const rawPlayerName = onlineSession?.playerName?.trim() || 'Player_01';
+  const selfDisplayName = rawPlayerName.includes('(You')
+    ? rawPlayerName
+    : isHostRole
+    ? `${rawPlayerName} (You · Host)`
+    : `${rawPlayerName} (You)`;
+  const localPairId = onlineSession?.pairingCode || (isHostRole ? '1A0F' : '7F3A');
+  const normalizedPeers = (onlineSession?.connectedPeers ?? []).map((p, idx) => ({
+    id: String(p.id || (typeof p.carIndex === 'number' ? `car-${p.carIndex}` : `peer-${idx}`)),
+    name: p.name || (typeof p.carIndex === 'number' ? `Player ${p.carIndex + 1}` : 'Player'),
+    pingMs: typeof p.pingMs === 'number' ? p.pingMs : 0,
+    pairId: p.pairingCode,
+    rawTeam: p.team,
+    isHost: !isHostRole && (p.id === 'host' || p.carIndex === 0),
+    isBot: Boolean(p.isBot),
+  }));
+  const selfPingMs = isHostRole ? 0 : (normalizedPeers.find((p) => p.isHost)?.pingMs ?? 0);
+
+  const resolvedLobbyPeers: LobbyPlayerSlot[] =
+    overrides.lobbyPeers ??
+    normalizedPeers
+      .filter((p) => !p.isBot || botPolicy === 'custom')
+      .map((p) => ({
+        ...p,
+        team: p.rawTeam === 0 ? 'blue' : p.rawTeam === 1 ? 'orange' : 'neutral',
+        botLabel: p.isBot ? 'Bot · Custom' : undefined,
+      }));
+
+  const resolvedMatchPlayers: ActiveMatchPlayer[] =
+    overrides.matchPlayers ?? [
+      {
+        id: isHostRole ? 'host' : 'self',
+        name: selfDisplayName,
+        pingMs: selfPingMs,
+        pairId: localPairId,
+        team: localTeam === 'orange' ? 'orange' : 'blue',
+        isHost: isHostRole,
+      },
+      ...normalizedPeers.map((p) => ({
+        ...p,
+        team: (p.rawTeam === 1 ? 'orange' : 'blue') as 'blue' | 'orange',
+      })),
+    ];
+
+  const resolvedWarmupPlayers: WarmupRoomPlayer[] =
+    overrides.warmupPlayers ?? [
+      {
+        id: 'self',
+        name: selfDisplayName,
+        pingMs: selfPingMs,
+        pairId: localPairId,
+        isHost: isHostRole,
+        isSelf: true,
+      },
+      ...normalizedPeers
+        .filter((p) => !p.isBot)
+        .map((p) => ({ ...p, isSelf: false })),
+    ];
+
   return (
     <>
       {activeSpec.stage === 'lobby' && (
@@ -288,9 +348,11 @@ export const ManageRoomRosterAndActionsSection: React.FC<
           signalingState={signalingState}
           localTeam={localTeam}
           onSwitchTeam={handleSwitchTeam}
-          peers={overrides.lobbyPeers}
+          peers={resolvedLobbyPeers}
           roomConfig={{
             roomCode: resolvedRoomCode,
+            pairId: localPairId,
+            playerName: rawPlayerName,
             teamFormat,
             onChangeTeamFormat: handleChangeTeamFormat,
             botPolicy,
@@ -331,10 +393,11 @@ export const ManageRoomRosterAndActionsSection: React.FC<
         <DuringMatchRoomRecipe
           role={activeSpec.role}
           signalingState={signalingState}
-          players={overrides.matchPlayers}
+          players={resolvedMatchPlayers}
           isMatchPaused={isMatchPaused}
           roomConfig={{
             roomCode: resolvedRoomCode,
+            pairId: localPairId,
             teamFormat,
             botPolicy,
             durationPreset,
@@ -358,9 +421,10 @@ export const ManageRoomRosterAndActionsSection: React.FC<
         <OnlineWarmupRoomRecipe
           role={activeSpec.role}
           roomCode={resolvedRoomCode}
+          pairId={localPairId}
           signalingState={signalingState}
           onRefreshSignaling={onRefreshSignaling}
-          players={overrides.warmupPlayers}
+          players={resolvedWarmupPlayers}
           onKickPlayer={handleKickPeer}
           onExportTrainingReplay={() => bridge.onExportOnlineTrainingReplay?.(60)}
           onShutdownOrLeave={handleCloseRoom}

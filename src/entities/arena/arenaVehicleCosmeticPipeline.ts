@@ -33,6 +33,13 @@ export function setRegistrySlotCarTeam(
   if (prevTeam === teamIndex) return;
   const teamColor = state.carLoaders.teamColors?.[teamIndex] ?? DEFAULT_TEAM_COLORS[teamIndex % 2];
   const customColor = state.carColors[carIndex];
+  const activeColor = customColor !== undefined && customColor !== null ? customColor : teamColor;
+  const emitters = state.carBoosts[carIndex];
+  if (Array.isArray(emitters)) {
+    for (const emitter of emitters) {
+      emitter.setCarColor(activeColor);
+    }
+  }
   if (state.cars[carIndex] && (customColor === undefined || customColor === null)) {
     applyVehiclePaint(
       state.cars[carIndex],
@@ -89,6 +96,12 @@ export function setRegistrySlotCarColor(
   colorVal: string | number | null | undefined
 ): void {
   const num = typeof colorVal === 'string' ? parseInt(colorVal.replace('#', ''), 16) : colorVal;
+  const emitters = state.carBoosts[carIndex];
+  if (Array.isArray(emitters)) {
+    for (const emitter of emitters) {
+      emitter.setCarColor(num);
+    }
+  }
   if (state.carColors[carIndex] === num) return;
   state.carColors[carIndex] = num;
   const carRoot = state.cars[carIndex];
@@ -128,7 +141,14 @@ export function setRegistrySlotCarBoostVisual(
   boostVisual: string | null
 ): void {
   if (typeof carIndex !== 'number' || carIndex < 0) return;
-  const normalized = boostVisual === 'cartoon' || boostVisual === 'gold-rush' ? boostVisual : null;
+  const normalized =
+    boostVisual === 'cartoon' ||
+    boostVisual === 'gold-rush' ||
+    boostVisual === 'light-beam' ||
+    boostVisual === 'light-wave' ||
+    boostVisual === 'custom'
+      ? boostVisual
+      : null;
   state.carBoostVisuals[carIndex] = normalized;
   const emitters = state.carBoosts[carIndex];
   if (Array.isArray(emitters)) {
@@ -155,6 +175,22 @@ export function setRegistrySlotCarLoadout(
   }
   if (loadout.colorHex !== undefined && loadout.colorHex !== null) {
     setRegistrySlotCarColor(state, carIndex, loadout.colorHex);
+  }
+  if (loadout.isBot !== undefined) {
+    const emitters = state.carBoosts[carIndex];
+    if (Array.isArray(emitters)) {
+      for (const emitter of emitters) {
+        emitter.setIsBot(Boolean(loadout.isBot));
+      }
+    }
+  }
+  if (loadout.boostColorParams !== undefined) {
+    const emitters = state.carBoosts[carIndex];
+    if (Array.isArray(emitters)) {
+      for (const emitter of emitters) {
+        emitter.setBoostColorParams(loadout.boostColorParams);
+      }
+    }
   }
   if (loadout.boostVisual !== undefined) {
     setRegistrySlotCarBoostVisual(state, carIndex, loadout.boostVisual);

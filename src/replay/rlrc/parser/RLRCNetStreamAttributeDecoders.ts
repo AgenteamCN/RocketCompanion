@@ -9,17 +9,49 @@ import type {
   RLRCCarFrameState120Hz,
   RLRCQuat,
   RLRCRigidBodySample,
-  RLRCSourceNetworkFrame,
   RLRCSynthesizedCarControls,
   RLRCVec3,
 } from '../RLRCReplayTypes.ts';
 
-const RLRC_MAX_PLAYER_SLOTS = 6;
-
 export const RLRC_DEFAULT_SPAWN_BOOST = (85 / 255) * 100;
 export const RLRC_DEFAULT_BALL_REST_Z = 93.15;
 export const RLRC_SUPERSONIC_SPEED_UU_S = 2200;
+export const RLRC_SUPERSONIC_MAINTAIN_SPEED_UU_S = 2100;
+export const RLRC_CAR_MAX_SPEED_UU_S = 2300;
+export const RLRC_BALL_MAX_SPEED_UU_S = 4500;
 export const RLRC_FLIP_EXPIRATION_SECONDS = 1.25;
+export const RLRC_PARKED_CAR_X = -5500;
+export const RLRC_PARKED_CAR_Y_STRIDE = 300;
+export const RLRC_PARKED_CAR_Z = -2000;
+
+export interface RLRCPlayerSlotTrackingState {
+  carId: number;
+  entityActive: boolean;
+  isDemolished: boolean;
+  demolishFrameIndex: number;
+  spawnFrameIndex: number;
+  rbUpdated: boolean;
+  rigidBody: RLRCRigidBodySample;
+  boostAmount: number;
+  throttle: number;
+  steer: number;
+  handbrake: boolean;
+  boostActive: boolean;
+  jumpActive: boolean;
+  doubleJumpActive: boolean;
+  dodgeActive: boolean;
+  lastJumpByte: number;
+  lastDoubleJumpByte: number;
+  lastDodgeByte: number;
+  jumpOneShotFrame: number;
+  doubleJumpOneShotFrame: number;
+  dodgeOneShotFrame: number;
+  dodgePitch: number;
+  dodgeYaw: number;
+  dodgeRoll: number;
+  lastJumpTimeSeconds: number;
+  flippedInAir: boolean;
+}
 
 export const ZERO_VEC3: RLRCVec3 = { x: 0, y: 0, z: 0 };
 export const IDENTITY_QUAT: RLRCQuat = { x: 0, y: 0, z: 0, w: 1 };
@@ -32,6 +64,17 @@ export const DEFAULT_CAR_RB: RLRCRigidBodySample = {
   angularVelocity: ZERO_VEC3,
   rbUpdated: false,
 };
+
+export function createParkedCarRigidBody(slotIndex: number): RLRCRigidBodySample {
+  return {
+    ...DEFAULT_CAR_RB,
+    position: {
+      x: RLRC_PARKED_CAR_X,
+      y: slotIndex * RLRC_PARKED_CAR_Y_STRIDE,
+      z: RLRC_PARKED_CAR_Z,
+    },
+  };
+}
 
 export const DEFAULT_BALL_RB: RLRCRigidBodySample = {
   ...DEFAULT_CAR_RB,
@@ -55,57 +98,6 @@ export const NEUTRAL_CONTROLS: RLRCSynthesizedCarControls = {
   boost: false,
   handbrake: false,
 };
-
-export interface RLRCMutableSlotTracker {
-  carId: number;
-  on: boolean;
-  spFi: number;
-  upd: boolean;
-  rb: RLRCRigidBodySample;
-  boost: number;
-  th: number;
-  st: number;
-  hb: boolean;
-  bOn: boolean;
-  jOn: boolean;
-  dOn: boolean;
-  dgOn: boolean;
-  jT: number;
-  flipped: boolean;
-}
-
-export function createMutableSlotTrackers(): RLRCMutableSlotTracker[] {
-  return Array.from({ length: RLRC_MAX_PLAYER_SLOTS }, () => ({
-    carId: -1,
-    on: false,
-    spFi: -2,
-    upd: false,
-    rb: DEFAULT_CAR_RB,
-    boost: RLRC_DEFAULT_SPAWN_BOOST,
-    th: 0,
-    st: 0,
-    hb: false,
-    bOn: false,
-    jOn: false,
-    dOn: false,
-    dgOn: false,
-    jT: -1e9,
-    flipped: false,
-  }));
-}
-
-export function resetMutableSlotTracker(slot: RLRCMutableSlotTracker, clearCarId = false): void {
-  if (clearCarId) slot.carId = -1;
-  slot.on = false;
-  slot.upd = false;
-  slot.bOn = false;
-  slot.jOn = false;
-  slot.dOn = false;
-  slot.dgOn = false;
-  slot.hb = false;
-  slot.th = 0;
-  slot.st = 0;
-}
 
 export function numAttr(v: unknown, fb = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fb;
@@ -209,102 +201,72 @@ export function spawnBallRigidBody(il?: RLRCVec3): RLRCRigidBodySample {
   };
 }
 
-export function applySlotRigidBodySampleUpdate(params: {
-  readonly slot: RLRCMutableSlotTracker;
-  readonly slotIndex: number;
-  readonly carActorId: number;
-  readonly frameIndex: number;
-  readonly timeSeconds: number;
-  readonly rb: RLRCRigidBodySample;
-  readonly updatedRb: RLRCRigidBodySample;
-  readonly networkFrames: RLRCSourceNetworkFrame[];
-  readonly restingSamples: RLRCRigidBodySample[];
-}): void {
-  const {
-    slot,
-    slotIndex,
-    carActorId,
-    frameIndex,
-    timeSeconds,
-    rb,
-    updatedRb,
-    networkFrames,
-    restingSamples,
-  } = params;
-  const pos = rb.position;
-  const vel = rb.linearVelocity;
-  const q = rb.rotation;
-  const upZ = 1 - 2 * (q.x * q.x + q.y * q.y);
-  if (
-    frameIndex === slot.spFi + 1 &&
-    networkFrames[frameIndex - 1]?.cars[slotIndex]?.entityActive &&
-    Math.hypot(vel.x, vel.y, vel.z) < 50
-  ) {
-    (networkFrames[frameIndex - 1].cars as RLRCCarFrameState120Hz[])[slotIndex] = {
-      ...networkFrames[frameIndex - 1].cars[slotIndex],
-      rigidBody: updatedRb,
-      rbUpdated: true,
-    };
-  }
-  slot.carId = carActorId;
-  slot.on = true;
-  slot.upd = true;
-  slot.spFi = -2;
-  slot.rb = updatedRb;
-  if (pos.z < 21.5 && Math.abs(vel.z) < 25 && upZ >= 0.7) {
-    slot.flipped = false;
-    slot.jT = timeSeconds;
-    if (
-      Math.abs(pos.x) < 2500 &&
-      Math.abs(pos.y) < 3500 &&
-      pos.z > 14.5 &&
-      pos.z < 20.5 &&
-      Math.abs(vel.z) < 5 &&
-      upZ > 0.98
-    ) {
-      restingSamples.push(rb);
-    }
-  }
-}
-
 export function buildSourceFrameCars(
-  slots: readonly RLRCMutableSlotTracker[],
+  slots: readonly RLRCPlayerSlotTrackingState[],
   timeSeconds: number
 ): { cars: RLRCCarFrameState120Hz[]; carRbUpdatedMask: number } {
   let carRbUpdatedMask = 0;
-  const cars = slots.map((s, slotIndex): RLRCCarFrameState120Hz => {
-    const u = s.on && s.upd;
-    const rb = s.on ? { ...s.rb, rbUpdated: u } : DEFAULT_CAR_RB;
-    const q = rb.rotation;
-    const v = rb.linearVelocity;
-    if (u) carRbUpdatedMask |= 1 << slotIndex;
-    const onGnd =
-      s.on && rb.position.z < 21.5 && Math.abs(v.z) < 25 && 1 - 2 * (q.x * q.x + q.y * q.y) >= 0.7;
-    const el = onGnd ? 0 : Math.max(0, timeSeconds - (s.jT > -1e8 ? s.jT : timeSeconds));
+  const cars = slots.map((slotState, slotIndex): RLRCCarFrameState120Hz => {
+    const rbUpdated = slotState.entityActive && slotState.rbUpdated;
+    const isDemolished = !slotState.entityActive && slotState.isDemolished;
+    const rigidBody = slotState.entityActive
+      ? { ...slotState.rigidBody, rbUpdated }
+      : isDemolished
+        ? {
+            ...DEFAULT_CAR_RB,
+            position: slotState.rigidBody.position,
+            rotation: slotState.rigidBody.rotation,
+          }
+        : createParkedCarRigidBody(slotIndex);
+    const quat = rigidBody.rotation;
+    const vel = rigidBody.linearVelocity;
+    if (rbUpdated) carRbUpdatedMask |= 1 << slotIndex;
+    const isOnGround =
+      slotState.entityActive &&
+      rigidBody.position.z < 21.5 &&
+      Math.abs(vel.z) < 25 &&
+      1 - 2 * (quat.x * quat.x + quat.y * quat.y) >= 0.7;
+    const elapsedSinceJump = isOnGround
+      ? 0
+      : Math.max(
+          0,
+          timeSeconds -
+            (slotState.lastJumpTimeSeconds > -1e8 ? slotState.lastJumpTimeSeconds : timeSeconds)
+        );
     return {
       slotIndex,
-      entityActive: s.on,
-      rigidBody: rb,
-      rbUpdated: u,
-      actorId: s.on ? s.carId : -1,
-      boostAmount: s.on ? s.boost : 0,
-      isOnGround: onGnd,
-      isSupersonic: s.on && Math.hypot(v.x, v.y, v.z) >= RLRC_SUPERSONIC_SPEED_UU_S,
-      hasFlipOrJump: s.on && (onGnd || (!s.flipped && el <= RLRC_FLIP_EXPIRATION_SECONDS)),
-      airTimeSinceJump: onGnd ? 0 : Math.min(RLRC_FLIP_EXPIRATION_SECONDS, el),
-      activeFlags: s.on
-        ? { boostActive: s.bOn, jumpActive: s.jOn, doubleJumpActive: s.dOn, dodgeActive: s.dgOn }
-        : DEFAULT_ACTIVE_FLAGS,
-      controls: s.on
+      entityActive: slotState.entityActive,
+      isDemolished,
+      rigidBody,
+      rbUpdated,
+      actorId: slotState.entityActive ? slotState.carId : -1,
+      boostAmount: slotState.entityActive ? slotState.boostAmount : 0,
+      isOnGround,
+      isSupersonic:
+        slotState.entityActive && Math.hypot(vel.x, vel.y, vel.z) >= RLRC_SUPERSONIC_SPEED_UU_S,
+      hasFlipOrJump:
+        slotState.entityActive &&
+        (isOnGround ||
+          (!slotState.flippedInAir && elapsedSinceJump <= RLRC_FLIP_EXPIRATION_SECONDS)),
+      airTimeSinceJump: isOnGround ? 0 : Math.min(RLRC_FLIP_EXPIRATION_SECONDS, elapsedSinceJump),
+      activeFlags: slotState.entityActive
         ? {
-            throttle: s.th,
-            steer: s.st,
-            pitch: 0,
-            yaw: 0,
-            roll: 0,
-            jump: s.jOn || s.dOn || s.dgOn,
-            boost: s.bOn,
-            handbrake: s.hb,
+            boostActive: slotState.boostActive,
+            jumpActive: slotState.jumpActive,
+            doubleJumpActive: slotState.doubleJumpActive,
+            dodgeActive: slotState.dodgeActive,
+          }
+        : DEFAULT_ACTIVE_FLAGS,
+      controls: slotState.entityActive
+        ? {
+            throttle: slotState.throttle,
+            steer: slotState.steer,
+            pitch: slotState.dodgeActive ? slotState.dodgePitch : 0,
+            yaw: slotState.dodgeActive ? slotState.dodgeYaw : 0,
+            roll: slotState.dodgeActive ? slotState.dodgeRoll : 0,
+            jump: slotState.jumpActive || slotState.doubleJumpActive || slotState.dodgeActive,
+            boost: slotState.boostActive,
+            handbrake: slotState.handbrake,
           }
         : NEUTRAL_CONTROLS,
     };

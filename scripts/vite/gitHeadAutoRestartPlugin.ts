@@ -186,7 +186,7 @@ export function rcGitHeadAutoRestartPlugin(): Plugin {
             );
             try {
               server.moduleGraph.invalidateAll();
-              await server.restart();
+              await server.restart(true);
               server.ws?.send?.({ type: 'full-reload', path: '*' });
             } catch (err) {
               isRestarting = false;

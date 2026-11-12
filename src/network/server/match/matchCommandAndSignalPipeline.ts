@@ -151,7 +151,7 @@ export function evaluateDomainStepFrameGate(
     return { action: 'ended_or_podium', clockDuration };
   }
   if (st === MATCH_STATES.PREPARE || st === MATCH_STATES.COUNTDOWN) {
-    s.matchTick++;
+    s.matchTick = hasPhysics && typeof physicsTick === 'number' ? physicsTick : s.matchTick + 1;
     const act =
       st === MATCH_STATES.PREPARE
         ? --s.prepareTimeoutTicks <= 0
@@ -267,12 +267,31 @@ export function createAndRecordMatchSignal(p: {
     }
   }
 
+  if (
+    signalType === MATCH_SIGNALS.PLAYER_JOINED ||
+    signalType === MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED ||
+    signalType === MATCH_SIGNALS.PLAYER_SLOT_UPDATED
+  ) {
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_LEFT}_ent_${param1}`);
+  } else if (signalType === MATCH_SIGNALS.PLAYER_LEFT) {
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_JOINED}_ent_${param1}`);
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_LOADOUT_UPDATED}_ent_${param1}`);
+    p.activeSignals.delete(`sig_${MATCH_SIGNALS.PLAYER_SLOT_UPDATED}_ent_${param1}`);
+  } else if (signalType === MATCH_SIGNALS.KICKOFF_START) {
+    p.activeSignals.delete(MATCH_SIGNALS.KICKOFF_WILL_START);
+    sm?.signalBuffer?.retireByType?.(MATCH_SIGNALS.KICKOFF_WILL_START);
+  } else if (signalType === MATCH_SIGNALS.KICKOFF_WILL_START) {
+    p.activeSignals.delete(MATCH_SIGNALS.KICKOFF_START);
+    sm?.signalBuffer?.retireByType?.(MATCH_SIGNALS.KICKOFF_START);
+  }
+
   const mapKey =
     signalType === MATCH_SIGNALS.COMMAND_ACK
       ? `ack_${param1}_${param2}`
       : ENTITY_SCOPED_SIGNALS.has(signalType)
         ? `sig_${signalType}_ent_${param1}`
         : signalType;
+  p.activeSignals.delete(mapKey);
   p.activeSignals.set(mapKey, signalObj);
   return { signal: signalObj, nextSignalId };
 }
@@ -297,7 +316,7 @@ export function applyClientSignalAcksToActiveSignals(
         (!ack.signalType || sObj.signalType === ack.signalType)
       ) {
         sObj.ackedPeers.add(sessionId);
-        if (sObj.signalType !== MATCH_SIGNALS.KICKOFF_WILL_START && expected.size > 0) {
+        if (expected.size > 0) {
           let allAcked = true;
           for (const pid of expected) {
             if (!sObj.ackedPeers.has(pid)) {

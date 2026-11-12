@@ -5,6 +5,13 @@
 
 import { encodeRLRCFramesToTrack0Bytes } from '../container/RLRCBinaryContainerCodec.ts';
 import {
+  createParkedCarRigidBody,
+  RLRC_BALL_MAX_SPEED_UU_S,
+  RLRC_CAR_MAX_SPEED_UU_S,
+  RLRC_SUPERSONIC_MAINTAIN_SPEED_UU_S,
+  RLRC_SUPERSONIC_SPEED_UU_S,
+} from '../parser/RLRCNetStreamAttributeDecoders.ts';
+import {
   RLRC_BOOST_PAD_COUNT,
   RLRC_FIXED_DT,
   RLRC_MAX_PLAYER_SLOTS,
@@ -28,7 +35,6 @@ import {
   clamp,
   interpolateRigidBodyHermiteSlerp,
   lerp,
-  SLEEP_RB,
   toRest,
   vLen,
   ZERO_CTRL,
@@ -112,6 +118,7 @@ export function resampleRLRCReplayTo120Hz(
     extractEntityLifeSpans(nfs, s, parsed.lifeSegments ?? [], maxTel)
   );
   const frames120Hz: RLRCFrame120Hz[] = new Array(count);
+  const slotSupersonic = new Uint8Array(slots);
 
   for (let f = 0, cur = 0; f < count; f++) {
     const t = Math.min(tEnd, t0 + f * RLRC_FIXED_DT);
@@ -136,7 +143,7 @@ export function resampleRLRCReplayTo120Hz(
             bb.alpha,
             bb.dt,
             method,
-            4500
+            RLRC_BALL_MAX_SPEED_UU_S
           ),
         }
       : { entityActive: false, rigidBody: ref.ball.rigidBody };
@@ -159,7 +166,7 @@ export function resampleRLRCReplayTo120Hz(
           cb.alpha,
           cb.dt,
           method,
-          2300
+          RLRC_CAR_MAX_SPEED_UU_S
         );
         const curCar = getCarFromNetworkFrame(curNf, s);
         const nxtCar = getCarFromNetworkFrame(nxtNf, s);
@@ -188,28 +195,36 @@ export function resampleRLRCReplayTo120Hz(
           !activeFlags.dodgeActive &&
           ((rb.position.z <= 20.5 && Math.abs(rb.linearVelocity.z) < 25 && upZ >= 0.7) ||
             (c0.isOnGround && c1.isOnGround && rb.position.z <= 22.0));
+        const speed = vLen(rb.linearVelocity);
+        const wasSupersonic = slotSupersonic[s] === 1;
+        const isSupersonic =
+          ref.roundCountdownNumber === 0 &&
+          (wasSupersonic
+            ? speed >= RLRC_SUPERSONIC_MAINTAIN_SPEED_UU_S
+            : speed >= RLRC_SUPERSONIC_SPEED_UU_S);
+        slotSupersonic[s] = isSupersonic ? 1 : 0;
         cars[s] = {
           slotIndex: s,
           entityActive: true,
+          isDemolished: false,
           rigidBody: rb,
           boostAmount,
           isOnGround,
-          isSupersonic: vLen(rb.linearVelocity) >= 2200 || nCar.isSupersonic,
+          isSupersonic,
           hasFlipOrJump: nCar.hasFlipOrJump,
           airTimeSinceJump: lerp(c0.airTimeSinceJump, c1.airTimeSinceJump, cb.alpha),
           activeFlags,
           controls,
         };
       } else {
-        const parkedRb =
-          rosterCount > 0 && s >= rosterCount
-            ? { ...SLEEP_RB, position: { x: -5500, y: s * 300, z: -2000 } }
-            : rCar
-              ? rCar.rigidBody
-              : SLEEP_RB;
+        slotSupersonic[s] = 0;
+        const isOutOfRoster = rosterCount > 0 && s >= rosterCount;
+        const isDemolished = !isOutOfRoster && Boolean(rCar?.isDemolished);
+        const parkedRb = isDemolished && rCar ? rCar.rigidBody : createParkedCarRigidBody(s);
         cars[s] = {
           slotIndex: s,
           entityActive: false,
+          isDemolished,
           rigidBody: parkedRb,
           boostAmount: 0,
           isOnGround: false,
