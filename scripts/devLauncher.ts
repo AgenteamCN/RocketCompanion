@@ -1,3 +1,4 @@
+import { createConnection } from 'node:net';
 import { createServer, type ViteDevServer } from 'vite';
 import { createRcViteConfig, type RcServerRole } from '../vite.config.ts';
 
@@ -16,7 +17,44 @@ const ENDPOINTS: ManagedEndpoint[] = [
   { role: 'rc-http', port: 3003, protocol: 'http', label: 'Tauri / RC HTTP Mirror' },
 ];
 
+function probePort(port: number): Promise<boolean> {
+  return new Promise((resolveProbe) => {
+    const socket = createConnection({ host: '127.0.0.1', port });
+    const settle = (open: boolean) => {
+      socket.destroy();
+      resolveProbe(open);
+    };
+    socket.setTimeout(400);
+    socket.once('connect', () => settle(true));
+    socket.once('timeout', () => settle(false));
+    socket.once('error', () => settle(false));
+  });
+}
+
+async function attachToRunningWorkspace(): Promise<boolean> {
+  const states = await Promise.all(ENDPOINTS.map((ep) => probePort(ep.port)));
+  if (states.every(Boolean)) {
+    console.log(
+      '\n[devLauncher] 4-port workspace already serving; attaching as passive supervisor.'
+    );
+    const hold = setInterval(() => {}, 1 << 30);
+    const release = () => {
+      clearInterval(hold);
+      process.exit(0);
+    };
+    process.on('SIGINT', release);
+    process.on('SIGTERM', release);
+    return true;
+  }
+  if (states.some(Boolean)) {
+    console.warn('[devLauncher] Some workspace ports are occupied; strictPort startup may fail.');
+  }
+  return false;
+}
+
 async function startAllServers() {
+  if (await attachToRunningWorkspace()) return;
+
   const statusResolver = (): Record<string, boolean> => {
     const out: Record<string, boolean> = {};
     for (const ep of ENDPOINTS) {

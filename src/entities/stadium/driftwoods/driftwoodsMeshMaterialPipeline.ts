@@ -24,6 +24,10 @@ import type {
   DriftwoodsTunerConfig,
 } from '../../../ui-core/config/driftwoodsConfig.ts';
 import {
+  HEX_FIN_DEPTH_SCALE_MIN,
+  HEX_RIBBON_WIDTH_SCALE_MIN,
+} from '../../../ui-core/config/driftwoodsHexScaleLimits.ts';
+import {
   createDriftwoodsOcclusionOverlayPass,
   attachDriftwoodsOcclusionOverlayMesh,
   type DriftwoodsGroundUniforms,
@@ -447,13 +451,13 @@ export function syncDriftwoodsGlobalShaderUniforms(
     }
     if (wallFxUniforms.uHexThicknessScale) {
       wallFxUniforms.uHexThicknessScale.value = Math.max(
-        0.1,
+        HEX_RIBBON_WIDTH_SCALE_MIN,
         Number(c.hexes?.thicknessScale ?? 1.0)
       );
     }
     if (wallFxUniforms.uHexDepthScale) {
       wallFxUniforms.uHexDepthScale.value = Math.max(
-        0.0,
+        HEX_FIN_DEPTH_SCALE_MIN,
         Number(c.hexes?.depthScale ?? c.hexes?.thicknessScale ?? 1.0)
       );
     }

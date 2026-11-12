@@ -6,6 +6,13 @@ import {
   TunerColorRow,
   TunerToggleRow
 } from '../../../compounds/TunerControls';
+import {
+  HEX_FIN_DEPTH_SCALE_MAX,
+  HEX_FIN_DEPTH_SCALE_MIN,
+  HEX_RIBBON_WIDTH_SCALE_MAX,
+  HEX_RIBBON_WIDTH_SCALE_MIN,
+  HEX_SCALE_SLIDER_STEP,
+} from '../../../config/driftwoodsHexScaleLimits';
 
 export interface DriftwoodsTransparentTabProps {
   config: DriftwoodsTunerConfig;
@@ -277,10 +284,10 @@ export const DriftwoodsTransparentTab: React.FC<DriftwoodsTransparentTabProps> =
               <TunerRow
                 label="Ribbon Width Scale"
                 description="Wall-parallel hex bar width (1.0x = 8 UU)"
-                value={config.hexes.thicknessScale ?? 1.0}
-                sliderMin={0.2}
-                sliderMax={4.0}
-                sliderStep={0.05}
+                value={config.hexes.thicknessScale ?? HEX_RIBBON_WIDTH_SCALE_MIN}
+                sliderMin={HEX_RIBBON_WIDTH_SCALE_MIN}
+                sliderMax={HEX_RIBBON_WIDTH_SCALE_MAX}
+                sliderStep={HEX_SCALE_SLIDER_STEP}
                 onChange={(val) => onChange({ hexes: { ...config.hexes, thicknessScale: val } })}
                 isLight={isLight}
               />
@@ -288,10 +295,10 @@ export const DriftwoodsTransparentTab: React.FC<DriftwoodsTransparentTabProps> =
               <TunerRow
                 label="Fin Depth Scale"
                 description="3D grazing fin depth (1.0x = 8 UU)"
-                value={config.hexes.depthScale ?? 1.0}
-                sliderMin={0.0}
-                sliderMax={4.0}
-                sliderStep={0.05}
+                value={config.hexes.depthScale ?? HEX_FIN_DEPTH_SCALE_MIN}
+                sliderMin={HEX_FIN_DEPTH_SCALE_MIN}
+                sliderMax={HEX_FIN_DEPTH_SCALE_MAX}
+                sliderStep={HEX_SCALE_SLIDER_STEP}
                 onChange={(val) => onChange({ hexes: { ...config.hexes, depthScale: val } })}
                 isLight={isLight}
               />
