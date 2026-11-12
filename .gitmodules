@@ -1,4 +1,4 @@
 [submodule "public"]
 	path = public
-	url = ../RocketCompanionStatics.git
+	url = https://github.com/AgenteamCN/RocketCompanionStatics.git
 	branch = main
