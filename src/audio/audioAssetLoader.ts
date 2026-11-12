@@ -7,7 +7,7 @@ import {
   BOOST_AUDIO_VARIATIONS,
   DEFAULT_BOOST_VARIATION,
 } from '../ui-core/config/audioConfig.ts';
-import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
+import type { VehicleAudioBuffers } from './vehicleAudioContracts.ts';
 
 export interface IncidentAudioBuffers {
   ballHit: Array<AudioBuffer | null>;

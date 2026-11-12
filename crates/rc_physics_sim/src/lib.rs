@@ -1,3 +1,4 @@
+pub mod ball_contact;
 pub mod car_action_events;
 pub mod car_modifiers;
 pub mod layout;

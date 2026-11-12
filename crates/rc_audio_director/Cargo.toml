@@ -9,3 +9,6 @@ crate-type = ["rlib"]
 [dependencies]
 glam.workspace = true
 rc_physics_sim = { path = "../rc_physics_sim" }
+
+[dev-dependencies]
+rocketsim = { path = "../rocketsim" }

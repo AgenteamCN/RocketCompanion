@@ -6,7 +6,7 @@ import {
   type IncidentAudioBuffers,
   type PreviewAudioBufferOptions,
 } from './audioMenuPreviewCatalog.ts';
-import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
+import type { VehicleAudioBuffers } from './vehicleAudioContracts.ts';
 
 export type { IncidentAudioBuffers, PreviewAudioBufferOptions };
 

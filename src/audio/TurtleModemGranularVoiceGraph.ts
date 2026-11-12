@@ -3,6 +3,7 @@ import type {
   LoadedEngineAudioPackAssets,
   ConditionedEngineSliceBuffers,
 } from './turtleModemSynthAcousticPipeline.ts';
+import { applyGranularPodCue, type GranularPodCue } from './granularPodApplier.ts';
 import {
   applySmoothedAudioParamValue,
   clampSmoothingDtSec,
@@ -18,6 +19,9 @@ const PLAYBACK_RATE_DEADBAND = 1e-3;
 const GAIN_DEADBAND = 1e-4;
 const DELAY_DEADBAND_SEC = 1e-4;
 const SLICE_RATE_SMOOTHING_TAU_SEC = 0.015;
+const FILTER_POD_TAU_SEC = 0.02;
+const PLAYBACK_RATE_TAU_SEC = 0.02;
+const GAIN_POD_TAU_SEC = 0.012;
 const SLICE_DELAY_SMOOTHING_TAU_SEC = 0.04;
 
 export interface GranularSliceChannel {
@@ -129,6 +133,7 @@ export class TurtleModemGranularVoiceGraph {
   lastIdleRate = -1;
   lastFilterCutoff = -1;
   private _lastUpdateSec = -1;
+  sliceFreqHzByIndex: number[] = [];
 
   constructor(
     ctx: AudioContext,
@@ -245,6 +250,7 @@ export class TurtleModemGranularVoiceGraph {
           lastDelay: 0,
         };
       });
+      this.sliceFreqHzByIndex = assets.slices.map((slice) => slice.meta.freq);
       this.graphBuilt = true;
       return true;
     } catch {
@@ -303,6 +309,10 @@ export class TurtleModemGranularVoiceGraph {
     } catch {
       /* ignore */
     }
+  }
+
+  applyPod(cue: GranularPodCue): void {
+    applyGranularPodCue(this, cue);
   }
 
   update(input: GranularGraphUpdateInput): GranularGraphUpdateResult | null {
@@ -431,7 +441,9 @@ export class TurtleModemGranularVoiceGraph {
       const targetOnGain = useDualReverseOff
         ? compensatedWeight * smoothThrottle
         : compensatedWeight * (0.42 + 0.58 * smoothThrottle);
-      const targetOffGain = useDualReverseOff ? compensatedWeight * (1.0 - smoothThrottle) * 0.72 : 0;
+      const targetOffGain = useDualReverseOff
+        ? compensatedWeight * (1.0 - smoothThrottle) * 0.72
+        : 0;
 
       if (
         compensatedWeight <= 1e-4 &&
@@ -522,4 +534,3 @@ export class TurtleModemGranularVoiceGraph {
     };
   }
 }
-

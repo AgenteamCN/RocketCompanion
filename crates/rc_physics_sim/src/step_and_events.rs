@@ -1,6 +1,7 @@
 use rocketsim::{ArenaEvent, CarControls};
 
 use crate::{
+    ball_contact::BallContactKind,
     layout::{PhysicsEvent, MAX_CARS},
     sim_instance::SimInstance,
 };
@@ -100,7 +101,15 @@ impl SimInstance {
             match ev {
                 ArenaEvent::BallHitWorld(e) => {
                     let speed = ball.vel.length();
-                    let normal_rel_vel = ball.vel.dot(e.contact_normal).abs();
+                    let contact = self
+                        .ball_contact
+                        .classify(tick, ball.vel, e.contact_normal);
+                    self.ball_contact_normal_speed = contact.normal_speed_uu;
+                    self.ball_contact_surface_speed = contact.surface_speed_uu;
+                    if contact.kind == BallContactKind::Rolling {
+                        continue;
+                    }
+                    let normal_rel_vel = contact.normal_speed_uu;
                     let dir_dot = if speed > 1e-4 {
                         (normal_rel_vel / speed).clamp(0.0, 1.0)
                     } else {

@@ -438,6 +438,7 @@ export class SpatialAudioSource {
   category: AudioAttenuationCategory;
   context: AudioContext | null;
   enabled = true;
+  distanceGainEnabled = true;
   input: GainNode;
   output: GainNode | null = null;
   panner: PannerNode | null = null;
@@ -535,10 +536,14 @@ export class SpatialAudioSource {
     if (!this.context || !this.output) return;
     let target = 0;
     if (this.enabled && listenerManager.hasListener) {
-      const dx = this.position.x - listenerManager.position.x;
-      const dy = this.position.y - listenerManager.position.y;
-      const dz = this.position.z - listenerManager.position.z;
-      target = calculateDistanceGain(Math.hypot(dx, dy, dz), this.category);
+      if (this.distanceGainEnabled) {
+        const dx = this.position.x - listenerManager.position.x;
+        const dy = this.position.y - listenerManager.position.y;
+        const dz = this.position.z - listenerManager.position.z;
+        target = calculateDistanceGain(Math.hypot(dx, dy, dz), this.category);
+      } else {
+        target = 1;
+      }
     }
 
     this.targetGain = target;

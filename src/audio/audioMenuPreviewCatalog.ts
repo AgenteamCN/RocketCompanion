@@ -6,10 +6,9 @@ import {
 import { useSpatialAudioStore } from '../game/runtimeUiPort.ts';
 import { subsystemState } from './audioContext.ts';
 import { fetchAudioBuffer, type IncidentAudioBuffers } from './audioAssetLoader.ts';
-import type { VehicleAudioBuffers } from './VehicleAudioManager.ts';
+import type { VehicleAudioBuffers } from './vehicleAudioContracts.ts';
 
 export type { IncidentAudioBuffers };
-
 
 export interface PreviewAudioBufferOptions {
   playbackRate?: number;

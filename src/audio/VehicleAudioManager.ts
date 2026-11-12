@@ -16,106 +16,16 @@ import {
   type SpatialPositionInput,
   type SpatialVector3Like,
 } from './SpatialAudioSource.ts';
-
-export interface PhysicsImpactAudioEvent extends SpatialPositionInput {
-  type?: number | string;
-  subType?: number | string;
-  actionSubType?: number;
-  surfaceTag?: number | string;
-  isCrossbar?: boolean;
-  normalRelVel?: number;
-  impulse?: number;
-  speed?: number;
-  relSpeed?: number;
-  carIndex?: number;
-  car1Index?: number;
-  car2Index?: number;
-  primaryId?: number;
-  secondaryId?: number;
-  padIndex?: number;
-  isBig?: boolean;
-  isSupersonic?: boolean;
-  carPosX?: number;
-  carPosY?: number;
-  carPosZ?: number;
-}
-
-export const INCIDENT_COOLDOWN_MS = Object.freeze({
-  GOAL_SCORED: 2500,
-  CAR_CAR_DEMO: 90,
-  CAR_CAR_BUMP_PAIR: 65,
-  CAR_CAR_BUMP_GLOBAL: 35,
-  BOOST_PICKUP_PER_PAD: 150,
-  WHEEL_LANDING_PER_CAR: 140,
-  BOOST_EDGE_PER_CAR: 45,
-  JUMP_ACTION_PER_CAR: 45,
-  SUPERSONIC_ENTER_PER_CAR: 250,
-  FLIP_RESET_PER_CAR: 500,
-});
-
-function calibrateWheelLandingModulation(downwardSpeedUU: number, isSelf: boolean) {
-  const x = Math.max(0, Math.min(1, (Math.max(0, Math.abs(downwardSpeedUU)) - 180) / 1350));
-  const intensity = x * x * (3 - 2 * x);
-  return {
-    category: 'wheel_landing' as const,
-    volumeGainMultiplier: Math.max(0.35, Math.min(1.15, (0.45 + 0.6 * intensity) * (isSelf ? 1.0 : 0.88))),
-    distanceRadiusScale: Math.max(0.65, Math.min(1.2, 0.7 + 0.45 * intensity)),
-    playbackRate: Math.max(0.92, Math.min(1.08, 0.94 + 0.12 * (1.0 - 0.5 * intensity))),
-    priority: isSelf ? 4 : 2,
-    normalizedIntensity: intensity,
-  };
-}
-
-export interface VehicleAudioBuffers {
-  jump: Array<AudioBuffer | null>;
-  doubleJump: Array<AudioBuffer | null>;
-  dodge: Array<AudioBuffer | null>;
-  boostStart: AudioBuffer | null;
-  boostLoop: AudioBuffer | null;
-  boostRelease: AudioBuffer | null;
-  supersonicEnter: Array<AudioBuffer | null>;
-  supersonicLoop: AudioBuffer | null;
-  reset: AudioBuffer | null;
-  wheelImpact: Array<AudioBuffer | null>;
-  carCollision: AudioBuffer | null;
-  vehicleDetail: Array<AudioBuffer | null>;
-}
-
-export interface VehicleCarStateSnapshot {
-  isBoosting?: boolean;
-  isSupersonic?: boolean;
-  isDemoed?: boolean;
-  isOnGround?: boolean;
-  velZ?: number;
-  airTime?: number;
-  getWheelContact?: (wheelIndex: number) => boolean;
-}
-
-export interface VehicleLandingTrackingState {
-  wasGrounded: boolean;
-  peakDownwardSpeedUU: number;
-  airborneTicks: number;
-}
-
-export interface VehicleAudioUpdateContext {
-  activeCarIndex?: number;
-  numCars?: number;
-  getCarPos?: ((carIndex: number) => SpatialPositionInput | null | undefined) | null;
-  getCarState?: ((carIndex: number) => VehicleCarStateSnapshot | null | undefined) | null;
-  isMatchActive?: boolean;
-  hasBlockingOverlay?: boolean;
-  continueOnBlur?: boolean;
-  isHidden?: boolean;
-}
-
-function stopSrc(src: AudioBufferSourceNode | null): void {
-  if (!src) return;
-  try {
-    src.onended = null;
-    src.stop();
-    src.disconnect();
-  } catch { /* ignore */ }
-}
+import {
+  INCIDENT_COOLDOWN_MS,
+  calibrateWheelLandingModulation,
+  stopSrc,
+  type PhysicsImpactAudioEvent,
+  type VehicleAudioBuffers,
+  type VehicleAudioUpdateContext,
+  type VehicleCarStateSnapshot,
+  type VehicleLandingTrackingState,
+} from './vehicleAudioContracts.ts';
 
 export class VehicleAudioEmitter {
   activeSources = new Set<AudioBufferSourceNode>();
@@ -147,7 +57,11 @@ export class VehicleAudioEmitter {
     const dest = getMasterAudioInput();
     if (this.initialized || !ctx || !dest) return;
     const p = ctx.createPanner();
-    try { p.panningModel = audioConfig.get('spatialPanningModel') || 'equalpower'; } catch { p.panningModel = 'equalpower'; }
+    try {
+      p.panningModel = audioConfig.get('spatialPanningModel') || 'equalpower';
+    } catch {
+      p.panningModel = 'equalpower';
+    }
     p.rolloffFactor = 0;
     p.connect(dest);
     this.panner3D = p;
@@ -172,7 +86,9 @@ export class VehicleAudioEmitter {
     try {
       this.inputGain.disconnect();
       this.inputGain.connect(this.isSelf ? dest : this.panner3D || dest);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   setBuffers(boostLoop: AudioBuffer | null, supersonicLoop: AudioBuffer | null): void {
@@ -201,17 +117,35 @@ export class VehicleAudioEmitter {
       src.start(ctx.currentTime, buf.duration > 0.1 ? Math.random() * buf.duration * 0.8 : 0);
       src.onended = clear;
       return src;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   _startLoops(): void {
     if (!this.initialized || !this.isAlive || !this.audible) return;
     const d = !this.isSelf && listenerManager.hasListener ? this._dist : 0;
-    if (this.isBoosting && !this.boostLoopSource && (this.isSelf || !isDistanceCulled(d, 'boost_other'))) {
-      this.boostLoopSource = this._spawn(this.boostLoopBuffer, this.boostLoopGain, () => { this.boostLoopSource = null; });
+    if (
+      this.isBoosting &&
+      !this.boostLoopSource &&
+      (this.isSelf || !isDistanceCulled(d, 'boost_other'))
+    ) {
+      this.boostLoopSource = this._spawn(this.boostLoopBuffer, this.boostLoopGain, () => {
+        this.boostLoopSource = null;
+      });
     }
-    if (this.isSupersonic && !this.supersonicLoopSource && (this.isSelf || !isDistanceCulled(d, 'supersonic_other'))) {
-      this.supersonicLoopSource = this._spawn(this.supersonicLoopBuffer, this.supersonicLoopGain, () => { this.supersonicLoopSource = null; });
+    if (
+      this.isSupersonic &&
+      !this.supersonicLoopSource &&
+      (this.isSelf || !isDistanceCulled(d, 'supersonic_other'))
+    ) {
+      this.supersonicLoopSource = this._spawn(
+        this.supersonicLoopBuffer,
+        this.supersonicLoopGain,
+        () => {
+          this.supersonicLoopSource = null;
+        }
+      );
     }
   }
 
@@ -228,27 +162,44 @@ export class VehicleAudioEmitter {
         this.panner3D.setPosition?.(p.x * s, p.y * s, p.z * s);
       }
       this._dist = listenerManager.hasListener
-        ? Math.hypot(p.x - listenerManager.position.x, p.y - listenerManager.position.y, p.z - listenerManager.position.z)
+        ? Math.hypot(
+            p.x - listenerManager.position.x,
+            p.y - listenerManager.position.y,
+            p.z - listenerManager.position.z
+          )
         : 0;
     } else {
       this._dist = 0;
     }
   }
 
-  updateState(isBoosting: boolean, isSupersonic: boolean, isAlive: boolean, audible: boolean): void {
+  updateState(
+    isBoosting: boolean,
+    isSupersonic: boolean,
+    isAlive: boolean,
+    audible: boolean
+  ): void {
     if (!this.initialized) this.init();
     this.isAlive = isAlive;
     this.audible = audible;
-    const base = audioConfig.get('masterVolume') * (this.isSelf ? audioConfig.get('vehicleSelfVolume') : 1.0);
+    const base =
+      audioConfig.get('masterVolume') * (this.isSelf ? audioConfig.get('vehicleSelfVolume') : 1.0);
     const d = !this.isSelf && listenerManager.hasListener ? this._dist : 0;
     const atten = (c: AudioAttenuationCategory) =>
       this.isSelf ? 1.0 : isDistanceCulled(d, c) ? 0 : calculateIncidentDistanceGain(d, c);
-    const bGain = isBoosting && isAlive && audible
-      ? audioConfig.get('boostLoopVolume') * audioConfig.get('boostVolume') * base * atten('boost_other')
-      : 0;
-    const sGain = isSupersonic && isAlive && audible
-      ? (audioConfig.get('supersonicLoopVolume') ?? audioConfig.get('supersonicVolume') ?? 1.0) * base * atten('supersonic_other')
-      : 0;
+    const bGain =
+      isBoosting && isAlive && audible
+        ? audioConfig.get('boostLoopVolume') *
+          audioConfig.get('boostVolume') *
+          base *
+          atten('boost_other')
+        : 0;
+    const sGain =
+      isSupersonic && isAlive && audible
+        ? (audioConfig.get('supersonicLoopVolume') ?? audioConfig.get('supersonicVolume') ?? 1.0) *
+          base *
+          atten('supersonic_other')
+        : 0;
     this.isBoosting = bGain > 1e-4;
     this.isSupersonic = sGain > 1e-4;
     if (this.isBoosting || this.isSupersonic) this._startLoops();
@@ -264,9 +215,21 @@ export class VehicleAudioEmitter {
     if (this.supersonicLoopGain) this.supersonicLoopGain.gain.value = sGain;
   }
 
-  playAction(buf: AudioBuffer | null, volume = 1.0, playbackRate = 1.0, category: AudioAttenuationCategory | string = 'jump_dodge_other', distanceRadiusScale = 1.0): void {
+  playAction(
+    buf: AudioBuffer | null,
+    volume = 1.0,
+    playbackRate = 1.0,
+    category: AudioAttenuationCategory | string = 'jump_dodge_other',
+    distanceRadiusScale = 1.0
+  ): void {
     if (!buf) return;
-    getAudioSlotPool()?.playBuffer(buf, { volume, playbackRate, position: this.isSelf ? null : { ...this.position, isAudioCoords: true }, category, distanceRadiusScale });
+    getAudioSlotPool()?.playBuffer(buf, {
+      volume,
+      playbackRate,
+      position: this.isSelf ? null : { ...this.position, isAudioCoords: true },
+      category,
+      distanceRadiusScale,
+    });
   }
 
   silenceAll(): void {
@@ -291,8 +254,18 @@ export class VehicleAudioManager {
   _landingStateByCar = new Map<number, VehicleLandingTrackingState>();
   activeCarIndex = 0;
   buffers: VehicleAudioBuffers = {
-    jump: [], doubleJump: [], dodge: [], boostStart: null, boostLoop: null, boostRelease: null,
-    supersonicEnter: [], supersonicLoop: null, reset: null, wheelImpact: [], carCollision: null, vehicleDetail: [],
+    jump: [],
+    doubleJump: [],
+    dodge: [],
+    boostStart: null,
+    boostLoop: null,
+    boostRelease: null,
+    supersonicEnter: [],
+    supersonicLoop: null,
+    reset: null,
+    wheelImpact: [],
+    carCollision: null,
+    vehicleDetail: [],
   };
   carBoostVariations = new Map<number, string>();
   emitters = new Map<number, VehicleAudioEmitter>();
@@ -315,7 +288,9 @@ export class VehicleAudioManager {
     if (typeof carIndex !== 'number' || carIndex < 0) return;
     if (variationId?.trim()) this.carBoostVariations.set(carIndex, variationId.trim());
     else this.carBoostVariations.delete(carIndex);
-    this.emitters.get(carIndex)?.setBuffers(this._resolveBoost(carIndex).boostLoop, this.buffers.supersonicLoop);
+    this.emitters
+      .get(carIndex)
+      ?.setBuffers(this._resolveBoost(carIndex).boostLoop, this.buffers.supersonicLoop);
   }
 
   getEmitter(carIndex = 0): VehicleAudioEmitter {
@@ -333,7 +308,11 @@ export class VehicleAudioManager {
     if (!model) return;
     for (const e of this.emitters.values()) {
       if (e?.panner3D) {
-        try { e.panner3D.panningModel = model; } catch { /* ignore */ }
+        try {
+          e.panner3D.panningModel = model;
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -363,7 +342,10 @@ export class VehicleAudioManager {
   update(ctx: VehicleAudioUpdateContext): void {
     const active = ctx.activeCarIndex ?? 0;
     this.activeCarIndex = active;
-    const audible = !ctx.hasBlockingOverlay && Boolean(ctx.isMatchActive ?? true) && (!ctx.isHidden || Boolean(ctx.continueOnBlur));
+    const audible =
+      !ctx.hasBlockingOverlay &&
+      Boolean(ctx.isMatchActive ?? true) &&
+      (!ctx.isHidden || Boolean(ctx.continueOnBlur));
     const total = Math.max(1, ctx.numCars ?? 1);
 
     for (let i = 0; i < total; i++) {
@@ -376,7 +358,13 @@ export class VehicleAudioManager {
       em.updateState(Boolean(st?.isBoosting), Boolean(st?.isSupersonic), alive, audible);
 
       if (st && alive && audible) {
-        const grounded = Boolean(st.isOnGround || st.getWheelContact?.(0) || st.getWheelContact?.(1) || st.getWheelContact?.(2) || st.getWheelContact?.(3));
+        const grounded = Boolean(
+          st.isOnGround ||
+          st.getWheelContact?.(0) ||
+          st.getWheelContact?.(1) ||
+          st.getWheelContact?.(2) ||
+          st.getWheelContact?.(3)
+        );
         let ls = this._landingStateByCar.get(i);
         if (!ls) {
           ls = { wasGrounded: grounded, peakDownwardSpeedUU: 0, airborneTicks: 0 };
@@ -388,7 +376,11 @@ export class VehicleAudioManager {
           ls.peakDownwardSpeedUU = Math.max(ls.peakDownwardSpeedUU, -(st.velZ ?? 0));
         } else {
           if (!ls.wasGrounded && ls.airborneTicks >= 6 && ls.peakDownwardSpeedUU >= 220) {
-            this.handleCarEvent({ type: 'wheel_impact', carIndex: i, speed: ls.peakDownwardSpeedUU });
+            this.handleCarEvent({
+              type: 'wheel_impact',
+              carIndex: i,
+              speed: ls.peakDownwardSpeedUU,
+            });
           }
           ls.wasGrounded = true;
           ls.peakDownwardSpeedUU = 0;
@@ -416,40 +408,86 @@ export class VehicleAudioManager {
     }
 
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const base = (audioConfig.get('masterVolume') ?? 1.0) * (em.isSelf ? (audioConfig.get('vehicleSelfVolume') ?? 1.0) : 1.0);
+    const base =
+      (audioConfig.get('masterVolume') ?? 1.0) *
+      (em.isSelf ? (audioConfig.get('vehicleSelfVolume') ?? 1.0) : 1.0);
     const cd = INCIDENT_COOLDOWN_MS;
 
-    if (t === 0x06 || t === 'car_jump' || t === 0x07 || t === 'car_double_jump' || t === 0x08 || t === 'car_dodge') {
+    if (
+      t === 0x06 ||
+      t === 'car_jump' ||
+      t === 0x07 ||
+      t === 'car_double_jump' ||
+      t === 0x08 ||
+      t === 'car_dodge'
+    ) {
       const k = t === 0x08 || t === 'car_dodge' ? 2 : t === 0x07 || t === 'car_double_jump' ? 1 : 0;
       if (!this._okCd(k, car, now, cd.JUMP_ACTION_PER_CAR)) return;
-      const list = k === 2 ? this.buffers.dodge : k === 1 ? this.buffers.doubleJump : this.buffers.jump;
-      const vol = (audioConfig.get(k === 2 ? 'dodgeVolume' : k === 1 ? 'doubleJumpVolume' : 'jumpVolume') ?? 1.0) * base;
+      const list =
+        k === 2 ? this.buffers.dodge : k === 1 ? this.buffers.doubleJump : this.buffers.jump;
+      const vol =
+        (audioConfig.get(k === 2 ? 'dodgeVolume' : k === 1 ? 'doubleJumpVolume' : 'jumpVolume') ??
+          1.0) * base;
       const buf = this._pick(k, list);
       if (buf) em.playAction(buf, vol, 1.0, 'jump_dodge_other');
-      else em.playAction(this.buffers.carCollision, vol * 0.4, k === 2 ? 1.2 : k === 1 ? 1.7 : 1.4, 'jump_dodge_other');
+      else
+        em.playAction(
+          this.buffers.carCollision,
+          vol * 0.4,
+          k === 2 ? 1.2 : k === 1 ? 1.7 : 1.4,
+          'jump_dodge_other'
+        );
     } else if (t === 0x0c || t === 'car_boost_start') {
       if (!this._okCd(3, car, now, cd.BOOST_EDGE_PER_CAR)) return;
       const { boostStart, boostLoop } = this._resolveBoost(car);
-      const v = audioConfig.get('boostStartVolume') ?? audioConfig.get('boostStartStopVolume') ?? 1.0;
-      em.playAction(boostStart || boostLoop, (audioConfig.get('boostVolume') ?? 1.0) * v * base, 1.0, 'boost_other');
+      const v =
+        audioConfig.get('boostStartVolume') ?? audioConfig.get('boostStartStopVolume') ?? 1.0;
+      em.playAction(
+        boostStart || boostLoop,
+        (audioConfig.get('boostVolume') ?? 1.0) * v * base,
+        1.0,
+        'boost_other'
+      );
     } else if (t === 0x0d || t === 'car_boost_stop') {
       const { boostRelease } = this._resolveBoost(car);
-      const v = audioConfig.get('boostReleaseVolume') ?? audioConfig.get('boostStartStopVolume') ?? 1.0;
-      em.playAction(boostRelease, (audioConfig.get('boostVolume') ?? 1.0) * v * base * 0.8, 1.0, 'boost_other', 0.85);
+      const v =
+        audioConfig.get('boostReleaseVolume') ?? audioConfig.get('boostStartStopVolume') ?? 1.0;
+      em.playAction(
+        boostRelease,
+        (audioConfig.get('boostVolume') ?? 1.0) * v * base * 0.8,
+        1.0,
+        'boost_other',
+        0.85
+      );
     } else if (t === 0x09 || t === 'car_supersonic_enter') {
       if (!this._okCd(4, car, now, cd.SUPERSONIC_ENTER_PER_CAR)) return;
-      const vol = (audioConfig.get('supersonicEnterVolume') ?? audioConfig.get('supersonicVolume') ?? 1.0) * base;
+      const vol =
+        (audioConfig.get('supersonicEnterVolume') ?? audioConfig.get('supersonicVolume') ?? 1.0) *
+        base;
       const buf = this._pick(3, this.buffers.supersonicEnter);
       em.playAction(buf || this.buffers.supersonicLoop, vol, buf ? 1.0 : 1.1, 'supersonic_other');
     } else if (t === 0x0f || t === 'flip_reset_gained') {
       if (isBallFlipResetEvent(event) && this._okCd(5, car, now, cd.FLIP_RESET_PER_CAR)) {
-        em.playAction(this.buffers.reset, (audioConfig.get('flipResetVolume') ?? 1.0) * base, 1.0, 'flip_reset_other');
+        em.playAction(
+          this.buffers.reset,
+          (audioConfig.get('flipResetVolume') ?? 1.0) * base,
+          1.0,
+          'flip_reset_other'
+        );
       }
     } else if ((t === 0x12 || t === 'wheel_impact') && this.buffers.wheelImpact.length > 0) {
       if (!this._okCd(6, car, now, cd.WHEEL_LANDING_PER_CAR)) return;
-      const spd = Math.abs(event.speed ?? event.relSpeed ?? event.normalRelVel ?? event.impulse ?? 500);
+      const spd = Math.abs(
+        event.speed ?? event.relSpeed ?? event.normalRelVel ?? event.impulse ?? 500
+      );
       const mod = calibrateWheelLandingModulation(spd, em.isSelf);
-      em.playAction(this._pick(4, this.buffers.wheelImpact), (audioConfig.get('wheelImpactVolume') ?? 1.0) * base * mod.volumeGainMultiplier, mod.playbackRate, mod.category, mod.distanceRadiusScale);
+      em.playAction(
+        this._pick(4, this.buffers.wheelImpact),
+        (audioConfig.get('wheelImpactVolume') ?? 1.0) * base * mod.volumeGainMultiplier,
+        mod.playbackRate,
+        mod.category,
+        mod.distanceRadiusScale
+      );
     }
   }
 

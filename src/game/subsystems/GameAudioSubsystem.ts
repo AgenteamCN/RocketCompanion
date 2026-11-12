@@ -1,13 +1,14 @@
 import {
   RemoteEngineAudioLodController,
   type EngineSynthSlotEntry,
-} from '../../audio/TurtleModemEngineSynth.ts';
+} from '../../audio/RemoteEngineAudioLodController.ts';
 import { loadEngineAudioPackAssets } from '../../audio/turtleModemSynthAcousticPipeline.ts';
 import { getAudioContext, subsystemState, registerAudioRuntime } from '../../audio/audioContext.ts';
 import { gameAudio, type GameAudioEngineFacade } from '../../audio/GameAudioEngineFacade.ts';
 import { isSignalAudioMutedInGoalReplay } from '../../audio/SignalAudioEngine.ts';
 import { updateAudioListener } from '../../audio/SpatialAudioSource.ts';
 import { type WasmAudioPhysicsModule } from '../../audio/WasmAudioDirectorBridge.ts';
+import { readWasmCarCues } from '../../audio/wasmCarCueReader.ts';
 import { yieldIdleSlice } from '../../loader/frameBudgetScheduler.ts';
 import { CarStateView } from '../../physics/RocketSimStateViews.ts';
 import {
@@ -260,18 +261,13 @@ export class GameAudioSubsystem {
         })
       : 0;
 
-    if (
-      !cueWordBase &&
-      gameAudio &&
-      typeof gameAudio.updateBallAudio === 'function' &&
-      r.arena?.ball
-    ) {
-      if (isAudibleActive) {
-        gameAudio.updateBallAudio(r.arena.ball, r.camera, r.physics);
-      } else {
-        gameAudio.ballEngine?.silenceAll?.();
-      }
+    if (!cueWordBase) {
+      gameAudio?.ballEngine?.silenceAll?.();
     }
+    const carCues =
+      cueWordBase && wasmMod?.HEAPF32 && wasmMod?.HEAPU32
+        ? readWasmCarCues(wasmMod.HEAPF32, wasmMod.HEAPU32, cueWordBase).cars
+        : null;
 
     const resolveCarView = (i: number): CarStateView | null => {
       if (isDiagnosticProbeSlot(i) && !testCarAudioEnabled) {
@@ -334,6 +330,7 @@ export class GameAudioSubsystem {
       effectiveNumCars,
       isAudibleActive,
       curBoost,
+      carCues,
       activeCarMesh,
       arenaCars: r.arena?.cars,
       playerControls: r.playerControls,

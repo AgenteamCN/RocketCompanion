@@ -68,6 +68,7 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "rc_physics_sim",
+ "rocketsim",
 ]
 
 [[package]]

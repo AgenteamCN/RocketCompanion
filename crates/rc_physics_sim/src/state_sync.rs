@@ -37,6 +37,9 @@ impl SimInstance {
         } else {
             2
         };
+        self.ball_contact_rolling = self.ball_contact.is_rolling(self.state_buffer.header.tick_count as u32);
+        self.ball_contact_normal_speed = self.ball_contact.normal_speed_uu();
+        self.ball_contact_surface_speed = self.ball_contact.surface_speed_uu();
         self.state_buffer.is_ball_sleeping = if arena.is_ball_sleeping() { 1.0 } else { 0.0 };
         self.state_buffer.is_simulation_frozen = if self.sim_frozen { 1.0 } else { 0.0 };
 

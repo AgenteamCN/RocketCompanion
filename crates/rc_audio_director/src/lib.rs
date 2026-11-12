@@ -13,7 +13,6 @@ pub mod spatial_math;
 pub mod stadium_bus;
 pub mod vehicle_incident_cues;
 
-pub use ball_loops::step_ball_acoustic_loops;
 pub use config_pod::{AttenuationProfilePod, AudioDirectorConfigPod, EngineTuningConfigPod};
 pub use director::AudioDirectorInstance;
 pub use drivetrain_state::VehicleDrivetrainState;

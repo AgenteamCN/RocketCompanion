@@ -6,6 +6,7 @@ use rocketsim::{
 };
 
 use crate::{
+    ball_contact::BallContactState,
     layout::{
         BallPredSlicePod, BoostPadInfoPod, CarConfigC, CarControlsPod, GameStateBufferPod,
         PhysicsEvent, PhysicsEventBuffer, WheelPairConfigC, MAX_CARS, MAX_EVENTS_PER_STEP,
@@ -92,6 +93,10 @@ pub struct SimInstance {
     pub ball_world_friction: f32,
     pub ball_world_restitution: f32,
     pub ball_motion_state: i32,
+    pub ball_contact: BallContactState,
+    pub ball_contact_rolling: bool,
+    pub ball_contact_normal_speed: f32,
+    pub ball_contact_surface_speed: f32,
     pub possession_car_index: i32,
 }
 
@@ -136,6 +141,10 @@ impl SimInstance {
             ball_world_friction: 0.35,
             ball_world_restitution: 0.6,
             ball_motion_state: 0,
+            ball_contact: BallContactState::default(),
+            ball_contact_rolling: false,
+            ball_contact_normal_speed: 0.0,
+            ball_contact_surface_speed: 0.0,
             possession_car_index: -1,
         };
         for i in 0..7 {

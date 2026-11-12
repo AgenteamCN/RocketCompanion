@@ -12,38 +12,8 @@ import {
   spatialAttenuationProfiles,
   type AttenuationCurveType,
 } from '../ui-core/config/spatialAttenuationProfiles.ts';
-import { getAudioContext } from './audioContext.ts';
+import type { BallAudioPort } from './BallAudioPort.ts';
 import { listenerManager, type CameraTransformLike } from './SpatialAudioSource.ts';
-
-export interface WasmBallAudioTarget {
-  initialized: boolean;
-  context?: AudioContext | null;
-  ballRollingBuffer: AudioBuffer | null;
-  ballFlyingBuffer: AudioBuffer | null;
-  rollingSource: AudioBufferSourceNode | null;
-  flyingSource: AudioBufferSourceNode | null;
-  rollingGain: GainNode | null;
-  flyingGain: GainNode | null;
-  ballPanner?: PannerNode | null;
-  position?: { x: number; y: number; z: number };
-  _lastPanX?: number;
-  _lastPanY?: number;
-  _lastPanZ?: number;
-  _lastTargetRollingGain?: number;
-  _smoothedRollingGain?: number;
-  _lastWrittenRollingGain?: number;
-  _smoothedRollingRate?: number;
-  _lastRollingRate?: number;
-  _lastTargetFlyingGain?: number;
-  _smoothedFlyingGain?: number;
-  _lastWrittenFlyingGain?: number;
-  _smoothedFlyingRate?: number;
-  _lastFlyingRate?: number;
-  _wasRolling?: boolean;
-  _wasFallingDownward?: boolean;
-  _startLoops: () => void;
-  silenceAll: () => void;
-}
 
 export interface WasmAudioPhysicsModule {
   HEAPF32: Float32Array;
@@ -266,107 +236,30 @@ export function syncWasmAudioListenerState(
 }
 
 /**
- * Applies `BallAcousticLoopPod` directly from WASM `HEAPF32` to `BallAudioEmitter` WebAudio nodes.
+ * Applies `BallAcousticLoopPod` from WASM `HEAPF32` to the ball loop WebAudio graph.
+ * All acoustic math stays in Rust; this only forwards gain, rate, and position.
  */
 export function applyWasmBallCueToEmitter(
-  ballEngine: WasmBallAudioTarget,
+  ballAudio: BallAudioPort,
   f32: Float32Array,
   cueWordBase: number,
   isAudibleActive: boolean
 ): void {
-  if (!isAudibleActive || !ballEngine.initialized) {
-    ballEngine.silenceAll();
+  if (!isAudibleActive) {
+    ballAudio.silenceAll();
     return;
   }
-  if (
-    (ballEngine.ballRollingBuffer && !ballEngine.rollingSource) ||
-    (ballEngine.ballFlyingBuffer && !ballEngine.flyingSource)
-  ) {
-    ballEngine._startLoops();
-  }
-  const ctx = ballEngine.context || getAudioContext();
-  if (!ctx) return;
-
   const bOff = cueWordBase + AUDIO_CUE_BALL_WORD_OFFSET;
-  const panX = f32[bOff + 0];
-  const panY = f32[bOff + 1];
-  const panZ = f32[bOff + 2];
-  const rollGain = f32[bOff + 4];
-  const rollRate = f32[bOff + 5];
-  const flyGain = f32[bOff + 6];
-  const flyRate = f32[bOff + 7];
-
-  if (ballEngine.position) {
-    ballEngine.position.x = panX * 100;
-    ballEngine.position.y = panY * 100;
-    ballEngine.position.z = panZ * 100;
-  }
-
-  if (ballEngine.ballPanner) {
-    if (
-      ballEngine._lastPanX === undefined ||
-      Math.abs(panX - ballEngine._lastPanX) > 1e-4 ||
-      Math.abs(panY - (ballEngine._lastPanY ?? 0)) > 1e-4 ||
-      Math.abs(panZ - (ballEngine._lastPanZ ?? 0)) > 1e-4
-    ) {
-      ballEngine._lastPanX = panX;
-      ballEngine._lastPanY = panY;
-      ballEngine._lastPanZ = panZ;
-      if (ballEngine.ballPanner.positionX) {
-        ballEngine.ballPanner.positionX.value = panX;
-        ballEngine.ballPanner.positionY.value = panY;
-        ballEngine.ballPanner.positionZ.value = panZ;
-      } else if (typeof ballEngine.ballPanner.setPosition === 'function') {
-        ballEngine.ballPanner.setPosition(panX, panY, panZ);
-      }
-    }
-  }
-
-  if (ballEngine.rollingGain) {
-    ballEngine._lastTargetRollingGain = rollGain;
-    ballEngine._smoothedRollingGain = rollGain;
-    if (
-      ballEngine._lastWrittenRollingGain === undefined ||
-      Math.abs(rollGain - ballEngine._lastWrittenRollingGain) > 1e-4 ||
-      (rollGain === 0 && ballEngine._lastWrittenRollingGain !== 0)
-    ) {
-      ballEngine._lastWrittenRollingGain = rollGain;
-      ballEngine.rollingGain.gain.value = rollGain;
-    }
-  }
-  if (ballEngine.rollingSource?.playbackRate && rollGain > 0) {
-    ballEngine._smoothedRollingRate = rollRate;
-    if (
-      ballEngine._lastRollingRate === undefined ||
-      Math.abs(rollRate - ballEngine._lastRollingRate) > 1e-3
-    ) {
-      ballEngine._lastRollingRate = rollRate;
-      ballEngine.rollingSource.playbackRate.value = rollRate;
-    }
-  }
-
-  if (ballEngine.flyingGain) {
-    ballEngine._lastTargetFlyingGain = flyGain;
-    ballEngine._smoothedFlyingGain = flyGain;
-    if (
-      ballEngine._lastWrittenFlyingGain === undefined ||
-      Math.abs(flyGain - ballEngine._lastWrittenFlyingGain) > 1e-4 ||
-      (flyGain === 0 && ballEngine._lastWrittenFlyingGain !== 0)
-    ) {
-      ballEngine._lastWrittenFlyingGain = flyGain;
-      ballEngine.flyingGain.gain.value = flyGain;
-    }
-  }
-  if (ballEngine.flyingSource?.playbackRate && flyGain > 0) {
-    ballEngine._smoothedFlyingRate = flyRate;
-    if (
-      ballEngine._lastFlyingRate === undefined ||
-      Math.abs(flyRate - ballEngine._lastFlyingRate) > 1e-3
-    ) {
-      ballEngine._lastFlyingRate = flyRate;
-      ballEngine.flyingSource.playbackRate.value = flyRate;
-    }
-  }
-  ballEngine._wasRolling = rollGain > 0;
-  ballEngine._wasFallingDownward = flyGain > 0;
+  ballAudio.applyCue(
+    {
+      x: f32[bOff + 0],
+      y: f32[bOff + 1],
+      z: f32[bOff + 2],
+      rollingGain: f32[bOff + 4],
+      rollingRate: f32[bOff + 5],
+      flyingGain: f32[bOff + 6],
+      flyingRate: f32[bOff + 7],
+    },
+    true
+  );
 }

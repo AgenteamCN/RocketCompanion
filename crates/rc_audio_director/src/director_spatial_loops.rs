@@ -227,26 +227,36 @@ impl AudioDirectorInstance {
         let is_sleeping = sim.state_buffer.is_ball_sleeping >= 0.5;
         let is_in_goal = by.abs() > 5120.0 + 92.75;
         let is_ground_contact = (bz - 93.15) <= 15.0;
-        let is_contacting = is_ground_contact
+        let is_rolling_contact = sim.ball_contact_rolling && sim.ball_contact_normal_speed <= 120.0;
+        let is_contacting = is_rolling_contact
+            || is_ground_contact
             || bz >= (2048.0 - 113.15)
             || bx.abs() >= (4096.0 - 113.15)
             || (by.abs() >= (5120.0 - 113.15) && bz > 642.0)
             || (bz < 260.0 && (bx.abs() > 3800.0 || by.abs() > 4800.0));
 
         let (roll_atten, roll_culled) = self.evaluate_attenuation(14, ball_dist);
-        let target_roll_gain =
-            if !is_sleeping && !is_in_goal && !roll_culled && is_contacting && b_speed > 25.0 {
-                let spd_factor = ((b_speed - 25.0) / 1800.0).clamp(0.08, 1.0);
-                let vert_dampen = (1.0 - (ball.vel[2].abs() / 420.0)).clamp(0.0, 1.0);
-                (self.config_pod.ball_rolling_volume
-                    * self.config_pod.master_volume
-                    * roll_atten
-                    * spd_factor
-                    * vert_dampen)
-                    .clamp(0.0, 2.0)
-            } else {
-                0.0
-            };
+        let rolling_was_active = self.smoothed_ball_rolling_gain > 0.0;
+        let rolling_speed_gate = if rolling_was_active { 18.0 } else { 25.0 };
+        let is_bouncing = !is_rolling_contact && ball.vel[2].abs() > 120.0;
+        let target_roll_gain = if !is_sleeping
+            && !is_in_goal
+            && !roll_culled
+            && is_contacting
+            && !is_bouncing
+            && b_speed > rolling_speed_gate
+        {
+            let spd_factor = ((b_speed - 25.0) / 1800.0).clamp(0.08, 1.0);
+            let vert_dampen = (1.0 - (ball.vel[2].abs() / 420.0)).clamp(0.0, 1.0);
+            (self.config_pod.ball_rolling_volume
+                * self.config_pod.master_volume
+                * roll_atten
+                * spd_factor
+                * vert_dampen)
+                .clamp(0.0, 2.0)
+        } else {
+            0.0
+        };
         let target_roll_rate = 0.85 + 0.35 * (b_speed / 2000.0).clamp(0.0, 1.0);
 
         let (fly_atten, fly_culled) = self.evaluate_attenuation(15, ball_dist);

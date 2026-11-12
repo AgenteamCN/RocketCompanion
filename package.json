@@ -26,6 +26,7 @@
     "check": "pnpm run radar && pnpm run typecheck",
     "extract:golden": "node scripts/extractGoldenBaseline65f1538d.mjs",
     "test:baseline": "node scripts/buildPhysicsWasm.mjs --if-missing && node scripts/runScenarioBaseline.mjs",
+    "test:audio": "node scripts/runAudioScenarios.mjs",
     "test:soak": "node scripts/runSoakWatchdog.mjs"
   },
   "dependencies": {

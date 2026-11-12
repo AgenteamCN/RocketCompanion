@@ -2,17 +2,13 @@ import { audioConfig, registerAudioDiagnosticsProvider } from '../ui-core/config
 import { subscribeEngineAudioTuningConfig } from '../ui-core/config/engineAudioConfig.ts';
 import { spatialAttenuationProfiles } from '../ui-core/config/spatialAttenuationProfiles.ts';
 import { getAudioSlotPool, registerAudioEngine } from './audioContext.ts';
-import {
-  VehicleAudioManager,
-  type PhysicsImpactAudioEvent,
-  type VehicleAudioUpdateContext,
-} from './VehicleAudioManager.ts';
+import { VehicleAudioManager } from './VehicleAudioManager.ts';
+import type {
+  PhysicsImpactAudioEvent,
+  VehicleAudioUpdateContext,
+} from './vehicleAudioContracts.ts';
 import { SignalAudioEngine } from './SignalAudioEngine.ts';
-import {
-  loadAudioAssets,
-  applyBoostVariationBuffers,
-  type BallAudioBuffers,
-} from './audioAssetLoader.ts';
+import { loadAudioAssets, applyBoostVariationBuffers } from './audioAssetLoader.ts';
 import {
   stadiumSpatialAudioEngine,
   type StadiumSpatialAudioEngine,
@@ -29,36 +25,12 @@ import {
   type WasmAudioPhysicsModule,
   type WasmListenerSyncInput,
 } from './WasmAudioDirectorBridge.ts';
+import { BallAudioPort } from './BallAudioPort.ts';
 import { dispatchWasmOneShotSlots } from './wasmAudioOneShotDispatcher.ts';
-import type { CameraTransformLike } from './SpatialAudioSource.ts';
 import { INCIDENT_EVENT_TYPES, PHYSICS_EVENT_TYPES } from '../physics/RocketSimConstants.ts';
 import './audioDebug.ts';
 
 export type { PhysicsImpactAudioEvent, PreviewAudioBufferOptions };
-
-export interface BallMeshOrViewLike {
-  position?: { x: number; y: number; z: number } | null;
-  posX?: number;
-  posY?: number;
-  posZ?: number;
-  velX?: number;
-  velY?: number;
-  velZ?: number;
-  velocity?: { x?: number; y?: number; z?: number } | null;
-}
-
-export interface BallPhysicsStateLike {
-  ballState?: {
-    posX?: number;
-    posY?: number;
-    posZ?: number;
-    velX?: number;
-    velY?: number;
-    velZ?: number;
-  } | null;
-  ballOnGround?: boolean;
-  getBallOnGround?: () => boolean;
-}
 
 function createEmptyIncidentBuffers(): IncidentAudioBuffers {
   return {
@@ -88,31 +60,11 @@ function createEmptyIncidentBuffers(): IncidentAudioBuffers {
 
 export class GameAudioEngineFacade {
   _lastBoostVariationKey: string;
-  ballEngine: {
-    initialized: boolean;
-    ballRollingBuffer: AudioBuffer | null;
-    ballFlyingBuffer: AudioBuffer | null;
-    rollingSource: AudioBufferSourceNode | null;
-    flyingSource: AudioBufferSourceNode | null;
-    rollingGain: GainNode | null;
-    flyingGain: GainNode | null;
-    init: (buffers?: BallAudioBuffers) => void;
-    _startLoops: () => void;
-    silenceAll: () => void;
-    updatePanningModel: (model: PanningModelType | null | undefined) => void;
-    update: (
-      ballViewOrMesh: BallMeshOrViewLike | null | undefined,
-      camera?: CameraTransformLike | null,
-      physics?: BallPhysicsStateLike | null
-    ) => void;
-  };
+  ballEngine: BallAudioPort;
   incidentEngine: {
     buffers: IncidentAudioBuffers;
     setBuffers: (bufs: Partial<IncidentAudioBuffers>) => void;
-    handleEvent: (
-      event: PhysicsImpactAudioEvent | null | undefined,
-      camera?: unknown
-    ) => void;
+    handleEvent: (event: PhysicsImpactAudioEvent | null | undefined, camera?: unknown) => void;
   };
   loaded: boolean;
   loading: boolean;
@@ -128,23 +80,7 @@ export class GameAudioEngineFacade {
     const signalEngine = new SignalAudioEngine();
     const stadiumSpatialEngine = stadiumSpatialAudioEngine;
 
-    this.ballEngine = {
-      initialized: true,
-      ballRollingBuffer: null,
-      ballFlyingBuffer: null,
-      rollingSource: null,
-      flyingSource: null,
-      rollingGain: null,
-      flyingGain: null,
-      init: (buffers: BallAudioBuffers = {}) => {
-        if (buffers.ballRolling) this.ballEngine.ballRollingBuffer = buffers.ballRolling;
-        if (buffers.ballFlying) this.ballEngine.ballFlyingBuffer = buffers.ballFlying;
-      },
-      _startLoops: () => {},
-      silenceAll: () => {},
-      updatePanningModel: () => {},
-      update: () => {},
-    };
+    this.ballEngine = new BallAudioPort();
 
     const incidentBuffers = createEmptyIncidentBuffers();
     this.incidentEngine = {
@@ -327,20 +263,9 @@ export class GameAudioEngineFacade {
     }
   }
 
-  handleEvent(
-    event: PhysicsImpactAudioEvent | null | undefined,
-    camera: CameraTransformLike | null = null
-  ) {
+  handleEvent(event: PhysicsImpactAudioEvent | null | undefined, camera: unknown = null) {
     if (!event) return;
     this.incidentEngine.handleEvent(event, camera);
-  }
-
-  updateBallAudio(
-    ballViewOrMesh: BallMeshOrViewLike | null | undefined,
-    camera: CameraTransformLike | null | undefined,
-    physics: BallPhysicsStateLike | null | undefined
-  ) {
-    this.ballEngine.update(ballViewOrMesh, camera, physics);
   }
 
   updateVehicles(context: VehicleAudioUpdateContext) {
@@ -382,4 +307,3 @@ export class GameAudioEngineFacade {
 }
 
 export const gameAudio = new GameAudioEngineFacade();
-
