@@ -13,6 +13,7 @@ import { CornerCurvedDragger } from './CornerCurvedDragger';
 import type { ContainerBounds } from './floatingWindowGeometry';
 import { useFloatingWindowDragResize } from './useFloatingWindowDragResize';
 import { OUTER_RADIUS } from './floatingWindowGeometry';
+import { validateFloatingWindowHideFooter } from './floatingWindowSchemaValidator';
 
 export interface FloatingWindowRenderContext {
   isLight: boolean;
@@ -74,6 +75,12 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
   onUpdateSize,
   onReportIntrinsicMetrics,
 }) => {
+  const resolvedHideFooter = validateFloatingWindowHideFooter(
+    item,
+    'FloatingWindowInstance'
+  );
+  const effectiveShowFooter = showFooter && !resolvedHideFooter;
+
   const {
     headerElRef,
     contentInnerElRef,
@@ -97,7 +104,7 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
     item,
     index,
     batchMinimizeSignal,
-    showFooter,
+    showFooter: effectiveShowFooter,
     containerBounds,
     onFocus,
     onMinimize,
@@ -121,9 +128,10 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
     if (descEl) {
       const desc =
         descEl.getAttribute('data-footer-desc') || descEl.getAttribute('title');
-      if (desc && desc.trim().length > 0) {
-        setHoveredDesc(desc.trim());
-      }
+      const nextDesc = desc && desc.trim().length > 0 ? desc.trim() : null;
+      setHoveredDesc((prev) => (prev === nextDesc ? prev : nextDesc));
+    } else {
+      setHoveredDesc((prev) => (prev === null ? prev : null));
     }
   };
 
@@ -162,7 +170,7 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
   const customContent = renderWindowContent?.(item, renderCtx);
 
   const isVerticallyCompressed =
-    intrinsicMaxHeight !== null && clampedGeometry.height < intrinsicMaxHeight - 2;
+    intrinsicMaxHeight !== null && clampedGeometry.height < intrinsicMaxHeight - 6;
 
   return (
     <motion.div
@@ -242,6 +250,7 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
         scrollable={isVerticallyCompressed}
         hidden={isContentHidden}
         paddedFallback={!customContent}
+        contentPadding={item.contentPadding}
         onMouseOver={handleContentMouseOver}
         onMouseLeave={handleContentMouseLeave}
       >
@@ -298,7 +307,7 @@ export const FloatingWindowInstance: React.FC<FloatingWindowInstanceProps> = ({
       </FloatingWindowContent>
 
       {/* STAGE 3: CALIBRATED FOOTER */}
-      {showFooter && !isContentHidden && (
+      {effectiveShowFooter && !isContentHidden && (
         <FloatingWindowFooter
           footerRef={footerElRef}
           defaultDescription={defaultDescription}

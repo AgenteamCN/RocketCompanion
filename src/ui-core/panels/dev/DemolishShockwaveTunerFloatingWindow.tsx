@@ -30,6 +30,7 @@ export const SURFACE_META: SurfaceMeta = {
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
   icon: 'Sparkles',
+  hideFooter: false,
   defaultSizing: {
     width: 470,
     height: 640,

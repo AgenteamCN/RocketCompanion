@@ -29,6 +29,18 @@ export interface JumpOriginRecord {
   fromDesc: string;
   toTab: ShowcaseTab;
   targetId?: string;
+  approvalSnapshot?: {
+    playlistScope?: string;
+    visibilityTier?: string;
+    anchorIndex?: number;
+    currentRoute?: string;
+    displayedRoute?: string;
+    activeFloatingWindowId?: string | null;
+    activeFloatingSubTab?: string;
+    settingsTab?: string;
+    garageTab?: string;
+    layer1ContextMode?: string;
+  };
 }
 
 export interface TopWorkspaceHeaderBarProps {
@@ -137,17 +149,14 @@ export const JumpOriginReturnBanner: React.FC<JumpOriginReturnBannerProps> = ({
     <div className="flex items-center gap-2 flex-wrap">
       <button
         type="button"
-        onClick={() => {
-          if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
-          else onReturn();
-        }}
+        onClick={onReturn}
         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 text-neutral-950 transition-all cursor-pointer active:scale-95 shadow-2xs"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         <span>Return ({lastJumpOrigin.fromDesc})</span>
       </button>
       <span className="opacity-80">
-        History stack{lastJumpOrigin.targetId ? ` · #${lastJumpOrigin.targetId}` : ''}
+        Hard-linked approval origin{lastJumpOrigin.targetId ? ` · #${lastJumpOrigin.targetId}` : ''}
       </span>
     </div>
     <button

@@ -31,10 +31,11 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'history',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 505,
     height: 367,
-    minWidth: 505,
+    minWidth: 380,
     minHeight: 160,
     mode: 'adaptive',
   },
@@ -221,7 +222,7 @@ export const RewinderConfiguratorFloatingWindow: React.FC<
   };
 
   return (
-    <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+    <div className="flex flex-col gap-2.5 text-xs select-none">
       <RewinderTransportProgressSection
         isLight={isLight}
         stateOverride={{
@@ -255,7 +256,7 @@ export const RewinderConfiguratorFloatingWindow: React.FC<
         title="Down Counter"
         bordered={false}
         showDescription={false}
-        paddingX={4}
+        paddingX={0}
         paddingY={2}
         isLight={isLight}
         rightSlot={
@@ -352,7 +353,7 @@ export const RewinderConfiguratorFloatingWindow: React.FC<
         title="Shuttle Speed"
         bordered={false}
         showDescription={false}
-        paddingX={4}
+        paddingX={0}
         paddingY={2}
         isLight={isLight}
         rightSlot={
@@ -388,7 +389,7 @@ export const RewinderConfiguratorFloatingWindow: React.FC<
           editable={true}
           bordered={false}
           showDescription={false}
-          paddingX={4}
+          paddingX={0}
           paddingY={2}
           onChange={(nextPct) => {
             setRewinderCustomFlowPct(nextPct);

@@ -14,6 +14,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'CheckCircle2',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 440,
     height: 420,

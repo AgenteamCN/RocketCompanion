@@ -34,6 +34,7 @@ export const SURFACE_META: SurfaceMeta = {
   title: 'Replay to RCS Replay Importer',
   layer: 'floating-dev',
   menuGroup: 'sandboxes',
+  hideFooter: false,
   defaultSizing: {
     width: 495,
     height: 660,
@@ -140,7 +141,7 @@ export const ReplayToRcsImporterFloatingWindow: React.FC<ReplayToRcsImporterFloa
     };
 
     return (
-      <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+      <div className="flex flex-col gap-2.5 text-xs select-none">
         <ReplayToRcsHeaderAndDeltaSection
           isLight={isLight}
           controlsDisabled={controlsDisabled}

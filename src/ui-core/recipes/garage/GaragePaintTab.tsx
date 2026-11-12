@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Paintbrush } from 'lucide-react';
+import { UserStar, SprayCan } from 'lucide-react';
 import type { SurfaceVariantMeta } from '../../manifest/surfaceMetaTypes';
 import type { StoredColorPrefs } from '../../config/uiConfig';
 import {
@@ -19,11 +19,21 @@ import {
 } from '../../stores/storeSnapshotScope';
 import { BLUE_TEAM_COLORS, ORANGE_TEAM_COLORS } from './garageConstants';
 
+const FlippedSprayCanIcon: React.FC<{
+  className?: string;
+  style?: React.CSSProperties;
+}> = ({ className = '', style }) => (
+  <SprayCan
+    className={className}
+    style={{ ...style, transform: 'scaleX(-1)' }}
+  />
+);
+
 export const SURFACE_VARIANT_META: SurfaceVariantMeta = {
   variantId: 'paint',
   label: '2. Paint & Team Priority',
   description:
-    'Primary team preview, Matte/Metallic paint finish, and 6-slot Blue/Orange color preference order.',
+    'Team priority preview, Matte/Metallic paint finish, and 6-slot Blue/Orange color preference order.',
 };
 
 export interface GaragePaintTabProps {
@@ -117,34 +127,34 @@ export const GaragePaintTab: React.FC<GaragePaintTabProps> = ({
   return (
     <div className="flex flex-col gap-2" data-ui-element="garage-tab-colour">
       <SettingSegmentedRow
-        icon={Shield}
+        icon={UserStar}
         iconColor="text-sky-400"
-        title="Primary Team Priority"
+        title="Team Priority"
         value={primaryTeam}
         onValueChange={(v) => handlePrimaryTeamChange(v as 'blue' | 'orange')}
         options={[
           {
             value: 'blue',
-            label: 'Blue Team',
+            label: 'Blue',
             icon: <span className="h-2.5 w-2.5 rounded-full bg-blue-500 inline-block mr-1" />,
           },
           {
             value: 'orange',
-            label: 'Orange Team',
+            label: 'Orange',
             icon: <span className="h-2.5 w-2.5 rounded-full bg-orange-500 inline-block mr-1" />,
           },
         ]}
         isLight={isLight}
         onMouseEnter={() =>
           onHoverDesc?.(
-            'Primary Team Priority: Freeplay training utilizes Top 1 priority of selected primary team.'
+            'Team Priority: Freeplay training utilizes Top 1 priority of selected primary team.'
           )
         }
         onMouseLeave={() => onHoverDesc?.(null)}
       />
 
       <SettingSegmentedRow
-        icon={Paintbrush}
+        icon={FlippedSprayCanIcon}
         iconColor="text-amber-400"
         title="Vehicle Paint Finishes"
         value={paintFinish}

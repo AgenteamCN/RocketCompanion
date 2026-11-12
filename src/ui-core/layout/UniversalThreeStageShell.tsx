@@ -152,6 +152,8 @@ export interface FloatingWindowContentProps {
   scrollable?: boolean;
   hidden?: boolean;
   paddedFallback?: boolean;
+  /** Optional per-window content padding override in px (number or { x, y }) */
+  contentPadding?: number | { x?: number; y?: number };
   onMouseOver?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: (e: React.MouseEvent<HTMLDivElement>) => void;
   tokensOverride?: Partial<FloatingShellTokens>;
@@ -170,6 +172,7 @@ export const FloatingWindowContent: React.FC<FloatingWindowContentProps> = ({
   scrollable = false,
   hidden = false,
   paddedFallback = false,
+  contentPadding,
   onMouseOver,
   onMouseLeave,
   tokensOverride,
@@ -180,14 +183,23 @@ export const FloatingWindowContent: React.FC<FloatingWindowContentProps> = ({
   const storeBodyPadX = useMenuLayoutStore((s) => s.floatingBodyPaddingX);
   const storeBodyPadY = useMenuLayoutStore((s) => s.floatingBodyPaddingY);
 
-  const bodyPadX =
+  const defaultPadX =
     tokensOverride?.floatingBodyPaddingX ??
     storeBodyPadX ??
     DEFAULT_FLOATING_SHELL_TOKENS.floatingBodyPaddingX;
-  const bodyPadY =
+  const defaultPadY =
     tokensOverride?.floatingBodyPaddingY ??
     storeBodyPadY ??
     DEFAULT_FLOATING_SHELL_TOKENS.floatingBodyPaddingY;
+
+  const resolvedPadX =
+    typeof contentPadding === 'number'
+      ? contentPadding
+      : contentPadding?.x ?? defaultPadX;
+  const resolvedPadY =
+    typeof contentPadding === 'number'
+      ? contentPadding
+      : contentPadding?.y ?? defaultPadY;
 
   return (
     <div
@@ -198,7 +210,9 @@ export const FloatingWindowContent: React.FC<FloatingWindowContentProps> = ({
       onMouseLeave={onMouseLeave}
       style={style}
       className={`flex-1 min-h-0 ${
-        scrollable ? 'overflow-y-auto' : 'overflow-y-hidden'
+        scrollable
+          ? 'overflow-y-auto [scrollbar-gutter:stable]'
+          : 'overflow-y-hidden'
       } overflow-x-hidden flex flex-col text-xs transition-opacity duration-100 ${
         hidden ? 'opacity-0' : 'opacity-100'
       } ${className}`}
@@ -206,16 +220,12 @@ export const FloatingWindowContent: React.FC<FloatingWindowContentProps> = ({
       <div
         ref={contentInnerRef}
         data-floating-stage="content-inner"
-        style={
-          paddedFallback
-            ? {
-                paddingLeft: `${bodyPadX}px`,
-                paddingRight: `${bodyPadX}px`,
-                paddingTop: `${bodyPadY}px`,
-                paddingBottom: `${bodyPadY}px`,
-              }
-            : undefined
-        }
+        style={{
+          paddingLeft: `${resolvedPadX}px`,
+          paddingRight: `${resolvedPadX}px`,
+          paddingTop: `${resolvedPadY}px`,
+          paddingBottom: `${resolvedPadY}px`,
+        }}
         className={
           innerClassName ??
           (paddedFallback

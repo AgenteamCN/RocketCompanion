@@ -179,14 +179,10 @@ function diffNestedRecords(
     typeof val === 'object' &&
     val !== null &&
     !Array.isArray(val) &&
-    (Object.getPrototypeOf(val) === Object.prototype ||
-      Object.getPrototypeOf(val) === null);
+    (Object.getPrototypeOf(val) === Object.prototype || Object.getPrototypeOf(val) === null);
 
   if (depth < 3 && isPlainObj(baseline) && isPlainObj(current)) {
-    const allKeys = new Set([
-      ...Object.keys(baseline),
-      ...Object.keys(current),
-    ]);
+    const allKeys = new Set([...Object.keys(baseline), ...Object.keys(current)]);
     for (const k of Array.from(allKeys).sort()) {
       const childKey = prefix ? `${prefix}.${k}` : k;
       diffNestedRecords(childKey, baseline[k], current[k], scope, acc, depth + 1);
@@ -215,14 +211,7 @@ const TRANSIENT_SYNC_KEYS = new Set<string>([
   'store:nameTagTelemetry',
 ]);
 
-const SIZING_KEYS = [
-  'width',
-  'height',
-  'minWidth',
-  'minHeight',
-  'maxHeight',
-  'mode',
-] as const;
+const SIZING_KEYS = ['width', 'height', 'minWidth', 'minHeight', 'maxHeight', 'mode'] as const;
 
 export function collectCalibrationOverrideDiffs(): {
   calibrationOverrides: SurfaceCalibrationLedger;
@@ -289,7 +278,14 @@ export function collectTunerStoreDiffs(): {
   const seenKeys = new Set<string>();
 
   for (const item of crossClientSync.getDiffEntries?.() ?? []) {
-    if (TRANSIENT_SYNC_KEYS.has(item.key) || item.key.startsWith('store:floating:')) continue;
+    if (
+      TRANSIENT_SYNC_KEYS.has(item.key) ||
+      item.key.startsWith('page:') ||
+      item.key.startsWith('store:floating:') ||
+      /^\d+[a-z]/i.test(item.key)
+    ) {
+      continue;
+    }
     const beforeCount = rawDiffs.length;
     diffNestedRecords(
       item.key,
@@ -316,6 +312,14 @@ export function collectTunerStoreDiffs(): {
   const storeDiffMap: Record<string, { before: unknown; after: unknown }> = {};
   for (const d of storeDiffs) storeDiffMap[d.key] = { before: d.before, after: d.after };
   return { storeDiffs, storeDiffMap };
+}
+
+export function stripInjectedDiffSuffixFromNote(rawNote?: string): string {
+  if (!rawNote) return '';
+  return rawNote
+    .replace(/\s*\|\s*\[(?:StoreDiff|CalibrationOverrides?)[^\n]*$/g, '')
+    .replace(/^\[(?:StoreDiff|CalibrationOverrides?)[^\n]*$/g, '')
+    .trim();
 }
 
 export function collectTunerExportDiffSnapshot(): TunerExportDiffSnapshot {
@@ -355,8 +359,7 @@ export function computeExportSizeTierMetrics(text: string): ExportSizeTierMetric
       ? new TextEncoder().encode(safeText).length
       : safeText.length;
 
-  const isCompact =
-    lineCount <= EXPORT_COPY_MAX_LINES && byteCount <= EXPORT_COPY_MAX_BYTES;
+  const isCompact = lineCount <= EXPORT_COPY_MAX_LINES && byteCount <= EXPORT_COPY_MAX_BYTES;
   const recommendedAction = isCompact ? 'copy-clipboard' : 'download-json';
   const formattedBadge = `${lineCount}L · ${byteCount.toLocaleString()}B (${(byteCount / 1024).toFixed(2)} KB)`;
   const reason = isCompact
@@ -401,57 +404,20 @@ export function buildApprovalMessageWithDiffs(params: {
   status?: string;
   diffSnapshot?: TunerExportDiffSnapshot;
 }): string {
-  const {
-    baseNote = '',
-    surfaceId,
-    diffSnapshot = collectTunerExportDiffSnapshot(),
-  } = params;
+  const { baseNote = '', surfaceId, diffSnapshot = collectTunerExportDiffSnapshot() } = params;
+
+  const cleanBase = stripInjectedDiffSuffixFromNote(baseNote);
+  if (surfaceId) {
+    return cleanBase;
+  }
 
   const segments: string[] = [];
-  if (baseNote.trim()) segments.push(baseNote.trim());
-
-  const surfaceCalDiff = surfaceId
-    ? diffSnapshot.calibrationDiffs.find((d) => d.surfaceId === surfaceId)
-    : undefined;
-  const targetOv =
-    surfaceCalDiff?.override ??
-    (surfaceId ? diffSnapshot.calibrationOverrides[surfaceId] : undefined);
-
-  if (surfaceId && targetOv) {
-    const compactOv: Record<string, unknown> = {};
-    for (const k of SIZING_KEYS) {
-      if (targetOv[k] !== undefined) compactOv[k] = targetOv[k];
-    }
-    if (
-      targetOv.defaultConfigOverrides &&
-      Object.keys(targetOv.defaultConfigOverrides).length > 0
-    ) {
-      compactOv.defaultConfigOverrides = targetOv.defaultConfigOverrides;
-    }
-    segments.push(`[CalibrationOverride ${surfaceId}: ${JSON.stringify(compactOv)}]`);
-  } else if (diffSnapshot.calibrationDiffs.length > 0) {
-    const summaryMap: Record<string, unknown> = {};
-    for (const entry of diffSnapshot.calibrationDiffs.slice(0, 4)) {
-      summaryMap[entry.surfaceId] = entry.sizingDiff;
-    }
-    segments.push(
-      `[CalibrationOverrides(${diffSnapshot.calibrationDiffs.length}): ${JSON.stringify(summaryMap)}]`
-    );
+  if (cleanBase) segments.push(cleanBase);
+  if (diffSnapshot.calibrationDiffs.length > 0) {
+    segments.push(`Calibrated(${diffSnapshot.calibrationDiffs.length})`);
   }
-
   if (diffSnapshot.storeDiffs.length > 0) {
-    const compactStorePatch: Record<string, unknown> = {};
-    for (const diff of diffSnapshot.storeDiffs.slice(0, 8)) {
-      compactStorePatch[diff.key] = diff.after;
-    }
-    const suffix =
-      diffSnapshot.storeDiffs.length > 8
-        ? ` (+${diffSnapshot.storeDiffs.length - 8} more)`
-        : '';
-    segments.push(
-      `[StoreDiff(${diffSnapshot.storeDiffs.length})${suffix}: ${JSON.stringify(compactStorePatch)}]`
-    );
+    segments.push(`StoreDiffs(${diffSnapshot.storeDiffs.length})`);
   }
-
-  return segments.join(' | ');
+  return segments.join(' · ');
 }

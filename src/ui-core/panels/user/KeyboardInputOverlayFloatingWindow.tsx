@@ -13,6 +13,8 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'keyboard',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: true,
+  contentPadding: 8,
   defaultSizing: {
     width: 280,
     height: 320,
@@ -76,7 +78,7 @@ export const KeyboardInputOverlayFloatingWindow: React.FC<
     <div
       ref={rootRef}
       data-ui-interactive="true"
-      className="p-2.5 flex flex-col select-none"
+      className="flex flex-col select-none"
     >
       <KeyboardInputOverlayMatrixStage isLight={isLight} />
     </div>

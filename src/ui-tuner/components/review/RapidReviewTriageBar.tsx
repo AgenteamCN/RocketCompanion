@@ -1,18 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Clock,
+  Copy,
   Download,
   MessageSquare,
   XCircle,
 } from 'lucide-react';
 import { quickNotification } from '../../../ui-core/stores/quickNotificationStore';
+import { buildReviewBundlePayload, formatReviewBundleMarkdown } from './alphaBravoRootCauseTriage';
 import {
-  buildApprovalMessageWithDiffs,
   collectTunerExportDiffSnapshot,
   computeExportSizeTierMetrics,
   subscribeTunerDiffChanges,
@@ -23,12 +25,13 @@ import {
 } from './RapidReviewBucketFilterStrip';
 import {
   buildAllReviewUnits,
+  filterReviewUnitsByQueueFilter,
   findUnitIndexByKeyOrSurface,
   pickRepresentativeTemplateStaleSamples,
 } from './reviewLedgerAdapter';
 import { ReviewBundleExporterModal } from './ReviewBundleExporterModal';
 import { useReviewLedgerStore } from './reviewLedgerStore';
-import type { ReviewTriageBucketId } from './reviewTypes';
+import type { ReviewQueueFilterId } from './reviewTypes';
 
 export interface RapidReviewTriageBarProps {
   isLight?: boolean;
@@ -51,8 +54,9 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
     } = useReviewLedgerStore();
 
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [copiedQuick, setCopiedQuick] = useState(false);
     const [diffTick, setDiffTick] = useState(0);
-    const noteInputRef = useRef<HTMLInputElement | null>(null);
+    const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
 
     useEffect(() => {
       return subscribeTunerDiffChanges(() => {
@@ -64,11 +68,6 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
       void diffTick;
       return collectTunerExportDiffSnapshot();
     }, [diffTick]);
-
-    const diffSizeMetrics = useMemo(() => {
-      const serialized = JSON.stringify(diffSnapshot, null, 2);
-      return computeExportSizeTierMetrics(serialized);
-    }, [diffSnapshot]);
 
     const allUnits = useMemo(
       () =>
@@ -83,37 +82,92 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
     );
 
     const bucketCounts = useMemo(() => {
-      const counts: Record<'all' | ReviewTriageBucketId, number> = {
+      const counts: Record<ReviewQueueFilterId, number> = {
         all: allUnits.length,
+        'rejected-only': 0,
         'bucket-1-visual': 0,
         'bucket-2-config': 0,
         'bucket-3-template': 0,
         'reviewed-healthy': 0,
       };
       for (const u of allUnits) {
-        counts[u.bucket] += 1;
+        if (u.status === 'rejected') counts['rejected-only'] += 1;
+        if (u.status === 'pending' || u.changedSubtreeFiles.length > 0) {
+          counts['bucket-1-visual'] += 1;
+        }
+        if (u.status === 'deferred' && u.changedSubtreeFiles.length === 0) {
+          counts['bucket-2-config'] += 1;
+        }
+        if (u.bucket === 'bucket-3-template') counts['bucket-3-template'] += 1;
+        if (u.status === 'approved') counts['reviewed-healthy'] += 1;
       }
       return counts;
     }, [allUnits]);
 
-    const filteredQueue = useMemo(() => {
-      if (activeBucketFilter === 'all') return allUnits;
-      return allUnits.filter((u) => u.bucket === activeBucketFilter);
-    }, [allUnits, activeBucketFilter]);
+    const filteredQueue = useMemo(
+      () => filterReviewUnitsByQueueFilter(allUnits, activeBucketFilter),
+      [allUnits, activeBucketFilter]
+    );
 
     const activeUnit = useMemo(() => {
       const matchIdx = findUnitIndexByKeyOrSurface(allUnits, activeUnitKey);
-      return (
-        (matchIdx >= 0 ? allUnits[matchIdx] : undefined) ||
-        filteredQueue[0] ||
-        allUnits[0]
-      );
+      return (matchIdx >= 0 ? allUnits[matchIdx] : undefined) || filteredQueue[0] || allUnits[0];
     }, [allUnits, filteredQueue, activeUnitKey]);
+
+    const nextUnreviewedUnit = useMemo(() => {
+      if (allUnits.length === 0) return null;
+      const currIdx = Math.max(0, findUnitIndexByKeyOrSurface(allUnits, activeUnitKey));
+      for (let offset = 1; offset <= allUnits.length; offset++) {
+        const cand = allUnits[(currIdx + offset) % allUnits.length];
+        if (cand && (cand.status === 'deferred' || cand.status === 'pending')) {
+          return cand;
+        }
+      }
+      return null;
+    }, [allUnits, activeUnitKey]);
+
+    const exportMarkdown = useMemo(() => {
+      const payload = buildReviewBundlePayload({
+        units: allUnits,
+        decisionsMap,
+        diffSnapshot,
+      });
+      return formatReviewBundleMarkdown(payload, allUnits);
+    }, [allUnits, decisionsMap, diffSnapshot]);
+
+    const exportMetrics = useMemo(
+      () => computeExportSizeTierMetrics(exportMarkdown),
+      [exportMarkdown]
+    );
 
     const templateStaleSamples = useMemo(
       () => pickRepresentativeTemplateStaleSamples(allUnits),
       [allUnits]
     );
+
+    const triggerDecision = (status: 'approved' | 'rejected' | 'deferred') => {
+      if (!activeUnit) return;
+      const next = setDecision({
+        unitKey: activeUnit.unitKey,
+        status,
+        advanceToNext: true,
+      });
+      const msg = `${status.toUpperCase()} #${activeUnit.playlistIndex} · ${
+        activeUnit.label
+      }${next ? ` -> #${next.playlistIndex} ${next.label}` : ''}`;
+      if (status === 'approved') quickNotification.success(msg);
+      else if (status === 'rejected') quickNotification.warning(msg);
+      else quickNotification.info(msg);
+    };
+
+    const handleQuickCopyTriage = () => {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(exportMarkdown).catch(() => {});
+      }
+      setCopiedQuick(true);
+      window.setTimeout(() => setCopiedQuick(false), 1800);
+      quickNotification.success(`Copied Triage Summary (${exportMetrics.formattedBadge})!`);
+    };
 
     useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -134,24 +188,8 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
         const keyLower = e.key.toLowerCase();
         if (keyLower === 'a' || keyLower === 'r' || keyLower === 'd') {
           e.preventDefault();
-          const status =
-            keyLower === 'a' ? 'approved' : keyLower === 'r' ? 'rejected' : 'deferred';
-          const next = setDecision({
-            unitKey: activeUnit.unitKey,
-            status,
-            advanceToNext: true,
-          });
-          const approvalMsg = buildApprovalMessageWithDiffs({
-            baseNote: activeUnit.note,
-            surfaceId: activeUnit.surfaceId,
-            diffSnapshot,
-          });
-          const labelMsg = `${status.toUpperCase()} · ${
-            activeUnit.label
-          } (${approvalMsg})${next ? ` -> Next: ${next.label}` : ''}`;
-          if (status === 'approved') quickNotification.success(labelMsg);
-          else if (status === 'rejected') quickNotification.warning(labelMsg);
-          else quickNotification.info(labelMsg);
+          const status = keyLower === 'a' ? 'approved' : keyLower === 'r' ? 'rejected' : 'deferred';
+          triggerDecision(status);
         } else if (e.key === ' ') {
           e.preventDefault();
           setIsCollapsed(false);
@@ -164,7 +202,7 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
 
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeUnit, diffSnapshot, setDecision]);
+    }, [activeUnit, setDecision]);
 
     if (!activeUnit) return null;
 
@@ -173,27 +211,8 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
       findUnitIndexByKeyOrSurface(filteredQueue, activeUnit.unitKey)
     );
 
-    const triggerDecision = (status: 'approved' | 'rejected' | 'deferred') => {
-      const next = setDecision({
-        unitKey: activeUnit.unitKey,
-        status,
-        advanceToNext: true,
-      });
-      const approvalMsg = buildApprovalMessageWithDiffs({
-        baseNote: activeUnit.note,
-        surfaceId: activeUnit.surfaceId,
-        diffSnapshot,
-      });
-      const msg = `${status.toUpperCase()} · ${activeUnit.label} (${approvalMsg})${
-        next ? ` -> ${next.label}` : ''
-      }`;
-      if (status === 'approved') quickNotification.success(msg);
-      else if (status === 'rejected') quickNotification.warning(msg);
-      else quickNotification.info(msg);
-    };
-
-    const totalDiffCount =
-      diffSnapshot.totalCalibrationSurfaceCount + diffSnapshot.totalStoreDiffCount;
+    const statusBadgeText =
+      activeUnit.status === 'pending' ? 'FIXED / VERIFY' : activeUnit.status.toUpperCase();
 
     return (
       <>
@@ -207,6 +226,7 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
           <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-2">
             <RapidReviewBucketFilterStrip
               bucketCounts={bucketCounts}
+              nextUnreviewedUnit={nextUnreviewedUnit}
               isLight={isLight}
             />
 
@@ -228,7 +248,7 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
               <button
                 type="button"
                 onClick={() => triggerDecision('rejected')}
-                title="Instant Reject current unit & advance to next without mandatory note (Shortcut: R)"
+                title="Reject current unit & advance to next (Shortcut: R)"
                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all active:scale-95 ${
                   activeUnit.status === 'rejected'
                     ? 'bg-rose-500 text-white border-rose-400'
@@ -250,23 +270,44 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
                 }`}
               >
                 <Clock className="h-3.5 w-3.5" />
-                <span>Defer [D]</span>
+                <span>Hold [D]</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickCopyTriage}
+                title={`1-Click Copy compact Markdown triage summary (${exportMetrics.formattedBadge})`}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all active:scale-95 ${
+                  copiedQuick
+                    ? 'bg-emerald-500 text-neutral-950 border-emerald-400'
+                    : 'bg-amber-500 hover:bg-amber-400 text-neutral-950 border-amber-400'
+                }`}
+              >
+                {copiedQuick ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Copied ({exportMetrics.lineCount}L)</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy Triage ({exportMetrics.lineCount}L)</span>
+                  </>
+                )}
               </button>
 
               <button
                 type="button"
                 onClick={() => setExporterModalOpen(true)}
-                title={diffSizeMetrics.reason}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold bg-amber-500 hover:bg-amber-400 text-neutral-950 border-amber-400 cursor-pointer transition-all active:scale-95"
+                title="Open Triage Summary & Export Modal"
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all active:scale-95 ${
+                  isLight
+                    ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
+                    : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-700 text-neutral-200'
+                }`}
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>
-                  Export Bundle ({totalDiffCount} Diffs · {diffSizeMetrics.formattedBadge} ·{' '}
-                  {diffSizeMetrics.recommendedAction === 'copy-clipboard'
-                    ? 'Copy'
-                    : 'Download .json'}
-                  )
-                </span>
+                <span>Export</span>
               </button>
 
               <button
@@ -305,7 +346,7 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
                       ? 'bg-white hover:bg-neutral-100 border-neutral-200'
                       : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800'
                   }`}
-                  title="Previous unit in active bucket"
+                  title="Previous unit in active filter"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
@@ -317,14 +358,33 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
                       ? 'bg-white hover:bg-neutral-100 border-neutral-200'
                       : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800'
                   }`}
-                  title="Next unit in active bucket"
+                  title="Next unit in active filter"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
 
-                <span className="text-[11px] font-bold truncate max-w-[300px]">
-                  [#{currentQueueIdx + 1}/{Math.max(1, filteredQueue.length)}]{' '}
-                  {activeUnit.label}
+                <span className="text-[11px] font-bold truncate max-w-[320px]">
+                  [#{activeUnit.playlistIndex}/{allUnits.length}
+                  {activeBucketFilter !== 'all'
+                    ? ` · ${currentQueueIdx + 1}/${Math.max(1, filteredQueue.length)}`
+                    : ''}
+                  ] {activeUnit.label}
+                </span>
+
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${
+                    activeUnit.status === 'approved'
+                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-500'
+                      : activeUnit.status === 'rejected'
+                        ? 'bg-rose-500/15 border-rose-500/35 text-rose-500'
+                        : activeUnit.status === 'pending'
+                          ? 'bg-sky-500/15 border-sky-500/35 text-sky-400'
+                          : isLight
+                            ? 'bg-white border-neutral-200 text-neutral-600'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
+                  }`}
+                >
+                  {statusBadgeText}
                 </span>
 
                 <span
@@ -339,21 +399,28 @@ export const RapidReviewTriageBar: React.FC<RapidReviewTriageBarProps> = React.m
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 flex-1 min-w-[240px] max-w-md">
-                <MessageSquare className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <input
+              <div className="flex items-start gap-1.5 flex-1 min-w-[240px] max-w-md">
+                <MessageSquare className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-1.5" />
+                <textarea
                   ref={noteInputRef}
-                  type="text"
+                  rows={
+                    activeUnit.note.includes('\n')
+                      ? Math.min(4, activeUnit.note.split('\n').length)
+                      : 1
+                  }
                   value={activeUnit.note}
                   onChange={(e) => updateNote(activeUnit.unitKey, e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
                       e.currentTarget.blur();
-                      quickNotification.success(`Saved note for ${activeUnit.label}`);
+                      quickNotification.success(
+                        `Saved note for #${activeUnit.playlistIndex} ${activeUnit.label}`
+                      );
                     }
                   }}
-                  placeholder="Press [Space] to type optional 1-line triage note (Enter to save)..."
-                  className={`w-full px-2.5 py-1 rounded-lg border text-[11px] font-mono outline-none transition-colors ${
+                  placeholder="Press [Space] to type triage note (Shift+Enter for newline, Enter to save)..."
+                  className={`w-full px-2.5 py-1 rounded-lg border text-[11px] font-mono outline-none transition-colors resize-y min-h-[26px] max-h-28 leading-relaxed ${
                     isLight
                       ? 'bg-white border-neutral-300 focus:border-amber-500 text-neutral-900 placeholder:text-neutral-400'
                       : 'bg-neutral-950 border-neutral-800 focus:border-amber-500 text-neutral-100 placeholder:text-neutral-500'

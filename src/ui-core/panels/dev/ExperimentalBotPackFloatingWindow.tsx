@@ -27,6 +27,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Sparkles',
   layer: 'floating-dev',
   menuGroup: 'sandboxes',
+  hideFooter: false,
   defaultSizing: {
     width: 490,
     height: 620,

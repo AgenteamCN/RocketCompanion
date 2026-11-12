@@ -106,6 +106,14 @@ export function checkUiNamingAndRouteAlignment(errors: string[]): void {
               `[UI NAMING VIOLATION] ${sourcePath} must export SURFACE_META with id '${id}' (found '${metaBlockMatch?.[1] || 'missing'}') to match 1:1 filename '${expectedComponent}.tsx'.`
             );
           }
+          const hideFooterMatch = winContent.match(
+            /\bexport\s+const\s+SURFACE_META\b[\s\S]*?\bhideFooter\s*:\s*(true|false)\b/
+          );
+          if (!hideFooterMatch) {
+            errors.push(
+              `[FLOATING WINDOW SCHEMA VIOLATION] ${sourcePath} SURFACE_META for '${id}' must explicitly set 'hideFooter: true' or 'hideFooter: false'.`
+            );
+          }
         }
       } else if (registryContent && !registryContent.includes(`<${expectedComponent}`)) {
         errors.push(

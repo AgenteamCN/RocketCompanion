@@ -30,7 +30,13 @@ export function createRcViteConfig(
   };
   const port = portMap[role] || 3001;
 
-  const plugins = [react(), tailwindcss(), rcGitHeadAutoRestartPlugin()];
+  const plugins = [
+    react({
+      exclude: [/\/node_modules\//, /\/\.vite\//, /\/rc-vite-cache\//],
+    }),
+    tailwindcss(),
+    rcGitHeadAutoRestartPlugin(),
+  ];
 
   if (role === 'entry') {
     plugins.unshift(customHtmlEntryPlugin('entry.html', statusResolver));
@@ -45,47 +51,64 @@ export function createRcViteConfig(
     plugins.push(customParameterUrlsPlugin());
   }
 
+  const baseReactInclude = [
+    'react',
+    'react-dom',
+    'react-dom/client',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
+    'lucide-react',
+  ];
+
+  const uiInclude = [
+    ...baseReactInclude,
+    'zustand',
+    'framer-motion',
+    '@radix-ui/react-dialog',
+    '@radix-ui/react-slider',
+    '@radix-ui/react-slot',
+    '@radix-ui/react-tabs',
+    'clsx',
+    'tailwind-merge',
+  ];
+
+  const gameInclude = [
+    ...uiInclude,
+    'three',
+    'three/addons/lines/LineMaterial.js',
+    'three/addons/lines/LineSegments2.js',
+    'three/addons/lines/LineSegmentsGeometry.js',
+    'three/addons/loaders/GLTFLoader.js',
+    'three/addons/postprocessing/Pass.js',
+    'three/addons/shaders/CopyShader.js',
+  ];
+
+  const optimizeEntries =
+    role === 'entry'
+      ? ['entry.html', 'src/entry/main.tsx']
+      : role === 'tuner'
+        ? ['tuner.html', 'src/ui-tuner/main.tsx']
+        : [
+            'index.html',
+            'src/main.ts',
+            'src/game/GameBootstrap.ts',
+            'src/ui-system/index.tsx',
+            'src/network/server/AuthoritativeServerWorker.ts',
+          ];
+
+  const optimizeInclude =
+    role === 'entry' ? baseReactInclude : role === 'tuner' ? uiInclude : gameInclude;
+
   return {
     clearScreen: false,
+    cacheDir: resolve(__dirname, 'node_modules/.vite', role),
     worker: {
       format: 'es',
     },
     envPrefix: ['VITE_', 'TAURI_ENV_*'],
     optimizeDeps: {
-      entries: [
-        'index.html',
-        'tuner.html',
-        'entry.html',
-        'src/main.ts',
-        'src/ui-tuner/main.tsx',
-        'src/entry/main.tsx',
-        'src/game/GameBootstrap.ts',
-        'src/ui-system/index.tsx',
-        'src/network/server/AuthoritativeServerWorker.ts',
-      ],
-      include: [
-        'react',
-        'react-dom',
-        'react-dom/client',
-        'react/jsx-runtime',
-        'react/jsx-dev-runtime',
-        'three',
-        'three/addons/lines/LineMaterial.js',
-        'three/addons/lines/LineSegments2.js',
-        'three/addons/lines/LineSegmentsGeometry.js',
-        'three/addons/loaders/GLTFLoader.js',
-        'three/addons/postprocessing/Pass.js',
-        'three/addons/shaders/CopyShader.js',
-        'zustand',
-        'framer-motion',
-        'lucide-react',
-        '@radix-ui/react-dialog',
-        '@radix-ui/react-slider',
-        '@radix-ui/react-slot',
-        '@radix-ui/react-tabs',
-        'clsx',
-        'tailwind-merge',
-      ],
+      entries: optimizeEntries,
+      include: optimizeInclude,
     },
     server: {
       host: host || true,

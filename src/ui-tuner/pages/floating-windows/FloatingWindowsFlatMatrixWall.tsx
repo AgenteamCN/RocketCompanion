@@ -93,6 +93,7 @@ const RealFloatingShellCard: React.FC<{
       {/* STAGE 2: REAL FLOATING WINDOW CONTENT BODY */}
       <FloatingWindowContent
         scrollable={false}
+        contentPadding={preset.contentPadding}
         onMouseOver={handleContentMouseOver}
         onMouseLeave={() => setHoveredDesc(null)}
       >
@@ -105,12 +106,14 @@ const RealFloatingShellCard: React.FC<{
       </FloatingWindowContent>
 
       {/* STAGE 3: REAL FLOATING WINDOW FOOTER */}
-      <FloatingWindowFooter
-        defaultDescription={defaultDesc}
-        hoveredDescription={hoveredDesc}
-        reserveCornerDraggerSpace={showCornerDragger}
-        isLight={isLight}
-      />
+      {!preset.hideFooter && (
+        <FloatingWindowFooter
+          defaultDescription={defaultDesc}
+          hoveredDescription={hoveredDesc}
+          reserveCornerDraggerSpace={showCornerDragger}
+          isLight={isLight}
+        />
+      )}
 
       {/* BOTTOM-RIGHT CONCENTRIC CORNER ARC DRAGGER */}
       {showCornerDragger && (

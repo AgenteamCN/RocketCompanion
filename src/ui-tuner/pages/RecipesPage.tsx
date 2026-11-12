@@ -169,24 +169,46 @@ export const RecipesPage: React.FC<{ isLight?: boolean }> = ({ isLight = true })
   }, [renderMode, prevItem, nextItem, handleSelectRecipeId]);
 
   const { activeTarget, isFollowingStage } = useCrossTabTargetFollow();
+  const lastFollowedTargetStampRef = React.useRef<number>(activeTarget.updatedAt);
+  const suppressBroadcastForRecipeRef = React.useRef<string | null>(null);
 
   // Follow stage target updates when Following Stage is enabled
   useEffect(() => {
-    if (!isFollowingStage) return;
+    if (!isFollowingStage) {
+      lastFollowedTargetStampRef.current = activeTarget.updatedAt;
+      return;
+    }
+    if (activeTarget.updatedAt <= lastFollowedTargetStampRef.current) return;
+    lastFollowedTargetStampRef.current = activeTarget.updatedAt;
+
     if (
       activeTarget.kind === 'menu-route' &&
       activeTarget.recipeId &&
       activeTarget.recipeId !== activeRecipeId
     ) {
+      suppressBroadcastForRecipeRef.current = activeTarget.recipeId;
       setActiveRecipeId(activeTarget.recipeId);
       updateUrlParams(
         { tab: 'recipes', recipe: activeTarget.recipeId },
         { hash: activeTarget.recipeId }
       );
     }
-  }, [isFollowingStage, activeTarget.kind, activeTarget.recipeId, activeTarget.updatedAt]);
+  }, [
+    isFollowingStage,
+    activeTarget.kind,
+    activeTarget.recipeId,
+    activeTarget.updatedAt,
+    activeRecipeId,
+  ]);
 
   useEffect(() => {
+    if (
+      suppressBroadcastForRecipeRef.current &&
+      suppressBroadcastForRecipeRef.current !== activeRecipeId
+    ) {
+      return;
+    }
+    suppressBroadcastForRecipeRef.current = null;
     const surfaceName = (
       activeItem.name ||
       activeItem.componentName ||

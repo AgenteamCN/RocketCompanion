@@ -25,6 +25,7 @@ export const SURFACE_META: SurfaceMeta = {
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
   icon: 'Box',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 620,

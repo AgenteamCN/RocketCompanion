@@ -6,10 +6,9 @@ import type {
 } from '../../../ui-core/manifest/surfaceMetaTypes';
 
 export type ReviewTriageBucketId =
-  | 'bucket-1-visual'
-  | 'bucket-2-config'
-  | 'bucket-3-template'
-  | 'reviewed-healthy';
+  'bucket-1-visual' | 'bucket-2-config' | 'bucket-3-template' | 'reviewed-healthy';
+
+export type ReviewQueueFilterId = 'all' | 'rejected-only' | ReviewTriageBucketId;
 
 export type ReviewStaleReason =
   | 'unreviewed'
@@ -21,6 +20,8 @@ export type ReviewStaleReason =
   | 'up-to-date';
 
 export interface SurfaceVariantReviewUnit {
+  /** 1-based sequential index (#1..#N) in the active playlist scope */
+  playlistIndex: number;
   /** Canonical unit key: `${surfaceId}::${variantId}` */
   unitKey: string;
   /** Canonical surface ID in `uiApprovalLedger.json` (e.g. `floating:boost-pad-tuner` or `recipe:Layer2SettingsRecipe`) */
@@ -68,6 +69,7 @@ export interface RuntimeReviewDecision {
   note: string;
   approvalMessage?: string;
   simulatedStaleReason?: ReviewStaleReason;
+  visualHashSnapshot?: string;
   updatedAt: string;
 }
 
@@ -112,7 +114,8 @@ export interface ExportSizeTierMetrics {
 export interface AlphaRootCauseCluster {
   alphaDep: string;
   shortName: string;
-  category: 'alpha-shell' | 'alpha-primitive' | 'alpha-compound' | 'alpha-chart' | 'alpha-store-config';
+  category:
+    'alpha-shell' | 'alpha-primitive' | 'alpha-compound' | 'alpha-chart' | 'alpha-store-config';
   rejectedUnits: string[];
   approvedUnits: string[];
   totalUnitsUsingDep: number;
@@ -150,6 +153,14 @@ export interface ReviewBundleExportPayload {
         status: SurfaceApprovalStatus;
         approvedAt: string;
         note?: string;
+        variants?: Record<
+          string,
+          {
+            status: SurfaceApprovalStatus;
+            approvedAt: string;
+            note?: string;
+          }
+        >;
       }
     >;
   };

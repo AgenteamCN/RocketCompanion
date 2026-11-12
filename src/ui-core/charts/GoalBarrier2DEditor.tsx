@@ -155,7 +155,9 @@ export const GoalBarrier2DEditor: React.FC<GoalBarrier2DEditorProps> = React.mem
       const rawU = (clientX - rect.left) / w;
       const rawV = (clientY - rect.top) / h;
       const isClamped = rawU < 0 || rawU > 1 || rawV < 0 || rawV > 1;
-      return { u: clamp01(rawU), v: clamp01(rawV), isClamped };
+      const u = Math.round(clamp01(rawU) * 1000) / 1000;
+      const v = Math.round(clamp01(rawV) * 1000) / 1000;
+      return { u, v, isClamped };
     }, []);
 
     const commitRect = useCallback(
@@ -180,6 +182,11 @@ export const GoalBarrier2DEditor: React.FC<GoalBarrier2DEditorProps> = React.mem
       [selectionMode, grid, updateGrid, updateEnabled]
     );
 
+    const dragStateRef = useRef<DragState | null>(null);
+    dragStateRef.current = dragState;
+    const commitRectRef = useRef(commitRect);
+    commitRectRef.current = commitRect;
+
     const handleStageMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -193,21 +200,49 @@ export const GoalBarrier2DEditor: React.FC<GoalBarrier2DEditorProps> = React.mem
     };
 
     const handleStageMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (dragState) return;
-      setHoverSnapPoint(resolveGoalCoords(e.clientX, e.clientY));
+      if (dragStateRef.current) return;
+      const pt = resolveGoalCoords(e.clientX, e.clientY);
+      setHoverSnapPoint((prev) =>
+        prev &&
+        prev.u === pt.u &&
+        prev.v === pt.v &&
+        prev.isClamped === pt.isClamped
+          ? prev
+          : pt
+      );
     };
 
+    const isDragging = dragState !== null;
     useEffect(() => {
-      if (!dragState) return;
+      if (!isDragging) return;
       const handleWindowMouseMove = (ev: MouseEvent) => {
         const pt = resolveGoalCoords(ev.clientX, ev.clientY);
-        setDragState((prev) => (prev ? { ...prev, currU: pt.u, currV: pt.v } : null));
-        setHoverSnapPoint(pt);
+        setDragState((prev) =>
+          prev && (prev.currU !== pt.u || prev.currV !== pt.v)
+            ? { ...prev, currU: pt.u, currV: pt.v }
+            : prev
+        );
+        setHoverSnapPoint((prev) =>
+          prev &&
+          prev.u === pt.u &&
+          prev.v === pt.v &&
+          prev.isClamped === pt.isClamped
+            ? prev
+            : pt
+        );
       };
       const handleWindowMouseUp = (ev: MouseEvent) => {
-        const pt = resolveGoalCoords(ev.clientX, ev.clientY);
-        const finalRect = normalizeRect(dragState.startU, dragState.startV, pt.u, pt.v);
-        if (finalRect) commitRect(finalRect);
+        const activeDrag = dragStateRef.current;
+        if (activeDrag) {
+          const pt = resolveGoalCoords(ev.clientX, ev.clientY);
+          const finalRect = normalizeRect(
+            activeDrag.startU,
+            activeDrag.startV,
+            pt.u,
+            pt.v
+          );
+          if (finalRect) commitRectRef.current(finalRect);
+        }
         setDragState(null);
       };
       window.addEventListener('mousemove', handleWindowMouseMove);
@@ -216,7 +251,7 @@ export const GoalBarrier2DEditor: React.FC<GoalBarrier2DEditorProps> = React.mem
         window.removeEventListener('mousemove', handleWindowMouseMove);
         window.removeEventListener('mouseup', handleWindowMouseUp);
       };
-    }, [dragState, resolveGoalCoords, commitRect]);
+    }, [isDragging, resolveGoalCoords]);
 
     const previewRect: NormalizedBarrierRect | null = dragState
       ? {

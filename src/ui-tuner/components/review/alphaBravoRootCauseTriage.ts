@@ -2,7 +2,9 @@ import { UI_APPROVAL_LEDGER } from '../../../ui-core/manifest/surfaceCalibration
 import {
   buildApprovalMessageWithDiffs,
   collectTunerExportDiffSnapshot,
+  stripInjectedDiffSuffixFromNote,
 } from './exportDiffAndSizeTiering';
+import { resolveLedgerVariantRecord } from './reviewLedgerAdapter';
 import type {
   AlphaRootCauseCluster,
   ReviewBundleExportPayload,
@@ -11,9 +13,7 @@ import type {
   TunerExportDiffSnapshot,
 } from './reviewTypes';
 
-function classifyAlphaDepCategory(
-  depPath: string
-): AlphaRootCauseCluster['category'] {
+function classifyAlphaDepCategory(depPath: string): AlphaRootCauseCluster['category'] {
   if (depPath.startsWith('src/ui-core/layout/')) return 'alpha-shell';
   if (depPath.startsWith('src/ui-core/primitives/')) return 'alpha-primitive';
   if (depPath.startsWith('src/ui-core/compounds/')) return 'alpha-compound';
@@ -31,6 +31,26 @@ function formatAlphaShortName(depPath: string): string {
   return `Alpha:StoreConfig(${stem})`;
 }
 
+export function formatCompactIndexRanges(indices: readonly number[]): string {
+  if (indices.length === 0) return 'None';
+  const sorted = Array.from(new Set(indices)).sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let end = sorted[0];
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      ranges.push(start === end ? `#${start}` : `#${start}-#${end}`);
+      start = sorted[i];
+      end = sorted[i];
+    }
+  }
+  ranges.push(start === end ? `#${start}` : `#${start}-#${end}`);
+  return ranges.join(', ');
+}
+
 export function computeAlphaBravoRootCauseClusters(
   units: SurfaceVariantReviewUnit[]
 ): AlphaRootCauseCluster[] {
@@ -42,27 +62,33 @@ export function computeAlphaBravoRootCauseClusters(
   const depMap = new Map<
     string,
     {
-      rejected: Set<string>;
-      approved: Set<string>;
-      all: Set<string>;
+      rejectedUnits: Set<string>;
+      rejectedSurfaces: Set<string>;
+      approvedUnits: Set<string>;
+      allUnits: Set<string>;
     }
   >();
 
   for (const unit of units) {
     for (const dep of unit.alphaMotherDeps) {
+      if (dep.startsWith('src/ui-core/stores/') || dep.startsWith('src/ui-core/tokens/')) {
+        continue;
+      }
       if (!depMap.has(dep)) {
         depMap.set(dep, {
-          rejected: new Set(),
-          approved: new Set(),
-          all: new Set(),
+          rejectedUnits: new Set(),
+          rejectedSurfaces: new Set(),
+          approvedUnits: new Set(),
+          allUnits: new Set(),
         });
       }
       const entry = depMap.get(dep)!;
-      entry.all.add(unit.unitKey);
+      entry.allUnits.add(unit.unitKey);
       if (unit.status === 'rejected') {
-        entry.rejected.add(unit.unitKey);
+        entry.rejectedUnits.add(unit.unitKey);
+        entry.rejectedSurfaces.add(unit.surfaceId);
       } else if (unit.status === 'approved') {
-        entry.approved.add(unit.unitKey);
+        entry.approvedUnits.add(unit.unitKey);
       }
     }
   }
@@ -70,37 +96,31 @@ export function computeAlphaBravoRootCauseClusters(
   const clusters: AlphaRootCauseCluster[] = [];
 
   for (const [alphaDep, stats] of depMap.entries()) {
-    if (stats.rejected.size === 0) continue;
+    if (stats.rejectedUnits.size === 0) continue;
     if (
       alphaDep === 'src/ui-core/layout/UniversalThreeStageShell.tsx' &&
-      stats.rejected.size < 3 &&
-      rejectedUnits.length < 3
+      stats.rejectedSurfaces.size < 3
     ) {
       continue;
     }
 
-    const rejectedList = Array.from(stats.rejected).sort();
-    const approvedList = Array.from(stats.approved).sort();
-    const totalCount = stats.all.size;
+    const rejectedList = Array.from(stats.rejectedUnits).sort();
+    const approvedList = Array.from(stats.approvedUnits).sort();
+    const totalCount = stats.allUnits.size;
     const shortName = formatAlphaShortName(alphaDep);
     const category = classifyAlphaDepCategory(alphaDep);
 
     const isSystemicAlphaIssue =
-      rejectedList.length >= 2 &&
-      (rejectedList.length >= 3 || rejectedList.length / Math.max(1, totalCount) >= 0.25);
+      stats.rejectedSurfaces.size >= 2 &&
+      (stats.rejectedSurfaces.size >= 3 || rejectedList.length / Math.max(1, totalCount) >= 0.25);
 
     const verdict: AlphaRootCauseCluster['verdict'] = isSystemicAlphaIssue
       ? 'fix-alpha-mother'
       : 'fix-bravo-surface-locally';
 
     const recommendation = isSystemicAlphaIssue
-      ? `[Alpha Root-Cause Warning] ${rejectedList.length} rejected surfaces co-depend on ` +
-        `\`${shortName}\` (\`${alphaDep}\`). Inspect and fix the shared Workspace Alpha ` +
-        `mother component first — DO NOT hard-patch individual business surfaces one by one.`
-      : `[Bravo Local Attribution] \`${shortName}\` (\`${alphaDep}\`) is healthy across ` +
-        `${approvedList.length} approved surface(s) and only rejected on ${rejectedList.join(', ')}. ` +
-        `Keep the Alpha mother untouched and apply a localized fix to the target surface TSX or ` +
-        `\`surfaceCalibrationOverrides.json\`.`;
+      ? `${stats.rejectedSurfaces.size} rejected surfaces co-depend on \`${shortName}\` (\`${alphaDep}\`). Inspect shared Alpha component first.`
+      : `\`${shortName}\` (\`${alphaDep}\`) is healthy across ${approvedList.length} approved surface(s); apply localized fix to target surface.`;
 
     clusters.push({
       alphaDep,
@@ -135,36 +155,90 @@ export function buildReviewBundlePayload(params: {
   const deferredCount = units.filter((u) => u.status === 'deferred').length;
   const pendingCount = units.filter((u) => u.status === 'pending').length;
 
-  const bucket1VisualCount = units.filter((u) => u.bucket === 'bucket-1-visual').length;
-  const bucket2ConfigCount = units.filter((u) => u.bucket === 'bucket-2-config').length;
+  const bucket1VisualCount = units.filter(
+    (u) => u.status === 'pending' || u.changedSubtreeFiles.length > 0
+  ).length;
+  const bucket2ConfigCount = units.filter(
+    (u) => u.status === 'deferred' && u.changedSubtreeFiles.length === 0
+  ).length;
   const bucket3TemplateCount = units.filter((u) => u.bucket === 'bucket-3-template').length;
 
   const rootCauseRecommendations = computeAlphaBravoRootCauseClusters(units);
-  const decisions = Object.values(decisionsMap).sort((a, b) =>
-    a.unitKey.localeCompare(b.unitKey)
-  );
+  const decisions = Object.values(decisionsMap).sort((a, b) => a.unitKey.localeCompare(b.unitKey));
 
   const approvalMessage = buildApprovalMessageWithDiffs({
-    baseNote: `Approved ${approvedCount}/${units.length} units (${rejectedCount} rejected, ${deferredCount} deferred)`,
+    baseNote: `Approved ${approvedCount}/${units.length} (${rejectedCount} rejected, ${pendingCount} fixed-verify, ${deferredCount} hold)`,
     diffSnapshot,
   });
 
   const surfacePatch: ReviewBundleExportPayload['ledgerPatch']['surfaces'] = {};
+  const unitsBySurface = new Map<string, SurfaceVariantReviewUnit[]>();
   for (const unit of units) {
-    const baseLedger = UI_APPROVAL_LEDGER.surfaces[unit.surfaceId];
-    const hasChangedStatus = !baseLedger || baseLedger.status !== unit.status;
-    const hasNote = Boolean(unit.note && unit.note.trim().length > 0);
-    const hasCalOv = Boolean(diffSnapshot.calibrationOverrides[unit.surfaceId]);
-    if (hasChangedStatus || hasNote || hasCalOv || decisionsMap[unit.unitKey]) {
-      const noteWithDiff = buildApprovalMessageWithDiffs({
-        baseNote: unit.note,
-        surfaceId: unit.surfaceId,
-        diffSnapshot,
-      });
-      surfacePatch[unit.surfaceId] = {
-        status: unit.status,
-        approvedAt: unit.updatedAt || nowIso,
-        ...(noteWithDiff ? { note: noteWithDiff } : {}),
+    const group = unitsBySurface.get(unit.surfaceId) ?? [];
+    group.push(unit);
+    unitsBySurface.set(unit.surfaceId, group);
+  }
+
+  for (const [surfaceId, group] of unitsBySurface.entries()) {
+    const baseLedger = UI_APPROVAL_LEDGER.surfaces[surfaceId];
+    const isMultiVariant = group.length > 1 || group[0]?.variantId !== 'default';
+
+    if (!isMultiVariant) {
+      const u = group[0];
+      const cleanNote = stripInjectedDiffSuffixFromNote(u.note);
+      const baseNote = stripInjectedDiffSuffixFromNote(baseLedger?.note);
+      const statusChanged = !baseLedger || baseLedger.status !== u.status;
+      const noteChanged = cleanNote !== baseNote;
+      if (statusChanged || noteChanged || u.status === 'rejected' || cleanNote.length > 0) {
+        surfacePatch[surfaceId] = {
+          status: u.status,
+          approvedAt: u.updatedAt || nowIso,
+          ...(cleanNote ? { note: cleanNote } : {}),
+        };
+      }
+      continue;
+    }
+
+    const changedVariants: Record<
+      string,
+      { status: SurfaceVariantReviewUnit['status']; approvedAt: string; note?: string }
+    > = {};
+
+    for (const u of group) {
+      const baseVar = resolveLedgerVariantRecord(baseLedger, u.variantId);
+      const cleanNote = stripInjectedDiffSuffixFromNote(u.note);
+      const baseNote = stripInjectedDiffSuffixFromNote(baseVar?.note);
+      const baseStatus = baseVar?.status ?? baseLedger?.status ?? 'deferred';
+      if (
+        u.status !== baseStatus ||
+        cleanNote !== baseNote ||
+        u.status === 'rejected' ||
+        cleanNote.length > 0
+      ) {
+        changedVariants[u.variantId] = {
+          status: u.status,
+          approvedAt: u.updatedAt || nowIso,
+          ...(cleanNote ? { note: cleanNote } : {}),
+        };
+      }
+    }
+
+    const hasRejected = group.some((u) => u.status === 'rejected');
+    const allApproved = group.every((u) => u.status === 'approved');
+    const anyPending = group.some((u) => u.status === 'pending');
+    const aggStatus: SurfaceVariantReviewUnit['status'] = hasRejected
+      ? 'rejected'
+      : allApproved
+        ? 'approved'
+        : anyPending
+          ? 'pending'
+          : 'deferred';
+
+    if (Object.keys(changedVariants).length > 0 || !baseLedger || baseLedger.status !== aggStatus) {
+      surfacePatch[surfaceId] = {
+        status: aggStatus,
+        approvedAt: nowIso,
+        ...(Object.keys(changedVariants).length > 0 ? { variants: changedVariants } : {}),
       };
     }
   }
@@ -203,110 +277,85 @@ export function formatReviewBundleMarkdown(
   units: SurfaceVariantReviewUnit[]
 ): string {
   const rejected = units.filter((u) => u.status === 'rejected');
-  const deferred = units.filter((u) => u.status === 'deferred');
-  const withNotes = units.filter(
-    (u) => u.note.trim().length > 0 && u.status !== 'rejected' && u.status !== 'deferred'
+  const approved = units.filter((u) => u.status === 'approved');
+  const pendingVerify = units.filter(
+    (u) => u.status === 'pending' || (u.status !== 'rejected' && u.changedSubtreeFiles.length > 0)
   );
-
-  const alphaFixes = payload.rootCauseRecommendations.filter(
-    (c) => c.verdict === 'fix-alpha-mother'
-  );
-  const bravoLocalFixes = payload.rootCauseRecommendations.filter(
-    (c) => c.verdict === 'fix-bravo-surface-locally'
-  );
+  const notedOther = units.filter((u) => u.status !== 'rejected' && u.note.trim().length > 0);
 
   const lines: string[] = [
-    '# [RCUITuner Workspace Bravo · Rapid Review & Triage Bundle]',
-    `- **Exported At**: \`${payload.exportedAt}\``,
-    `- **Approval Message**: \`${payload.approvalMessage}\``,
+    '# [RCUITuner · Rapid Review Triage Summary]',
     `- **Summary**: **${payload.summary.approvedCount}** Approved · ` +
       `**${payload.summary.rejectedCount}** Rejected · ` +
-      `**${payload.summary.deferredCount}** Deferred · ` +
-      `**${payload.summary.pendingCount}** Pending (Total ${payload.summary.totalUnits} units)`,
-    `- **Collected Diffs**: **${payload.summary.calibratedSurfaceCount}** Calibrated Surfaces · **${payload.summary.storeDiffCount}** Store Diff Keys`,
-    `- **3-Bucket Queue Snapshot**: [B1] Bucket 1 (Visual/New): \`${payload.summary.bucket1VisualCount}\` · ` +
-      `[B2] Bucket 2 (Config/Sizing): \`${payload.summary.bucket2ConfigCount}\` · ` +
-      `[B3] Bucket 3 (Template-Stale): \`${payload.summary.bucket3TemplateCount}\``,
-    '',
-    '## 1. [Root-Cause Triage Recommendation] (Alpha ⇄ Bravo Attribution)',
+      `**${payload.summary.pendingCount}** Fixed/Verify · ` +
+      `**${payload.summary.deferredCount}** Hold (Total ${payload.summary.totalUnits} units)`,
+    `- **Approved Units (${approved.length})**: \`${formatCompactIndexRanges(
+      approved.map((u) => u.playlistIndex)
+    )}\``,
   ];
 
-  if (payload.rootCauseRecommendations.length === 0) {
+  if (pendingVerify.length > 0) {
     lines.push(
-      '- All inspected surfaces are Approved or Deferred. Zero rejected surface root-cause conflicts detected.'
+      `- **Fixed / Pending Verify (${pendingVerify.length})**: ${pendingVerify
+        .map((u) => `\`#${u.playlistIndex} ${u.unitKey}\``)
+        .join(', ')}`
     );
-  } else {
-    if (alphaFixes.length > 0) {
-      lines.push('### [ALERT] Systemic Workspace Alpha Mother Component Findings (Fix First)');
-      for (const c of alphaFixes.slice(0, 8)) {
-        lines.push(
-          `- **${c.shortName}** (\`${c.alphaDep}\`): Co-occurs across **${c.rejectedUnits.length}** rejected units (\`${c.rejectedUnits.join('`, `')}\`).`,
-          `  - **Action**: ${c.recommendation}`
-        );
-      }
-    }
-    if (bravoLocalFixes.length > 0) {
-      lines.push('### [LOCAL] Localized Workspace Bravo Surface Findings (Alpha Mother Healthy)');
-      for (const c of bravoLocalFixes.slice(0, 8)) {
-        lines.push(`- **${c.shortName}**: ${c.recommendation}`);
-      }
-    }
   }
 
-  lines.push('', '## 2. Rejected Units Requiring Rework');
+  lines.push('', '## 1. Rejected Units Requiring Rework');
   if (rejected.length === 0) {
     lines.push('- None');
   } else {
     for (const u of rejected) {
       lines.push(
-        `- [REJECTED] **[${u.referenceCode}] ${u.label}** (\`${u.unitKey}\`)`,
+        `- [REJECTED] **#${u.playlistIndex} [${u.referenceCode}] ${u.label}** (\`${u.unitKey}\`)`,
         `  - **Source**: \`${u.sourceFile}\`${u.subViewFile ? ` → \`${u.subViewFile}\`` : ''}`,
-        `  - **Bucket / Reason**: \`${u.bucket}\` (\`${u.staleReason}\`)`,
-        `  - **Reviewer Note**: ${u.note.trim() || '*(Instant Reject via R shortcut — no note required)*'}`
+        `  - **Note**: ${u.note.trim() || '*(Rejected via R shortcut)*'}`
       );
     }
   }
 
-  if (deferred.length > 0) {
-    lines.push('', '## 3. Deferred Units (Hold Queue)');
-    for (const u of deferred) {
+  if (notedOther.length > 0) {
+    lines.push('', '## 2. Other Units With Reviewer Notes');
+    for (const u of notedOther) {
       lines.push(
-        `- [DEFERRED] **[${u.referenceCode}] ${u.label}** (\`${u.unitKey}\`) — \`${u.sourceFile}\`${
-          u.note.trim() ? ` · Note: ${u.note.trim()}` : ''
-        }`
+        `- [${u.status.toUpperCase()}] **#${u.playlistIndex} [${u.referenceCode}] ${u.label}** (\`${u.unitKey}\`) — \`${u.sourceFile}\``,
+        `  - **Note**: ${u.note.trim()}`
       );
     }
   }
 
-  if (withNotes.length > 0) {
-    lines.push('', '## 4. Approved Units With Reviewer Notes');
-    for (const u of withNotes) {
-      lines.push(
-        `- [APPROVED] **[${u.referenceCode}] ${u.label}** (\`${u.unitKey}\`): ${u.note.trim()}`
-      );
-    }
+  const hasCalDiffs = Object.keys(payload.surfaceCalibrationOverrides).length > 0;
+  const hasStoreDiffs = Object.keys(payload.storeDiffMap).length > 0;
+  if (hasCalDiffs || hasStoreDiffs) {
+    lines.push(
+      '',
+      '## 3. Calibrated Overrides & Store Diffs',
+      '```json',
+      JSON.stringify(
+        {
+          ...(hasCalDiffs
+            ? { surfaceCalibrationOverrides: payload.surfaceCalibrationOverrides }
+            : {}),
+          ...(hasStoreDiffs ? { storeDiffMap: payload.storeDiffMap } : {}),
+        },
+        null,
+        2
+      ),
+      '```'
+    );
   }
 
-  lines.push(
-    '',
-    '## 5. Collected `surfaceCalibrationOverrides` & Store Diffs',
-    '```json',
-    JSON.stringify(
-      {
-        surfaceCalibrationOverrides: payload.surfaceCalibrationOverrides,
-        storeDiffMap: payload.storeDiffMap,
-      },
-      null,
-      2
-    ),
-    '```',
-    '',
-    '## 6. `manifest/uiApprovalLedger.json` Delta Patch',
-    '```json',
-    JSON.stringify(payload.ledgerPatch, null, 2),
-    '```',
-    ''
-  );
+  if (Object.keys(payload.ledgerPatch.surfaces).length > 0) {
+    lines.push(
+      '',
+      '## 4. `manifest/uiApprovalLedger.json` Delta Patch',
+      '```json',
+      JSON.stringify(payload.ledgerPatch, null, 2),
+      '```'
+    );
+  }
 
+  lines.push('');
   return lines.join('\n');
 }

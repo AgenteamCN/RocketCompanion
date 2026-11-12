@@ -29,6 +29,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'brick-wall-shield',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 418,
     height: 462,
@@ -153,7 +154,7 @@ export const GoalBarrierConfiguratorFloatingWindow: React.FC<
   );
 
   return (
-    <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+    <div className="flex flex-col gap-2.5 text-xs select-none">
       {/* 1. Row 1: BrickWallShield (`brick-wall-shield`) + Placement + Segmented Control (None, Both, Orange, Blue) */}
       <SettingActionRow
         icon={BrickWallShield}
@@ -161,7 +162,7 @@ export const GoalBarrierConfiguratorFloatingWindow: React.FC<
         title="Placement"
         bordered={false}
         showDescription={false}
-        paddingX={4}
+        paddingX={0}
         paddingY={2}
         isLight={isLight}
         rightSlot={
@@ -210,7 +211,7 @@ export const GoalBarrierConfiguratorFloatingWindow: React.FC<
         editable={true}
         bordered={false}
         showDescription={false}
-        paddingX={4}
+        paddingX={0}
         paddingY={2}
         onChange={handleOpacityPctChange}
         isLight={isLight}

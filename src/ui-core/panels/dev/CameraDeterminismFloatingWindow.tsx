@@ -18,6 +18,7 @@ export const SURFACE_META: SurfaceMeta = {
   title: 'Camera Deterministic Harness',
   layer: 'floating-dev',
   menuGroup: 'active-tuners',
+  hideFooter: false,
   defaultSizing: {
     width: 460,
     height: 460,

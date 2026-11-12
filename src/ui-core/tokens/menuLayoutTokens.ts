@@ -68,9 +68,9 @@ export interface FloatingShellTokens {
   floatingHeaderMinimizeBtnSize: number;
   /** Stage 1 Floating window header minimize button corner radius in px (default: 6px) */
   floatingHeaderMinimizeBtnRadius: number;
-  /** Stage 2 Floating window fallback content body horizontal padding in px (default: 14px) */
+  /** Stage 2 Floating window content body horizontal padding in px (default: 10px) */
   floatingBodyPaddingX: number;
-  /** Stage 2 Floating window fallback content body vertical padding in px (default: 14px) */
+  /** Stage 2 Floating window content body vertical padding in px (default: 10px) */
   floatingBodyPaddingY: number;
   /** Stage 3 Floating window footer horizontal padding in px (default: 14px) */
   floatingFooterPaddingX: number;
@@ -194,8 +194,8 @@ export const DEFAULT_FLOATING_SHELL_TOKENS: FloatingShellTokens = {
   floatingHeaderTitleFontSize: 14,
   floatingHeaderMinimizeBtnSize: 22,
   floatingHeaderMinimizeBtnRadius: 6,
-  floatingBodyPaddingX: 14,
-  floatingBodyPaddingY: 14,
+  floatingBodyPaddingX: 10,
+  floatingBodyPaddingY: 10,
   floatingFooterPaddingX: 14,
   floatingFooterPaddingY: 6,
   floatingFooterCornerReserveRightPx: 24,

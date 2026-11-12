@@ -203,7 +203,9 @@ export const MainMenuRow: React.FC<MainMenuRowProps> = React.memo(({
         borderRadius: `${cfg.itemRadiusPx}px`,
         borderWidth: `${cfg.itemBorderWidthPx}px`,
       }}
-      className={`group relative overflow-hidden flex items-center justify-between w-full shrink-0 border transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 active:scale-[0.985] cursor-pointer select-none disabled:opacity-40 disabled:pointer-events-none ${getRowSurfaceClasses()} ${className}`}
+      className={`group relative overflow-hidden flex items-center justify-between w-full shrink-0 border transition-all duration-150 outline-none ${
+        isSolidPrimary ? '' : 'focus-visible:ring-2 focus-visible:ring-amber-500/60'
+      } active:scale-[0.985] cursor-pointer select-none disabled:opacity-40 disabled:pointer-events-none ${getRowSurfaceClasses()} ${className}`}
     >
       {/* Background Watermark Icon when activeStyleVariant === 'mono-watermark-row' */}
       {activeStyleVariant === 'mono-watermark-row' && icon && (

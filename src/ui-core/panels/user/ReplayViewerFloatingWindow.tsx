@@ -39,6 +39,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'film',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 471,
     height: 456,
@@ -242,7 +243,7 @@ export const ReplayViewerFloatingWindow: React.FC<
         };
 
   return (
-    <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+    <div className="flex flex-col gap-2.5 text-xs select-none">
       <ReplayViewerLoadActionsHeader
         isLight={isLight}
         isLoadingReplay={Boolean(isLoadingReplay)}

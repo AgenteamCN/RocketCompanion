@@ -2,7 +2,7 @@
 export interface CarDef {
   id: string;
   name: string;
-  hitbox: 'Octane' | 'Dominus' | 'Breakout' | 'Plank' | 'Hybrid' | 'Merc' | 'Octane (Three-Wheeler)';
+  hitbox: 'Octane' | 'Dominus' | 'Breakout' | 'Plank' | 'Hybrid' | 'Merc' | '3';
 }
 
 export const CARS: CarDef[] = [
@@ -14,8 +14,8 @@ export const CARS: CarDef[] = [
   { id: 'breakout-mini', name: 'Breakout', hitbox: 'Breakout' },
   { id: 'sentinel', name: 'Sentinel', hitbox: 'Plank' },
   { id: 'merc', name: 'Merc', hitbox: 'Merc' },
-  { id: 'trioctane', name: 'TriOctane4', hitbox: 'Octane' },
-  { id: 'trioctane-threewheel', name: 'TriOctane3', hitbox: 'Octane (Three-Wheeler)' },
+  { id: 'trioctane', name: 'TriOctane', hitbox: 'Octane' },
+  { id: 'trioctane-threewheel', name: 'TriOctane', hitbox: '3' },
 ];
 
 // 2. Paint / Colour Tab: Compact numeric color ID (uint8, extensible up to 20 per team) for P2P bandwidth efficiency

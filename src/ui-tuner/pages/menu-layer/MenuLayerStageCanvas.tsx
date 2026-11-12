@@ -180,11 +180,21 @@ export const MenuLayerStageCanvas: React.FC<MenuLayerStageCanvasProps> = ({
           onExpandedChange={(expanded) => {
             setEdgeInspectorExpanded(expanded);
           }}
+          isMenuOpen={currentRoute !== 'layer-0'}
+          blockedTooltipText={
+            currentRoute === 'settings'
+              ? 'Please close settings window first'
+              : 'Please close active menu first'
+          }
+          onBlockedClick={() => {
+            triggerShake();
+            showToast('[!] Please close active menu first (Vibration alert for blocked drawer)');
+          }}
           side="right"
           topOffset={72}
           bottomOffset={184}
           expandedWidth={520}
-          enableHotkey={false}
+          enableHotkey={currentRoute !== 'trajectory' && currentRoute !== 'camera'}
           positionMode="absolute"
           isLight={isLight}
         >

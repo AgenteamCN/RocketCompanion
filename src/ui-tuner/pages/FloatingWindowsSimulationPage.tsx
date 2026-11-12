@@ -150,14 +150,50 @@ export const FloatingWindowsSimulationPage: React.FC<FloatingWindowsSimulationPa
   });
 
   const { activeTarget, isFollowingStage } = useCrossTabTargetFollow();
+  const lastFollowedTargetStampRef = useRef<number>(activeTarget.updatedAt);
+  const suppressBroadcastForWindowRef = useRef<string | null>(null);
+
+  // Honor explicit URL query parameters (`fw`, `fwTab`, `tier`) on mount / popstate
+  // even when `useSyncedState` already holds a previously cached window ID in mirror.
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const params = readUrlParams();
+      if (!params.fw) return;
+      const matched = PRESET_WINDOWS.find((p) => p.id === params.fw);
+      if (!matched) return;
+      if (matched.tier && matched.tier !== tier) {
+        setTier(matched.tier);
+      }
+      if (params.fw !== selectedWindowId) {
+        suppressBroadcastForWindowRef.current = params.fw;
+        setSelectedWindowId(params.fw);
+      }
+      if (params.fwTab !== undefined && params.fwTab !== activeSubTab) {
+        setActiveSubTab(params.fwTab);
+      } else if (!params.fwTab && matched.tabs && matched.tabs.length > 0 && !activeSubTab) {
+        setActiveSubTab(matched.tabs[0].id);
+      }
+    };
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (!isFollowingStage) return;
+    if (!isFollowingStage) {
+      lastFollowedTargetStampRef.current = activeTarget.updatedAt;
+      return;
+    }
+    if (activeTarget.updatedAt <= lastFollowedTargetStampRef.current) return;
+    lastFollowedTargetStampRef.current = activeTarget.updatedAt;
+
     if (
       activeTarget.kind === 'floating-window' &&
       activeTarget.floatingWindowId &&
       activeTarget.floatingWindowId !== selectedWindowId
     ) {
+      suppressBroadcastForWindowRef.current = activeTarget.floatingWindowId;
       if (activeTarget.tier && activeTarget.tier !== tier) {
         setTier(activeTarget.tier);
       }
@@ -173,10 +209,22 @@ export const FloatingWindowsSimulationPage: React.FC<FloatingWindowsSimulationPa
     activeTarget.subtab,
     activeTarget.tier,
     activeTarget.updatedAt,
+    selectedWindowId,
+    tier,
+    setTier,
+    setSelectedWindowId,
+    setActiveSubTab,
   ]);
 
   useEffect(() => {
     if (!currentPreset) return;
+    if (
+      suppressBroadcastForWindowRef.current &&
+      suppressBroadcastForWindowRef.current !== currentPreset.id
+    ) {
+      return;
+    }
+    suppressBroadcastForWindowRef.current = null;
     publishCrossTabActiveTarget(
       buildFloatingWindowCrossTabTarget({
         windowId: currentPreset.id,

@@ -19,6 +19,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'wifi',
   layer: 'floating-user',
   menuGroup: 'user-floating',
+  hideFooter: false,
   defaultSizing: {
     width: 446,
     height: 501,
@@ -304,7 +305,7 @@ export const NetworkMonitorFloatingWindow: React.FC<
       : '2';
 
   return (
-    <div className="p-3.5 flex flex-col gap-3 text-xs select-none">
+    <div className="flex flex-col gap-2.5 text-xs select-none">
       {/* 1. Top Status Bar: Left Mode Badge (Green Online as Host/Client or Yellow Single Player Mode) + Right Pause & Export Log */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <button
@@ -330,33 +331,15 @@ export const NetworkMonitorFloatingWindow: React.FC<
         </button>
 
         <div className="flex items-center gap-1.5">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleTogglePause}
-            isLight={isLight}
-          >
+          <Button size="sm" variant="secondary" onClick={handleTogglePause} isLight={isLight}>
             {isPaused ? (
-              <>
-                <Play className="h-3.5 w-3.5 mr-1 inline" />
-                Resume
-              </>
+              <><Play className="h-3.5 w-3.5 mr-1 inline" />Resume</>
             ) : (
-              <>
-                <Pause className="h-3.5 w-3.5 mr-1 inline" />
-                Pause
-              </>
+              <><Pause className="h-3.5 w-3.5 mr-1 inline" />Pause</>
             )}
           </Button>
-
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={handleExportLog}
-            isLight={isLight}
-          >
-            <Download className="h-3.5 w-3.5 mr-1 inline" />
-            Export Log
+          <Button size="sm" variant="primary" onClick={handleExportLog} isLight={isLight}>
+            <Download className="h-3.5 w-3.5 mr-1 inline" />Export Log
           </Button>
         </div>
       </div>

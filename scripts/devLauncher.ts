@@ -36,6 +36,16 @@ async function startAllServers() {
       configFile: false,
     });
     await server.listen();
+    if (ep.role === 'entry') {
+      try {
+        await (
+          server as ViteDevServer & { waitForRequestsIdle?: () => Promise<void> }
+        ).waitForRequestsIdle?.();
+        await server.warmupRequest('/src/entry/main.tsx');
+      } catch {
+        // Ignore warmup errors
+      }
+    }
     ep.server = server;
     console.log(
       `  [OK] :${ep.port} (${ep.protocol.toUpperCase().padEnd(5)}) -> ${ep.label.padEnd(26)} ${ep.protocol}://localhost:${ep.port}/`

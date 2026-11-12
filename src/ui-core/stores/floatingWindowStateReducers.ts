@@ -3,6 +3,7 @@
  * Pure state transition reducers, types, and persistence hooks for `floatingStore`.
  */
 
+import { validateFloatingWindowHideFooter } from '../navigation/floatingWindowSchemaValidator';
 import type { PresetConfig } from './floatingPresets';
 
 export type FloatingWindowConfig = PresetConfig;
@@ -61,6 +62,10 @@ export interface FloatingWindowItem {
   resizable?: boolean;
   singleton?: boolean;
   defaultCenter?: boolean;
+  /** Mandatory explicit flag controlling Stage 3 footer visibility */
+  hideFooter?: boolean;
+  /** Optional override for Stage 2 content body padding (px) */
+  contentPadding?: number;
 }
 
 export interface FlyingGhostState {
@@ -122,6 +127,10 @@ export function reduceSpawnWindow(
   state: FloatingWindowState,
   item: Omit<FloatingWindowItem, 'isMinimized'> & { startMinimized?: boolean }
 ): FloatingWindowState {
+  const validatedHideFooter = validateFloatingWindowHideFooter(
+    item,
+    'floatingStore.spawnWindow'
+  );
   const shouldMinimize = item.startMinimized ?? false;
   const existing = state.windows.find((w) => w.id === item.id);
   if (existing) {
@@ -132,7 +141,16 @@ export function reduceSpawnWindow(
     return {
       ...state,
       windows: state.windows.map((w) =>
-        w.id === item.id ? { ...w, isMinimized: nextMinimized } : w
+        w.id === item.id
+          ? {
+              ...w,
+              isMinimized: nextMinimized,
+              hideFooter: validatedHideFooter,
+              ...(item.contentPadding !== undefined
+                ? { contentPadding: item.contentPadding }
+                : {}),
+            }
+          : w
       ),
       windowOrder: nextOrder,
       isStackDismissed: false,
@@ -179,6 +197,8 @@ export function reduceSpawnWindow(
     resizable: item.resizable ?? true,
     singleton: item.singleton,
     defaultCenter: item.defaultCenter,
+    hideFooter: validatedHideFooter,
+    contentPadding: item.contentPadding,
   };
 
   const nextOrder = newItem.isMinimized
@@ -200,6 +220,7 @@ export function reduceSpawnWithFlight(
   sourceEl: HTMLElement,
   containerEl: HTMLElement
 ): FloatingWindowState {
+  validateFloatingWindowHideFooter(preset, 'floatingStore.spawnWithFlight');
   const srcRect = sourceEl.getBoundingClientRect();
   const contRect = containerEl.getBoundingClientRect();
   const localW =
@@ -239,6 +260,10 @@ export function reduceSpawnWithFlight(
 export function reduceCompleteFlight(state: FloatingWindowState): FloatingWindowState {
   if (!state.activeFlight) return state;
   const { preset } = state.activeFlight;
+  const validatedHideFooter = validateFloatingWindowHideFooter(
+    preset,
+    'floatingStore.completeFlight'
+  );
   const isSingleton = preset.singleton ?? false;
   const winId = isSingleton ? preset.id : `${preset.id}-${Date.now().toString().slice(-4)}`;
   const existingIndex = state.windows.findIndex((w) => w.id === winId);
@@ -263,6 +288,8 @@ export function reduceCompleteFlight(state: FloatingWindowState): FloatingWindow
       autoFitHeight: preset.autoFitHeight,
       isMinimized: true,
       resizable: preset.resizable,
+      hideFooter: validatedHideFooter,
+      contentPadding: preset.contentPadding,
       position: {
         x: 40 + (state.windows.length % 5) * 32,
         y: 40 + (state.windows.length % 5) * 32,

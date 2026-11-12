@@ -324,6 +324,8 @@ export function discoveredSurfaceToLauncherSpec(
     minHeight: resolvedSizing.minHeight ?? 200,
     resizable: true,
     singleton: true,
+    hideFooter: meta.hideFooter ?? false,
+    contentPadding: meta.contentPadding,
     tier: 'developer',
     summary: meta.description || meta.subtitle || meta.title,
     menuEntryPath: `Settings -> Developer -> ${meta.menuGroup ?? 'Active Tuners'}`,

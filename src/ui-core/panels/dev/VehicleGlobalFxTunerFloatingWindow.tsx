@@ -47,6 +47,7 @@ export const SURFACE_META: SurfaceMeta = {
   layer: 'floating-dev',
   menuGroup: 'calibrated-presets',
   icon: 'Palette',
+  hideFooter: false,
   defaultSizing: {
     width: 480,
     height: 620,

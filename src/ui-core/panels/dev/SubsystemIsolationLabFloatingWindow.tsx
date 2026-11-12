@@ -36,6 +36,7 @@ export const SURFACE_META: SurfaceMeta = {
   icon: 'Layers',
   layer: 'floating-dev',
   menuGroup: 'sandboxes',
+  hideFooter: false,
   defaultSizing: {
     width: 470,
     height: 560,

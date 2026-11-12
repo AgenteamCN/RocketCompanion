@@ -13,9 +13,15 @@ import type {
 import {
   validateNotificationOptions,
   resolveActiveOngoing,
+  matchesNotificationIdentifier,
   notificationScheduler,
 } from './notificationScheduler';
 
+let notificationPrimaryKeySeq = 0;
+const nextNotificationPrimaryId = (): string => {
+  notificationPrimaryKeySeq += 1;
+  return `notif-${Date.now()}-${notificationPrimaryKeySeq}`;
+};
 
 let activeTimer: ReturnType<typeof setTimeout> | null = null;
 let activeProgressInterval: ReturnType<typeof setInterval> | null = null;
@@ -194,8 +200,27 @@ export const useQuickNotificationStore = create<QuickNotificationStore>((set, ge
     }
 
     clearActiveTimers();
+    const resolvedCollapseKey =
+      config.collapseKey ?? config.collapse_key ?? config.id ?? undefined;
+    const resolvedSourceNamespace =
+      config.sourceNamespace ?? config.source_app ?? 'default';
+    const resolvedCollapseStrategy =
+      config.collapseStrategy ??
+      config.collapse_strategy ??
+      (resolvedCollapseKey ? 'REPLACE_UNREAD' : 'APPEND_ONLY');
+
+    // Internal auto-incremented primary key is owned by the system;
+    // when legacy callers pass `config.id`, preserve compatibility while binding `collapseKey`.
+    const generatedPrimaryId = config.id || nextNotificationPrimaryId();
+
     const newItem: QuickNotificationItem = {
-      id: config.id || `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: generatedPrimaryId,
+      externalId: config.externalId ?? config.id,
+      collapseKey: resolvedCollapseKey,
+      sourceNamespace: resolvedSourceNamespace,
+      collapseStrategy: resolvedCollapseStrategy,
+      version: config.version ?? 1,
+      isRead: config.isRead ?? false,
       content: config.content,
       tone: config.tone || 'none',
       icon: config.icon || 'bell',
@@ -207,25 +232,34 @@ export const useQuickNotificationStore = create<QuickNotificationStore>((set, ge
       remainingProgress: 1,
     };
 
-    set(() => notificationScheduler.schedulePush(get(), newItem));
-    startTimerForActive(newItem, set, get);
-    return newItem.id;
+    const nextPatch = notificationScheduler.schedulePush(get(), newItem);
+    const scheduledActive = nextPatch.activeNotification ?? newItem;
+    set(() => nextPatch);
+    startTimerForActive(scheduledActive, set, get);
+    return scheduledActive.id;
   },
 
   updateNotification: (id: string, patch: Partial<QuickNotificationPushOptions>) => {
     const current = get();
-    if (current.activeNotification?.id === id) {
+    if (
+      current.activeNotification &&
+      matchesNotificationIdentifier(current.activeNotification, id)
+    ) {
       set(() => ({ activeNotification: { ...current.activeNotification!, ...patch } }));
     }
 
-    const preemptedIndex = current.preemptedPersistentStack.findIndex((item) => item.id === id);
+    const preemptedIndex = current.preemptedPersistentStack.findIndex((item) =>
+      matchesNotificationIdentifier(item, id)
+    );
     if (preemptedIndex >= 0) {
       const nextPreempted = [...current.preemptedPersistentStack];
       nextPreempted[preemptedIndex] = { ...nextPreempted[preemptedIndex], ...patch };
       set(() => ({ preemptedPersistentStack: nextPreempted }));
     }
 
-    const unreadIndex = current.unreadStack.findIndex((item) => item.id === id);
+    const unreadIndex = current.unreadStack.findIndex((item) =>
+      matchesNotificationIdentifier(item, id)
+    );
     if (unreadIndex >= 0) {
       const nextUnread = [...current.unreadStack];
       nextUnread[unreadIndex] = { ...nextUnread[unreadIndex], ...patch };
@@ -235,7 +269,7 @@ export const useQuickNotificationStore = create<QuickNotificationStore>((set, ge
       }));
     }
 
-    if (current.ongoingTasks.some((item) => item.id === id)) {
+    if (current.ongoingTasks.some((item) => matchesNotificationIdentifier(item, id))) {
       get().updateOngoingNotification(id, patch);
     }
   },
@@ -252,9 +286,14 @@ export const useQuickNotificationStore = create<QuickNotificationStore>((set, ge
   resolveNotification: (id: string) => {
     const current = get();
     const target =
-      (current.activeNotification?.id === id ? current.activeNotification : null) ||
-      current.preemptedPersistentStack.find((item) => item.id === id) ||
-      current.unreadStack.find((item) => item.id === id);
+      (current.activeNotification &&
+      matchesNotificationIdentifier(current.activeNotification, id)
+        ? current.activeNotification
+        : null) ||
+      current.preemptedPersistentStack.find((item) =>
+        matchesNotificationIdentifier(item, id)
+      ) ||
+      current.unreadStack.find((item) => matchesNotificationIdentifier(item, id));
 
     (target?.actionButton?.onClick || target?.buttons?.[0]?.onClick)?.();
     get().dismissNotification(id);

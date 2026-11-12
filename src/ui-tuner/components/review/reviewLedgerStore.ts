@@ -2,16 +2,22 @@ import { create } from 'zustand';
 import { UI_APPROVAL_LEDGER } from '../../../ui-core/manifest/surfaceCalibration';
 import type { SurfaceApprovalStatus } from '../../../ui-core/manifest/surfaceMetaTypes';
 import type { UnifiedPlaylistScope } from '../../pages/menu-layer/menuLayerLinearPlaylists';
-import { buildApprovalMessageWithDiffs } from './exportDiffAndSizeTiering';
+import {
+  buildApprovalMessageWithDiffs,
+  stripInjectedDiffSuffixFromNote,
+} from './exportDiffAndSizeTiering';
+import { computeLiveSubtreeCombinedHash } from './liveSubtreeHashScanner';
 import {
   buildAllReviewUnits,
   buildUnitKey,
   extractAlphaMotherDeps,
+  filterReviewUnitsByQueueFilter,
   findUnitIndexByKeyOrSurface,
+  resolveLedgerVariantRecord,
 } from './reviewLedgerAdapter';
 import type {
+  ReviewQueueFilterId,
   ReviewStaleReason,
-  ReviewTriageBucketId,
   RuntimeReviewDecision,
   SurfaceVariantReviewUnit,
 } from './reviewTypes';
@@ -20,7 +26,7 @@ const STORAGE_KEY = 'rc_ui_tuner_review_ledger_v1';
 
 interface PersistedReviewState {
   decisionsMap: Record<string, RuntimeReviewDecision>;
-  activeBucketFilter: 'all' | ReviewTriageBucketId;
+  activeBucketFilter: ReviewQueueFilterId;
   simulateTemplateStale: boolean;
 }
 
@@ -42,11 +48,18 @@ function loadPersistedState(): PersistedReviewState {
       };
     }
     const parsed = JSON.parse(raw) as Partial<PersistedReviewState>;
+    const rawMap =
+      parsed.decisionsMap && typeof parsed.decisionsMap === 'object' ? parsed.decisionsMap : {};
+    const cleanedMap: Record<string, RuntimeReviewDecision> = {};
+    for (const [k, val] of Object.entries(rawMap)) {
+      if (!val || typeof val !== 'object') continue;
+      cleanedMap[k] = {
+        ...val,
+        note: stripInjectedDiffSuffixFromNote(val.note),
+      };
+    }
     return {
-      decisionsMap:
-        parsed.decisionsMap && typeof parsed.decisionsMap === 'object'
-          ? parsed.decisionsMap
-          : {},
+      decisionsMap: cleanedMap,
       activeBucketFilter: parsed.activeBucketFilter || 'all',
       simulateTemplateStale: Boolean(parsed.simulateTemplateStale),
     };
@@ -84,20 +97,20 @@ export interface ReviewLedgerStoreState {
     string,
     Omit<
       SurfaceVariantReviewUnit,
-      'status' | 'bucket' | 'staleReason' | 'note' | 'updatedAt'
+      'playlistIndex' | 'status' | 'bucket' | 'staleReason' | 'note' | 'updatedAt'
     >
   >;
   activeUnitKey: string;
   playlistScope: UnifiedPlaylistScope;
   navigationSeq: number;
-  activeBucketFilter: 'all' | ReviewTriageBucketId;
+  activeBucketFilter: ReviewQueueFilterId;
   simulateTemplateStale: boolean;
   isExporterModalOpen: boolean;
 
   setActiveUnit: (meta: RegisterReviewUnitMetadata) => void;
   setPlaylistScope: (scope: UnifiedPlaylistScope) => void;
   selectUnitByKey: (unitKey: string) => void;
-  setBucketFilter: (bucket: 'all' | ReviewTriageBucketId) => void;
+  setBucketFilter: (bucket: ReviewQueueFilterId) => void;
   setDecision: (params: {
     unitKey?: string;
     status: SurfaceApprovalStatus;
@@ -107,6 +120,7 @@ export interface ReviewLedgerStoreState {
   }) => SurfaceVariantReviewUnit | null;
   updateNote: (unitKey: string, note: string) => void;
   stepQueue: (delta: 1 | -1) => SurfaceVariantReviewUnit | null;
+  jumpToNextUnreviewed: () => SurfaceVariantReviewUnit | null;
   batchApproveTemplateStale: () => number;
   setSimulateTemplateStale: (enabled: boolean) => void;
   setExporterModalOpen: (open: boolean) => void;
@@ -177,37 +191,74 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
 
   setBucketFilter: (bucket) => {
     set((state) => {
-      const next = {
+      const allUnits = buildAllReviewUnits({
+        decisionsMap: state.decisionsMap,
+        registeredUnitsMap: state.registeredUnitsMap,
+        globalTemplateStaleOverride: state.simulateTemplateStale,
+        activeUnitKey: state.activeUnitKey,
+        playlistScope: state.playlistScope,
+      });
+      const filtered = filterReviewUnitsByQueueFilter(allUnits, bucket);
+      const isCurrentInFilter = filtered.some((u) => u.unitKey === state.activeUnitKey);
+      const nextActiveKey =
+        !isCurrentInFilter && filtered[0] ? filtered[0].unitKey : state.activeUnitKey;
+
+      savePersistedState({
         decisionsMap: state.decisionsMap,
         activeBucketFilter: bucket,
         simulateTemplateStale: state.simulateTemplateStale,
+      });
+      return {
+        activeBucketFilter: bucket,
+        activeUnitKey: nextActiveKey,
+        navigationSeq:
+          nextActiveKey !== state.activeUnitKey ? state.navigationSeq + 1 : state.navigationSeq,
       };
-      savePersistedState(next);
-      return { activeBucketFilter: bucket };
     });
   },
 
-  setDecision: ({
-    unitKey,
-    status,
-    note,
-    simulatedStaleReason,
-    advanceToNext = false,
-  }) => {
+  setDecision: ({ unitKey, status, note, simulatedStaleReason, advanceToNext = false }) => {
     const state = get();
     const targetKey = unitKey || state.activeUnitKey;
     const [surfaceId, variantId = 'default'] = targetKey.split('::');
     const reg = state.registeredUnitsMap[targetKey];
     const prev = state.decisionsMap[targetKey];
+    const ledgerRecord = UI_APPROVAL_LEDGER.surfaces[surfaceId];
+    const variantRecord = resolveLedgerVariantRecord(ledgerRecord, variantId);
     const nowIso = new Date().toISOString();
 
-    const resolvedNote = note !== undefined ? note : prev?.note ?? '';
+    const prevUnits = buildAllReviewUnits({
+      decisionsMap: state.decisionsMap,
+      registeredUnitsMap: state.registeredUnitsMap,
+      globalTemplateStaleOverride: state.simulateTemplateStale,
+      activeUnitKey: targetKey,
+      playlistScope: state.playlistScope,
+    });
+    const prevFiltered = filterReviewUnitsByQueueFilter(prevUnits, state.activeBucketFilter);
+    const prevList = prevFiltered.length > 0 ? prevFiltered : prevUnits;
+    const prevIdxInFilter = findUnitIndexByKeyOrSurface(prevList, targetKey);
+    const candidateAfterTarget =
+      prevIdxInFilter >= 0 && prevList.length > 1
+        ? prevList[(prevIdxInFilter + 1) % prevList.length]
+        : undefined;
+
+    const ledgerFallbackNote =
+      variantRecord?.note ??
+      (variantId === 'default' || !ledgerRecord?.variants ? ledgerRecord?.note : undefined) ??
+      '';
+    const resolvedNote = stripInjectedDiffSuffixFromNote(
+      note !== undefined ? note : (prev?.note ?? ledgerFallbackNote)
+    );
     const approvalMessage = buildApprovalMessageWithDiffs({
       baseNote: resolvedNote,
       surfaceId,
       unitKey: targetKey,
       status,
     });
+    const visualHashSnapshot = computeLiveSubtreeCombinedHash(
+      variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes,
+      reg?.sourceFile ?? prev?.sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
+    );
 
     const nextDecision: RuntimeReviewDecision = {
       unitKey: targetKey,
@@ -225,8 +276,9 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
         simulatedStaleReason !== undefined
           ? simulatedStaleReason
           : status === 'approved'
-          ? undefined
-          : prev?.simulatedStaleReason,
+            ? undefined
+            : prev?.simulatedStaleReason,
+      visualHashSnapshot,
       updatedAt: nowIso,
     };
 
@@ -251,20 +303,24 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
 
     let nextActiveKey = targetKey;
     const matchIdx = findUnitIndexByKeyOrSurface(allUnits, targetKey);
-    let nextUnit: SurfaceVariantReviewUnit | null =
-      matchIdx >= 0 ? allUnits[matchIdx] : null;
+    let nextUnit: SurfaceVariantReviewUnit | null = matchIdx >= 0 ? allUnits[matchIdx] : null;
 
     if (advanceToNext) {
-      const filtered =
-        state.activeBucketFilter === 'all'
-          ? allUnits
-          : allUnits.filter((u) => u.bucket === state.activeBucketFilter);
-      const list = filtered.length > 0 ? filtered : allUnits;
-      const idx = findUnitIndexByKeyOrSurface(list, targetKey);
-      const nextIdx = idx >= 0 ? (idx + 1) % list.length : 0;
-      if (list[nextIdx]) {
-        nextActiveKey = list[nextIdx].unitKey;
-        nextUnit = list[nextIdx];
+      if (candidateAfterTarget && candidateAfterTarget.unitKey !== targetKey) {
+        const updatedCandidate = allUnits.find((u) => u.unitKey === candidateAfterTarget.unitKey);
+        if (updatedCandidate) {
+          nextActiveKey = updatedCandidate.unitKey;
+          nextUnit = updatedCandidate;
+        }
+      } else {
+        const filtered = filterReviewUnitsByQueueFilter(allUnits, state.activeBucketFilter);
+        const list = filtered.length > 0 ? filtered : allUnits;
+        const idx = findUnitIndexByKeyOrSurface(list, targetKey);
+        const nextIdx = idx >= 0 ? (idx + 1) % list.length : 0;
+        if (list[nextIdx]) {
+          nextActiveKey = list[nextIdx].unitKey;
+          nextUnit = list[nextIdx];
+        }
       }
     }
 
@@ -283,13 +339,20 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
     const reg = state.registeredUnitsMap[unitKey];
     const prev = state.decisionsMap[unitKey];
     const ledgerRecord = UI_APPROVAL_LEDGER.surfaces[surfaceId];
-    const resolvedStatus = prev?.status ?? ledgerRecord?.status ?? 'approved';
+    const variantRecord = resolveLedgerVariantRecord(ledgerRecord, variantId);
+    const resolvedStatus =
+      prev?.status ?? variantRecord?.status ?? ledgerRecord?.status ?? 'deferred';
+    const cleanNote = stripInjectedDiffSuffixFromNote(note);
     const approvalMessage = buildApprovalMessageWithDiffs({
-      baseNote: note,
+      baseNote: cleanNote,
       surfaceId,
       unitKey,
       status: resolvedStatus,
     });
+    const visualHashSnapshot = computeLiveSubtreeCombinedHash(
+      variantRecord?.fileVisualHashes ?? ledgerRecord?.fileVisualHashes,
+      reg?.sourceFile ?? prev?.sourceFile ?? variantRecord?.entryFile ?? ledgerRecord?.entryFile
+    );
 
     const nextDecision: RuntimeReviewDecision = {
       unitKey,
@@ -301,9 +364,10 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
       sourceFile: reg?.sourceFile ?? prev?.sourceFile,
       subViewFile: reg?.subViewFile ?? prev?.subViewFile,
       status: resolvedStatus,
-      note,
+      note: cleanNote,
       approvalMessage,
       simulatedStaleReason: prev?.simulatedStaleReason,
+      visualHashSnapshot,
       updatedAt: new Date().toISOString(),
     };
 
@@ -330,24 +394,41 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
       activeUnitKey: state.activeUnitKey,
       playlistScope: state.playlistScope,
     });
-    const filtered =
-      state.activeBucketFilter === 'all'
-        ? allUnits
-        : allUnits.filter((u) => u.bucket === state.activeBucketFilter);
+    const filtered = filterReviewUnitsByQueueFilter(allUnits, state.activeBucketFilter);
     const list = filtered.length > 0 ? filtered : allUnits;
     if (list.length === 0) return null;
 
     const currIdx = findUnitIndexByKeyOrSurface(list, state.activeUnitKey);
-    const nextIdx =
-      currIdx >= 0
-        ? (currIdx + delta + list.length) % list.length
-        : 0;
+    const nextIdx = currIdx >= 0 ? (currIdx + delta + list.length) % list.length : 0;
     const nextUnit = list[nextIdx];
     set((s) => ({
       activeUnitKey: nextUnit.unitKey,
       navigationSeq: s.navigationSeq + 1,
     }));
     return nextUnit;
+  },
+
+  jumpToNextUnreviewed: () => {
+    const state = get();
+    const allUnits = buildAllReviewUnits({
+      decisionsMap: state.decisionsMap,
+      registeredUnitsMap: state.registeredUnitsMap,
+      globalTemplateStaleOverride: state.simulateTemplateStale,
+      activeUnitKey: state.activeUnitKey,
+      playlistScope: state.playlistScope,
+    });
+    const currIdx = Math.max(0, findUnitIndexByKeyOrSurface(allUnits, state.activeUnitKey));
+    for (let offset = 1; offset <= allUnits.length; offset++) {
+      const cand = allUnits[(currIdx + offset) % allUnits.length];
+      if (cand && (cand.status === 'deferred' || cand.status === 'pending')) {
+        set((s) => ({
+          activeUnitKey: cand.unitKey,
+          navigationSeq: s.navigationSeq + 1,
+        }));
+        return cand;
+      }
+    }
+    return null;
   },
 
   batchApproveTemplateStale: () => {
@@ -359,15 +440,15 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
       activeUnitKey: state.activeUnitKey,
       playlistScope: state.playlistScope,
     });
-    const templateStaleUnits = allUnits.filter(
-      (u) => u.bucket === 'bucket-3-template'
-    );
+    const templateStaleUnits = allUnits.filter((u) => u.bucket === 'bucket-3-template');
     if (templateStaleUnits.length === 0) return 0;
 
     const nowIso = new Date().toISOString();
     const nextDecisionsMap = { ...state.decisionsMap };
 
     for (const unit of templateStaleUnits) {
+      const variantRecord =
+        unit.variantId !== 'default' ? unit.ledgerRecord?.variants?.[unit.variantId] : undefined;
       nextDecisionsMap[unit.unitKey] = {
         unitKey: unit.unitKey,
         surfaceId: unit.surfaceId,
@@ -380,6 +461,10 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
         status: 'approved',
         note: unit.note,
         simulatedStaleReason: undefined,
+        visualHashSnapshot: computeLiveSubtreeCombinedHash(
+          variantRecord?.fileVisualHashes ?? unit.ledgerRecord?.fileVisualHashes,
+          unit.sourceFile
+        ),
         updatedAt: nowIso,
       };
     }
@@ -431,4 +516,3 @@ export const useReviewLedgerStore = create<ReviewLedgerStoreState>((set, get) =>
     });
   },
 }));
-

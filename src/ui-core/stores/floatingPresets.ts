@@ -19,6 +19,10 @@ export interface PresetConfig {
   maxHeight?: number;
   /** When true (default for user windows), default height and maxHeight dynamically track intrinsic content height so there is no vertical scrolling by default and no empty bottom void when resizing taller */
   autoFitHeight?: boolean;
+  /** Mandatory boolean specifying whether Stage 3 Footer is hidden for this floating window */
+  hideFooter: boolean;
+  /** Optional inner content padding override in px */
+  contentPadding?: number;
   resizable: boolean;
   singleton?: boolean;
   defaultCenter?: boolean;
@@ -31,7 +35,7 @@ export interface PresetConfig {
 }
 
 // ============================================================================
-// NORMAL USER FLOATING WINDOWS (6 Total — Strictly User-Visible)
+// NORMAL USER FLOATING WINDOWS (7 Total — Strictly User-Visible)
 // ============================================================================
 
 export const REPLAY_VIEWER_PRESET: PresetConfig = {
@@ -43,6 +47,7 @@ export const REPLAY_VIEWER_PRESET: PresetConfig = {
   minWidth: 471,
   minHeight: 136,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: true,
   singleton: true,
   tier: 'user',
@@ -61,6 +66,7 @@ export const GOAL_BARRIER_CONFIGURATOR_PRESET: PresetConfig = {
   minWidth: 418,
   minHeight: 240,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: true,
   singleton: true,
   tier: 'user',
@@ -76,9 +82,10 @@ export const REWINDER_CONFIGURATOR_PRESET: PresetConfig = {
   category: 'Rewinder',
   width: 505,
   height: 367,
-  minWidth: 505,
+  minWidth: 380,
   minHeight: 160,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: true,
   singleton: true,
   tier: 'user',
@@ -97,6 +104,7 @@ export const NETWORK_MONITOR_PRESET: PresetConfig = {
   minWidth: 446,
   minHeight: 230,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: true,
   singleton: true,
   tier: 'user',
@@ -115,6 +123,7 @@ export const PERFORMANCE_MONITOR_PRESET: PresetConfig = {
   minWidth: 441,
   minHeight: 130,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: true,
   singleton: true,
   tier: 'user',
@@ -133,6 +142,7 @@ export const FLOATING_WINDOW_OPACITY_PRESET: PresetConfig = {
   minWidth: 343,
   minHeight: 115,
   autoFitHeight: true,
+  hideFooter: false,
   resizable: false,
   singleton: true,
   defaultCenter: true,
@@ -148,11 +158,13 @@ export const KEYBOARD_INPUT_OVERLAY_PRESET: PresetConfig = {
   title: 'Keyboard Input Overlay',
   category: 'KeyboardInputOverlay',
   width: 280,
-  height: 320,
+  height: 300,
   minWidth: 180,
-  minHeight: 210,
+  minHeight: 180,
   maxHeight: 2400,
   autoFitHeight: false,
+  hideFooter: true,
+  contentPadding: 8,
   resizable: true,
   singleton: true,
   tier: 'user',

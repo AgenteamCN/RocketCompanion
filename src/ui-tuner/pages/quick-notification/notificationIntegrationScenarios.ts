@@ -341,3 +341,111 @@ export async function executeScenario6OngoingTaskYield(
   ctx.appendLog('test6', '[!] scene 6 validation passed (PASS)');
   ctx.setTestStatus('test6', 'passed');
 }
+
+export async function executeScenario7CollapseKeyAndNamespaceIsolation(
+  ctx: NotificationScenarioContext
+): Promise<void> {
+  ctx.setTestStatus('test7', 'running');
+  ctx.resetTestLog('test7');
+  clearAllQuickNotifications();
+  ctx.appendLog(
+    'test7',
+    'Step 1: Push Alpha Buffer Trajectory Anomaly notification (collapseKey: "traj-anomaly-captured", sourceNamespace: "ball-trajectory-predictor", duration: 1000ms)...'
+  );
+  const alphaPrimaryId = pushQuickNotification({
+    collapseKey: 'traj-anomaly-captured',
+    sourceNamespace: 'ball-trajectory-predictor',
+    collapseStrategy: 'ALWAYS_REPLACE',
+    type: 'temporary',
+    tone: 'warning',
+    icon: 'alert-triangle',
+    duration: 1000,
+    content: 'Trajectory Anomaly #1 [ALPHA · full-deviation] @ wall-curve (posErr 4.12 UU)',
+  });
+
+  await new Promise((r) => setTimeout(r, 1150));
+  const stateAfterAlphaTimeout = useQuickNotificationStore.getState();
+  if (
+    stateAfterAlphaTimeout.unreadStack.length !== 1 ||
+    stateAfterAlphaTimeout.unreadStack[0].collapseKey !== 'traj-anomaly-captured'
+  ) {
+    ctx.appendLog(
+      'test7',
+      '[x] failed: Alpha buffer notification did not auto-collapse into unreadStack after 1s'
+    );
+    ctx.setTestStatus('test7', 'failed');
+    return;
+  }
+  ctx.appendLog(
+    'test7',
+    `[ok] confirm: Alpha notification (id=${alphaPrimaryId}, v=${stateAfterAlphaTimeout.unreadStack[0].version}) collapsed into unreadStack after 1s`
+  );
+
+  ctx.appendLog(
+    'test7',
+    'Step 2: Push unrelated notification from another service with SAME collapseKey ("traj-anomaly-captured") but DIFFERENT sourceNamespace ("network-diagnostics")...'
+  );
+  pushQuickNotification({
+    collapseKey: 'traj-anomaly-captured',
+    sourceNamespace: 'network-diagnostics',
+    collapseStrategy: 'ALWAYS_REPLACE',
+    type: 'temporary',
+    tone: 'info',
+    icon: 'activity',
+    duration: 1000,
+    content: 'Network Diagnostics: Packet burst observed on relay channel',
+  });
+  await new Promise((r) => setTimeout(r, 1150));
+
+  const stateAfterCrossNamespace = useQuickNotificationStore.getState();
+  if (stateAfterCrossNamespace.unreadStack.length !== 2) {
+    ctx.appendLog(
+      'test7',
+      `[x] failed: Compound key (sourceNamespace + collapseKey) failed to isolate different namespaces (unreadStack=${stateAfterCrossNamespace.unreadStack.length})`
+    );
+    ctx.setTestStatus('test7', 'failed');
+    return;
+  }
+  ctx.appendLog(
+    'test7',
+    '[ok] confirm: Namespace isolation verified — different sourceNamespace did not overwrite trajectory notification (unreadStack=2)'
+  );
+
+  ctx.appendLog(
+    'test7',
+    'Step 3: Push Bravo Buffer Trajectory Anomaly with same (sourceNamespace: "ball-trajectory-predictor", collapseKey: "traj-anomaly-captured")...'
+  );
+  const bravoPrimaryId = pushQuickNotification({
+    collapseKey: 'traj-anomaly-captured',
+    sourceNamespace: 'ball-trajectory-predictor',
+    collapseStrategy: 'ALWAYS_REPLACE',
+    type: 'temporary',
+    tone: 'warning',
+    icon: 'alert-triangle',
+    duration: 1000,
+    content: 'Trajectory Anomaly #2 [BRAVO · wasm-seam-resync] @ corner-ramp (posErr 6.85 UU)',
+  });
+
+  const stateDuringBravo = useQuickNotificationStore.getState();
+  const remainingTrajectoryInUnread = stateDuringBravo.unreadStack.filter(
+    (n) => n.sourceNamespace === 'ball-trajectory-predictor'
+  );
+  if (
+    remainingTrajectoryInUnread.length !== 0 ||
+    stateDuringBravo.activeNotification?.version !== 2 ||
+    bravoPrimaryId === alphaPrimaryId
+  ) {
+    ctx.appendLog(
+      'test7',
+      '[x] failed: Bravo buffer did not supersede stale Alpha buffer entry or increment version'
+    );
+    ctx.setTestStatus('test7', 'failed');
+    return;
+  }
+  ctx.appendLog(
+    'test7',
+    `[ok] confirm: System assigned new primary key (${bravoPrimaryId} != ${alphaPrimaryId}), incremented version=2, and superseded stale Alpha entry in unreadStack!`
+  );
+  ctx.appendLog('test7', '[!] scene 7 validation passed (PASS)');
+  ctx.setTestStatus('test7', 'passed');
+}

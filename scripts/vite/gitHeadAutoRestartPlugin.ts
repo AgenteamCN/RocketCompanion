@@ -146,10 +146,61 @@ export function rcGitHeadAutoRestartPlugin(): Plugin {
   return {
     name: 'rc-git-head-auto-restart',
     apply: 'serve',
+    transformIndexHtml(html: string) {
+      const initialSig = readCompositeGitHeadState().signature ?? '';
+      const clientGuardScript = `<script type="module">
+(() => {
+  let bootSig = ${JSON.stringify(initialSig)};
+  let reloading = false;
+  const checkGitHead = async () => {
+    if (reloading) return;
+    try {
+      const res = await fetch('/__rc_git_head', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.signature && bootSig && data.signature !== bootSig) {
+        reloading = true;
+        window.location.reload();
+      } else if (data && data.signature && !bootSig) {
+        bootSig = data.signature;
+      }
+    } catch {
+      // Server is restarting; next poll will catch new signature
+    }
+  };
+  if (import.meta.hot) {
+    import.meta.hot.on('vite:ws:connect', checkGitHead);
+    import.meta.hot.on('rc:git-head-changed', () => {
+      if (!reloading) {
+        reloading = true;
+        window.location.reload();
+      }
+    });
+  }
+  setInterval(checkGitHead, 1500);
+})();
+</script>`;
+      return html.includes('</body>')
+        ? html.replace('</body>', `${clientGuardScript}</body>`)
+        : `${html}${clientGuardScript}`;
+    },
     configureServer(server: ViteDevServer) {
       let baselineSignature = readCompositeGitHeadState().signature;
       let isRestarting = false;
       let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      server.middlewares.use('/__rc_git_head', (_req, res) => {
+        const current = readCompositeGitHeadState();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(
+          JSON.stringify({
+            signature: current.signature ?? baselineSignature,
+            locked: current.locked,
+          })
+        );
+      });
 
       const cleanup = () => {
         clearInterval(pollTimer);
@@ -186,8 +237,17 @@ export function rcGitHeadAutoRestartPlugin(): Plugin {
             );
             try {
               server.moduleGraph.invalidateAll();
+              server.ws?.send?.({
+                type: 'custom',
+                event: 'rc:git-head-changed',
+                data: { signature: settled.signature },
+              });
+              server.ws?.send?.({ type: 'full-reload', path: '*' });
               await server.restart(true);
               server.ws?.send?.({ type: 'full-reload', path: '*' });
+              setTimeout(() => {
+                server.ws?.send?.({ type: 'full-reload', path: '*' });
+              }, 350);
             } catch (err) {
               isRestarting = false;
               console.error('[rc-git-auto-restart] Failed to auto-restart Vite server:', err);

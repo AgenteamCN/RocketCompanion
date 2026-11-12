@@ -1,11 +1,12 @@
 import React from 'react';
-import { Layers, Sparkles } from 'lucide-react';
+import { FastForward, Sparkles } from 'lucide-react';
 import { quickNotification } from '../../../ui-core/stores/quickNotificationStore';
 import { useReviewLedgerStore } from './reviewLedgerStore';
-import type { ReviewTriageBucketId, SurfaceVariantReviewUnit } from './reviewTypes';
+import type { ReviewQueueFilterId, SurfaceVariantReviewUnit } from './reviewTypes';
 
 export interface RapidReviewBucketFilterStripProps {
-  bucketCounts: Record<'all' | ReviewTriageBucketId, number>;
+  bucketCounts: Record<ReviewQueueFilterId, number>;
+  nextUnreviewedUnit?: SurfaceVariantReviewUnit | null;
   isLight: boolean;
 }
 
@@ -15,61 +16,73 @@ export interface RapidReviewSpotCheckStripProps {
   samples: SurfaceVariantReviewUnit[];
 }
 
-const BUCKET_META: Array<{
-  id: 'all' | ReviewTriageBucketId;
+const FILTER_META: Array<{
+  id: ReviewQueueFilterId;
   shortLabel: string;
   badgeDot: string;
   activeClass: string;
   title: string;
+  hideWhenZero?: boolean;
 }> = [
   {
     id: 'all',
-    shortLabel: 'All Units',
+    shortLabel: 'All',
     badgeDot: '[ALL]',
-    activeClass: 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-950 border-neutral-700',
-    title: 'Show all discovered surface & variant review units',
+    activeClass:
+      'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-950 border-neutral-700',
+    title: 'Show all 137 sequential playlist review units (#1..#137)',
+  },
+  {
+    id: 'rejected-only',
+    shortLabel: 'Rejected',
+    badgeDot: '[REJ]',
+    activeClass: 'bg-rose-500 text-white border-rose-500',
+    title: 'Show only rejected units requiring rework',
   },
   {
     id: 'bucket-1-visual',
-    shortLabel: 'Bucket 1 · Visual/New',
-    badgeDot: '[B1]',
-    activeClass: 'bg-rose-500 text-white border-rose-500',
-    title: 'Bucket 1: Unreviewed new surfaces, visual-stale subtree AST changes, or rejected units needing rework',
+    shortLabel: 'Fixed / Changed',
+    badgeDot: '[FIX]',
+    activeClass: 'bg-sky-500 text-neutral-950 border-sky-400',
+    title:
+      'Show units whose code was recently fixed or modified since last review (ready to verify & approve)',
   },
   {
     id: 'bucket-2-config',
-    shortLabel: 'Bucket 2 · Config/Sizing',
-    badgeDot: '[B2]',
+    shortLabel: 'Unreviewed / Hold',
+    badgeDot: '[HOLD]',
     activeClass: 'bg-amber-500 text-neutral-950 border-amber-500',
-    title: 'Bucket 2: Config/Sizing overrides or deferred hold items (JSX unchanged)',
+    title: 'Show unreviewed / deferred hold queue units',
+  },
+  {
+    id: 'reviewed-healthy',
+    shortLabel: 'Approved',
+    badgeDot: '[OK]',
+    activeClass: 'bg-emerald-500 text-neutral-950 border-emerald-400',
+    title: 'Show approved units',
   },
   {
     id: 'bucket-3-template',
-    shortLabel: 'Bucket 3 · Template-Stale',
+    shortLabel: 'Template Drift',
     badgeDot: '[B3]',
     activeClass: 'bg-purple-500 text-white border-purple-500',
-    title: 'Bucket 3: Surfaces unchanged locally, flagged only because Workspace Alpha 3-Stage Shell template changed',
+    title: 'Show surfaces affected by shared 3-Stage Shell template token changes',
+    hideWhenZero: true,
   },
 ];
 
 export const RapidReviewBucketFilterStrip: React.FC<RapidReviewBucketFilterStripProps> = React.memo(
-  ({ bucketCounts, isLight }) => {
-    const {
-      activeBucketFilter,
-      simulateTemplateStale,
-      setBucketFilter,
-      setSimulateTemplateStale,
-    } = useReviewLedgerStore();
+  ({ bucketCounts, nextUnreviewedUnit, isLight }) => {
+    const { activeBucketFilter, setBucketFilter, jumpToNextUnreviewed } = useReviewLedgerStore();
 
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
-          BRAVO TRIAGE
-        </span>
-
-        {BUCKET_META.map((b) => {
+        {FILTER_META.map((b) => {
+          const count = bucketCounts[b.id] ?? 0;
+          if (b.hideWhenZero && count === 0 && activeBucketFilter !== b.id) {
+            return null;
+          }
           const isActive = activeBucketFilter === b.id;
-          const count = bucketCounts[b.id];
           return (
             <button
               key={b.id}
@@ -80,38 +93,39 @@ export const RapidReviewBucketFilterStrip: React.FC<RapidReviewBucketFilterStrip
                 isActive
                   ? b.activeClass
                   : isLight
-                  ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-700'
-                  : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-neutral-300'
+                    ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-700'
+                    : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-neutral-300'
               }`}
             >
               <span>{b.badgeDot}</span>
               <span>{b.shortLabel}</span>
-              <span className="px-1 rounded text-[10px] bg-black/15 dark:bg-white/15">
-                {count}
-              </span>
+              <span className="px-1 rounded text-[10px] bg-black/15 dark:bg-white/15">{count}</span>
             </button>
           );
         })}
 
-        <button
-          type="button"
-          onClick={() => setSimulateTemplateStale(!simulateTemplateStale)}
-          title="Simulate a Workspace Alpha 3-Stage Shell template edit to test Bucket 3 Spot-Check & 1-Click Batch Approve"
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] cursor-pointer transition-colors ${
-            simulateTemplateStale
-              ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 font-bold'
-              : isLight
-              ? 'bg-white border-neutral-200 text-neutral-500 hover:text-neutral-800'
-              : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <Layers className="h-3 w-3 text-purple-400" />
-          <span>
-            {simulateTemplateStale
-              ? 'Alpha Shell Drift: ON'
-              : 'Sim Alpha Shell Drift'}
-          </span>
-        </button>
+        {nextUnreviewedUnit && (
+          <button
+            type="button"
+            onClick={() => {
+              const target = jumpToNextUnreviewed();
+              if (target) {
+                quickNotification.info(
+                  `Jumped to next unreviewed unit #${target.playlistIndex}: ${target.label}`
+                );
+              }
+            }}
+            title={`Jump directly to next unreviewed / fixed-verify unit (#${nextUnreviewedUnit.playlistIndex} ${nextUnreviewedUnit.label})`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors ${
+              isLight
+                ? 'bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800'
+                : 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/40 text-sky-300'
+            }`}
+          >
+            <FastForward className="h-3 w-3" />
+            <span>Next Unreviewed (#{nextUnreviewedUnit.playlistIndex})</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -142,9 +156,7 @@ export const RapidReviewSpotCheckStrip: React.FC<RapidReviewSpotCheckStripProps>
                   ? 'bg-purple-500 text-white border-purple-400 font-bold'
                   : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/30'
               }`}
-              title={`Inspect ${rankTag} density sample: ${sample.label} (${
-                Object.keys(sample.ledgerRecord?.fileVisualHashes || {}).length
-              } visual files)`}
+              title={`Inspect ${rankTag} density sample: ${sample.label}`}
             >
               {rankTag}:{sample.componentName.replace(/(FloatingWindow|Recipe)$/, '')}
             </button>
