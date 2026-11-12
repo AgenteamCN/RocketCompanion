@@ -181,6 +181,12 @@ export class GameAudioSubsystem {
             `[GameAudioSubsystem:Fallback] Authoritative KICKOFF_START signal not observed by tick ${currentTick} (target=${sigLatch.lastKickoffTargetFrame}); releasing local kickoff lock.`
           );
           r.networkReconciler.setKickoffMaskUntilTick?.(-1);
+          sigLatch.lastResolvedKickoffTargetFrame = Math.max(
+            typeof sigLatch.lastResolvedKickoffTargetFrame === 'number'
+              ? sigLatch.lastResolvedKickoffTargetFrame
+              : -1,
+            sigLatch.lastKickoffTargetFrame
+          );
           sigLatch.lastKickoffTargetFrame = -1;
           sigLatch.latchedKickoffSeconds.clear();
           r.match.state.phase = 'playing';

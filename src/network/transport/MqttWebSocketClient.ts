@@ -89,6 +89,9 @@ export class MqttWebSocketClient {
     if (this.isConnected && this.isSubscribed && this.ws?.readyState === 1) {
       return;
     }
+    if (this.ws) {
+      this.close();
+    }
 
     const WebSocketConstructor: typeof WebSocket | null =
       typeof WebSocket !== 'undefined'
@@ -126,6 +129,12 @@ export class MqttWebSocketClient {
         this.emit('error', errorObj);
         reject(errorObj);
       };
+
+      if (!this.brokerUrl || !/^wss?:\/\/[^/\s]+/i.test(this.brokerUrl)) {
+        return finishFailure(
+          new Error(`Invalid MQTT WebSocket broker URL (${this.relayLabel || this.brokerUrl})`)
+        );
+      }
 
       if (timeoutMs > 0) {
         timeoutHandle = setTimeout(() => {
@@ -394,6 +403,7 @@ export class MqttWebSocketClient {
         sock.onclose = null;
         if (sock.readyState === 0) {
           sock.onopen = () => {
+            sock.onopen = null;
             try {
               sock.close(1000, 'Client closed');
             } catch {
@@ -404,11 +414,14 @@ export class MqttWebSocketClient {
           sock.onopen = null;
           if (this.isConnected) sock.send(MQTT_DISCONNECT_PACKET);
           sock.close(1000, 'Client closed');
+        } else {
+          sock.onopen = null;
         }
       } catch {
         // ignore
       }
     }
+    this._rxBuffer = new Uint8Array(0);
     this.isConnected = false;
     this.isSubscribed = false;
   }

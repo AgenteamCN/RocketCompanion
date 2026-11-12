@@ -36,13 +36,6 @@ export interface OnlineWarmupRoomRecipeProps {
   isLight?: boolean;
 }
 
-const INITIAL_WARMUP_PLAYERS: WarmupRoomPlayer[] = [
-  { id: 'w-1', name: 'Player_01 (Host)', pingMs: 0, pairId: '1A0F', isHost: true },
-  { id: 'w-2', name: 'OctaneMain_99', pingMs: 21, pairId: '9B2C' },
-  { id: 'w-3', name: 'Aerial_Vortex', pingMs: 33, pairId: '4D1E' },
-  { id: 'w-4', name: 'FlipReset_Pro', pingMs: 44, pairId: '5E7A' },
-];
-
 export const OnlineWarmupRoomRecipe: React.FC<OnlineWarmupRoomRecipeProps> = React.memo(({
   role,
   roomCode = 'TRN-409',
@@ -59,7 +52,7 @@ export const OnlineWarmupRoomRecipe: React.FC<OnlineWarmupRoomRecipeProps> = Rea
 }) => {
   const isHost = role === 'host';
   const [internalSignaling, setInternalSignaling] = useState<SignalingHealthState>('green');
-  const [internalPlayers, setInternalPlayers] = useState<WarmupRoomPlayer[]>(INITIAL_WARMUP_PLAYERS);
+  const [internalPlayers, setInternalPlayers] = useState<WarmupRoomPlayer[]>([]);
   const [showPairId, setShowPairId] = useState<boolean>(isHost);
 
   useEffect(() => {
@@ -147,7 +140,8 @@ export const OnlineWarmupRoomRecipe: React.FC<OnlineWarmupRoomRecipeProps> = Rea
           }`}
         >
           {players.map((p) => {
-            const isSelf = (isHost && p.isHost) || (!isHost && p.id === 'w-2');
+            const isSelf =
+              Boolean(p.isSelf) || (isHost && Boolean(p.isHost)) || (!isHost && p.id === 'w-2');
             return (
               <div
                 key={p.id}
@@ -177,7 +171,7 @@ export const OnlineWarmupRoomRecipe: React.FC<OnlineWarmupRoomRecipeProps> = Rea
                     }`}
                   >
                     {p.name}
-                    {!isHost && p.id === 'w-2' ? ' (You)' : ''}
+                    {!isHost && isSelf && !p.name.includes('(You') ? ' (You)' : ''}
                   </span>
                 </div>
 

@@ -10,7 +10,6 @@ import type { HotkeyRuntimeOverlayPort } from '../../../input/hotkeyInputGuard.t
 import { gameAudio } from '../../../audio/GameAudioEngineFacade.ts';
 import {
   UU_TO_KPH,
-  evaluateGoalScoredFromBallView,
   type BallStateViewLike,
   type CarStateViewLike,
 } from '../shared/goalAndBallTouchPipeline.ts';
@@ -46,14 +45,15 @@ export interface FreeplayPhysicsEnginePort {
   numCars?: number;
   controlsView?: ArrayLike<number> | null;
   isUnlimitedBoost?: boolean;
-  getHeaderView?: () => { tickCount: number } | null;
+  getHeaderView?: () => { tickCount: number; goalScoredFlag?: number } | null;
   getBallStateView?: () => FreeplayBallStateViewCandidate | null;
   getCarStateView?: (carIndex: number) => unknown;
   getBallState?: () => Float32Array | ArrayLike<number>;
   setBallState?: (state: Float32Array) => void;
   isBallScored?: (bView: BallStateViewLike) => boolean;
-  pollGoal?: () => void;
+  pollGoal?: () => number | void;
   resetGoalLatch?: () => void;
+  saveStateSlot?: (slot: number) => void;
   removeCar?: (carIndex: number) => void;
   saveCompactState?: () => Float32Array;
 }
@@ -71,6 +71,10 @@ export interface FreeplayGoalAndTouchRuntimePort extends HotkeyRuntimeOverlayPor
     disableGoalReset?: boolean;
   } | null;
   physics?: FreeplayPhysicsEnginePort | null;
+  interpolator?: {
+    prevState?: Float32Array | null;
+    currState?: Float32Array | null;
+  } | null;
   arena?: {
     isLobbyMode?: boolean;
     ball?: unknown;
@@ -257,33 +261,6 @@ export function resolveFreeplayScorerName(scorerCarIndex: number): string {
     ? ntEntries.find((entry) => entry.carIndex === scorerCarIndex)
     : null;
   return scorerEntry?.name || scorerEntry?.username || 'Player';
-}
-
-export function handleDisabledOrLobbyGoalLatch(
-  scenePort: FreeplayGoalAndTouchRuntimePort,
-  sim: FreeplayPhysicsEnginePort,
-  bView: BallStateViewLike | null
-): boolean {
-  const isOnlineLobby = Boolean(
-    scenePort.arena?.isLobbyMode || scenePort.networkReconciler?.lobbyDualWorldMode
-  );
-  if (!scenePort.trainingOptions?.disableGoalReset && !isOnlineLobby) {
-    return false;
-  }
-  if (
-    isOnlineLobby &&
-    !scenePort.authoritativeServer &&
-    scenePort.networkReconciler?.lobbyDualWorldMode &&
-    evaluateGoalScoredFromBallView(sim, bView).scored
-  ) {
-    if (sim.resetGoalLatch) sim.resetGoalLatch();
-    if (sim.setBallState) {
-      sim.setBallState(new Float32Array([0, 0, 93, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
-    }
-  } else if (sim.resetGoalLatch) {
-    sim.resetGoalLatch();
-  }
-  return true;
 }
 
 export function recordManualExpireAndSyncHud(params: {

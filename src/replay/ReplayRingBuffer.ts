@@ -17,7 +17,6 @@
 import { isIncidentEvent, isSystemControlSignal } from '../physics/RocketSimConstants.ts';
 import {
   resolveReplayAudioCueForSignal,
-  populateRingBufferSlot,
   findBufferFrameByTick,
   extractRecentBufferFrames,
   collectBufferAudioEventsInRange,
@@ -32,6 +31,7 @@ import {
   type ReplaySignalsOrOptionsArg,
   type ReplayRingBufferSlot,
 } from './ReplayBufferSliceExtractor.ts';
+import { populateRingBufferSlot } from './replayRingBufferSlotPipeline.ts';
 
 export type {
   ReplaySignalEntry,
@@ -106,7 +106,7 @@ export class ReplayRingBuffer {
     this.capacityTicks = cap;
     this.includeSystemControlSignals = Boolean(options.includeSystemControlSignals);
 
-    this._slots = new Array(cap);
+    this._slots = [];
     this._head = 0;
     this._size = 0;
     this._totalRecordedFrames = 0;
@@ -151,10 +151,7 @@ export class ReplayRingBuffer {
   configureMode(mode: string, explicitCapacity: number | null = null): void {
     const nextCapacity = this._resolveCapacityTicks(mode, explicitCapacity);
     this.mode = mode;
-    if (nextCapacity !== this.capacityTicks) {
-      this.capacityTicks = nextCapacity;
-      this._slots = new Array(nextCapacity);
-    }
+    this.capacityTicks = nextCapacity;
     this.clear();
   }
 
@@ -162,6 +159,7 @@ export class ReplayRingBuffer {
     this._head = 0;
     this._size = 0;
     this._totalRecordedFrames = 0;
+    this._slots.length = 0;
   }
 
   private _resolveTargetSlotForEvent(tick: number): ReplayRingBufferSlot | null {

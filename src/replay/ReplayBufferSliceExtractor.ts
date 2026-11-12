@@ -4,11 +4,7 @@
  * cloning, tick search, chronological slice extraction, and audio/signal range queries.
  */
 
-import {
-  MATCH_SIGNALS,
-  isIncidentEvent,
-  isSystemControlSignal,
-} from '../physics/RocketSimConstants.ts';
+import { MATCH_SIGNALS } from '../physics/RocketSimConstants.ts';
 
 export interface ReplaySignalEntry {
   [key: string]: unknown;
@@ -198,130 +194,6 @@ export function resolveReplayAudioCueForSignal(
   }
 }
 
-export interface PopulateRingBufferSlotInput {
-  existingSlot: ReplayRingBufferSlot | undefined;
-  tick: number;
-  stateSnapshot: Float32Array | number[] | null | undefined;
-  snapshotFloatLimit: number;
-  includeSystemControlSignals: boolean;
-  isCountUpMode: boolean;
-  signals: ReplaySignalsOrOptionsArg;
-  audioEvents: ReadonlyArray<ReplayAudioCue | null | undefined> | null;
-  incidents: ReadonlyArray<ReplayRecordedIncident | null | undefined> | null;
-  acknowledgedControls: ReadonlyArray<ReplayAcknowledgedControlEntry | null | undefined> | null;
-}
-
-/**
- * Allocates or reuses a ring buffer slot in-place and populates its snapshot,
- * signals, audio cues, physics incidents, and acknowledged car controls.
- */
-export function populateRingBufferSlot(input: PopulateRingBufferSlotInput): ReplayRingBufferSlot {
-  const {
-    existingSlot,
-    tick,
-    stateSnapshot,
-    snapshotFloatLimit,
-    includeSystemControlSignals,
-    isCountUpMode,
-    signals,
-  } = input;
-  let { audioEvents, incidents, acknowledgedControls } = input;
-
-  let resolvedSignals: ReadonlyArray<
-    ReplaySignalEntry | ReplayAcknowledgedControlEntry | null | undefined
-  > = [];
-  if (signals && typeof signals === 'object' && !Array.isArray(signals)) {
-    const opts = signals as ReplayRecordFrameOptions;
-    resolvedSignals = opts.signals || [];
-    audioEvents = opts.audioEvents ?? audioEvents;
-    incidents = opts.incidents ?? incidents;
-    acknowledgedControls = opts.acknowledgedControls ?? acknowledgedControls;
-  } else if (Array.isArray(signals)) {
-    resolvedSignals = signals;
-  }
-
-  const copyLen = stateSnapshot ? Math.min(stateSnapshot.length, snapshotFloatLimit) : 0;
-  let snapshot: Float32Array | null = null;
-  if (copyLen > 0 && stateSnapshot) {
-    snapshot =
-      existingSlot?.snapshot && existingSlot.snapshot.length === copyLen
-        ? existingSlot.snapshot
-        : new Float32Array(copyLen);
-    if (stateSnapshot instanceof Float32Array) {
-      snapshot.set(stateSnapshot.subarray(0, copyLen));
-    } else {
-      for (let i = 0; i < copyLen; i++) snapshot[i] = stateSnapshot[i];
-    }
-  }
-
-  const outSignals: ReplaySignalEntry[] = existingSlot?.signals ? existingSlot.signals : [];
-  const outAudio: ReplayAudioCue[] = existingSlot?.audioEvents ? existingSlot.audioEvents : [];
-  const outIncidents: ReplayRecordedIncident[] = Array.isArray(existingSlot?.incidents)
-    ? existingSlot.incidents
-    : [];
-  const outControls: ReplayAcknowledgedControlEntry[] = Array.isArray(
-    existingSlot?.acknowledgedControls
-  )
-    ? existingSlot.acknowledgedControls
-    : [];
-  outSignals.length = 0;
-  outAudio.length = 0;
-  outIncidents.length = 0;
-  outControls.length = 0;
-
-  if (Array.isArray(resolvedSignals) && resolvedSignals.length > 0) {
-    for (let i = 0; i < resolvedSignals.length; i++) {
-      const sig = resolvedSignals[i];
-      if (!sig || !('signalType' in sig) || typeof sig.signalType !== 'number') continue;
-      if (!includeSystemControlSignals && isSystemControlSignal(sig.signalType)) continue;
-      outSignals.push({
-        signalId: sig.signalId ?? 0,
-        signalType: sig.signalType,
-        frameId: sig.frameId ?? tick,
-        param1: sig.param1 ?? 0,
-        param2: sig.param2 ?? 0,
-      });
-      const cue = resolveReplayAudioCueForSignal(sig, isCountUpMode);
-      if (cue) outAudio.push(cue);
-    }
-  }
-
-  if (Array.isArray(audioEvents) && audioEvents.length > 0) {
-    for (let i = 0; i < audioEvents.length; i++) {
-      const cue = audioEvents[i];
-      if (cue) outAudio.push(cue);
-    }
-  }
-
-  if (Array.isArray(incidents) && incidents.length > 0) {
-    for (let i = 0; i < incidents.length; i++) {
-      const inc = incidents[i];
-      if (inc && isIncidentEvent(inc.type)) outIncidents.push({ ...inc });
-    }
-  }
-
-  if (Array.isArray(acknowledgedControls) && acknowledgedControls.length > 0) {
-    for (let i = 0; i < acknowledgedControls.length; i++) {
-      const entry = acknowledgedControls[i];
-      if (!entry || typeof entry !== 'object') continue;
-      if (typeof entry.carIndex === 'number' && entry.controls) {
-        outControls.push({ carIndex: entry.carIndex, controls: { ...entry.controls } });
-      } else if ('throttle' in entry || 'steer' in entry || 'boost' in entry || 'jump' in entry) {
-        outControls.push({ carIndex: i, controls: { ...entry } });
-      }
-    }
-  }
-
-  return {
-    tick: tick >>> 0,
-    snapshot,
-    signals: outSignals,
-    audioEvents: outAudio,
-    incidents: outIncidents,
-    acknowledgedControls: outControls,
-  };
-}
-
 /**
  * Deep-clones a single ReplayRingBufferSlot so callers can mutate or retain it safely.
  */
@@ -329,11 +201,13 @@ export function cloneReplayRingBufferSlot(slot: ReplayRingBufferSlot): ReplayRin
   return {
     tick: slot.tick,
     snapshot: slot.snapshot ? new Float32Array(slot.snapshot) : null,
-    signals: slot.signals.slice(),
-    audioEvents: slot.audioEvents.slice(),
-    incidents: Array.isArray(slot.incidents) ? slot.incidents.slice() : [],
+    signals: slot.signals.map((sig) => ({ ...sig })),
+    audioEvents: slot.audioEvents.map((cue) => ({ ...cue })),
+    incidents: Array.isArray(slot.incidents) ? slot.incidents.map((inc) => ({ ...inc })) : [],
     acknowledgedControls: Array.isArray(slot.acknowledgedControls)
-      ? slot.acknowledgedControls.slice()
+      ? slot.acknowledgedControls.map((entry) =>
+          entry.controls ? { ...entry, controls: { ...entry.controls } } : { ...entry }
+        )
       : [],
   };
 }

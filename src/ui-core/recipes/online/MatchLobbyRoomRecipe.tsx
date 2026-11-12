@@ -26,6 +26,7 @@ export type { MatchLobbyUtilitiesState } from './MatchLobbyActionAndUtilityStrip
 export interface MatchLobbyRoomConfigState {
   roomCode?: string;
   pairId?: string;
+  playerName?: string;
   defaultTeamFormat?: HostMatchTeamFormat;
   defaultBotPolicy?: HostMatchBotPolicy;
   defaultDurationPreset?: HostMatchDurationPreset;
@@ -62,11 +63,6 @@ export interface MatchLobbyRoomRecipeProps {
   isLight?: boolean;
 }
 
-const INITIAL_PEERS: LobbyPlayerSlot[] = [
-  { id: 'peer-1', name: 'OctaneMain_99', pingMs: 22, pairId: '9B2C', team: 'orange' },
-  { id: 'peer-2', name: 'Aerial_Vortex', pingMs: 36, pairId: '4D1E', team: 'blue' },
-];
-
 const TEAM_SLOTS_PER_SIDE: Record<HostMatchTeamFormat, number> = {
   duel: 1,
   doubles: 2,
@@ -99,6 +95,7 @@ export const MatchLobbyRoomRecipe: React.FC<MatchLobbyRoomRecipeProps> = React.m
   const {
     roomCode = 'RL-8924',
     pairId = '7F3A',
+    playerName,
     defaultTeamFormat = 'doubles',
     defaultBotPolicy = 'auto-fill',
     defaultDurationPreset = '300',
@@ -115,7 +112,7 @@ export const MatchLobbyRoomRecipe: React.FC<MatchLobbyRoomRecipeProps> = React.m
   const isHost = role === 'host';
   const [internalSignaling, setInternalSignaling] = useState<SignalingHealthState>('green');
   const [internalLocalTeam, setInternalLocalTeam] = useState<LobbyTeamAssignment>('neutral');
-  const [internalPeers, setInternalPeers] = useState<LobbyPlayerSlot[]>(INITIAL_PEERS);
+  const [internalPeers, setInternalPeers] = useState<LobbyPlayerSlot[]>([]);
   const [rosterLayout] = useState<'stacked' | 'columns'>('columns');
 
   const signalingState = controlledSignaling ?? internalSignaling;
@@ -160,9 +157,16 @@ export const MatchLobbyRoomRecipe: React.FC<MatchLobbyRoomRecipeProps> = React.m
   const slotsPerSide = TEAM_SLOTS_PER_SIDE[teamFormat];
   const maxPlayers = slotsPerSide * 2;
 
+  const cleanSelfName = playerName?.trim() || 'Player_01';
+  const selfDisplayName = cleanSelfName.includes('(You')
+    ? cleanSelfName
+    : isHost
+    ? `${cleanSelfName} (You · Host)`
+    : `${cleanSelfName} (You)`;
+
   const selfEntry: LobbyPlayerSlot = {
     id: 'self',
-    name: isHost ? 'Player_01 (You · Host)' : 'Player_01 (You)',
+    name: selfDisplayName,
     pingMs: isHost ? 0 : 18,
     pairId,
     team: localTeam,
@@ -170,29 +174,35 @@ export const MatchLobbyRoomRecipe: React.FC<MatchLobbyRoomRecipeProps> = React.m
     isSelf: true,
   };
 
-  const hostEntryForClient: LobbyPlayerSlot[] =
-    isHost || controlledPeers !== undefined
-      ? []
-      : [
-          {
-            id: 'host-peer',
-            name: 'Striker_Host',
-            pingMs: 18,
-            pairId: '1A0F',
-            team: 'blue',
-            isHost: true,
-          },
-        ];
-
-  const allHumans: LobbyPlayerSlot[] = [selfEntry, ...hostEntryForClient, ...peers];
+  const humanPeers = peers.filter((p) => !p.isBot);
+  const customBotPeers = peers.filter((p) => p.isBot);
+  const allHumans: LobbyPlayerSlot[] = [selfEntry, ...humanPeers];
 
   const humanBlue = allHumans.filter((p) => p.team === 'blue');
   const humanNeutral = allHumans.filter((p) => p.team === 'neutral');
   const humanOrange = allHumans.filter((p) => p.team === 'orange');
 
-  const botFillingActive = botPolicy !== 'none';
-  const blueBotsNeeded = botFillingActive ? Math.max(0, slotsPerSide - humanBlue.length) : 0;
-  const orangeBotsNeeded = botFillingActive ? Math.max(0, slotsPerSide - humanOrange.length) : 0;
+  const customBlueBots = customBotPeers.filter((p) => p.team === 'blue');
+  const customOrangeBots = customBotPeers.filter((p) => p.team !== 'blue');
+
+  let projectedBlueCount = humanBlue.length + customBlueBots.length;
+  let projectedOrangeCount = humanOrange.length + customOrangeBots.length;
+  for (let i = 0; i < humanNeutral.length; i++) {
+    if (botPolicy === 'vs-ai') {
+      projectedBlueCount++;
+    } else if (projectedBlueCount <= projectedOrangeCount) {
+      projectedBlueCount++;
+    } else {
+      projectedOrangeCount++;
+    }
+  }
+
+  const blueBotsNeeded =
+    botPolicy === 'auto-fill' ? Math.max(0, slotsPerSide - projectedBlueCount) : 0;
+  const orangeBotsNeeded =
+    botPolicy === 'auto-fill' || botPolicy === 'vs-ai'
+      ? Math.max(0, slotsPerSide - projectedOrangeCount)
+      : 0;
 
   const blueBotSlots: LobbyPlayerSlot[] = Array.from({ length: blueBotsNeeded }, (_, i) => ({
     id: `bot-blue-${i}`,
@@ -212,9 +222,9 @@ export const MatchLobbyRoomRecipe: React.FC<MatchLobbyRoomRecipeProps> = React.m
     botLabel: botPolicy === 'vs-ai' ? 'AI · Pre-assigned' : 'Bot · Auto-Fill',
   }));
 
-  const blueRoster = [...humanBlue, ...blueBotSlots];
+  const blueRoster = [...humanBlue, ...customBlueBots, ...blueBotSlots];
   const neutralRoster = humanNeutral;
-  const orangeRoster = [...humanOrange, ...orangeBotSlots];
+  const orangeRoster = [...humanOrange, ...customOrangeBots, ...orangeBotSlots];
 
   const handleRemovePeer = (peerId: string) => {
     if (onKickPeer) {
