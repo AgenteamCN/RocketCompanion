@@ -116,9 +116,13 @@ export class BallLoopAudioGraph {
   }
 
   apply(cue: BallLoopCue, isAudible: boolean): void {
-    if (!isAudible || !this.initialized) {
+    if (!isAudible) {
       this.silence();
       return;
+    }
+    if (!this.initialized) {
+      this.init(this.rollingBuffer, this.flyingBuffer);
+      if (!this.initialized) return;
     }
     if (!this.rollingSource && this.rollingBuffer) this.startLoops();
     if (!this.flyingSource && this.flyingBuffer) this.startLoops();
